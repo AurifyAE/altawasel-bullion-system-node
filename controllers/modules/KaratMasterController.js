@@ -9,6 +9,7 @@ export const createKarat = async (req, res, next) => {
       standardPurity,
       minimum,
       maximum,
+      isScrap,
     } = req.body;
 
     // Validation
@@ -36,7 +37,7 @@ export const createKarat = async (req, res, next) => {
       );
     }
 
-    // Validate ranges
+    // Validate standard purity range
     if (standardPurity < 0 || standardPurity > 100) {
       throw createAppError(
         "Standard purity must be between 0 and 100",
@@ -45,14 +46,19 @@ export const createKarat = async (req, res, next) => {
       );
     }
 
-    if (minimum < 0 || maximum < 0) {
-      throw createAppError(
-        "Minimum and maximum values cannot be negative",
-        400,
-        "INVALID_VALUE_RANGE"
-      );
+    // Validate min/max based on isScrap
+    if (!isScrap) {
+      // Regular validation for non-scrap items
+      if (minimum < 0 || maximum < 0) {
+        throw createAppError(
+          "Minimum and maximum values cannot be negative for non-scrap items",
+          400,
+          "INVALID_VALUE_RANGE"
+        );
+      }
     }
 
+    // Common validation: minimum must be less than maximum
     if (minimum >= maximum) {
       throw createAppError(
         "Minimum value must be less than maximum value",
@@ -68,6 +74,7 @@ export const createKarat = async (req, res, next) => {
       standardPurity: parseFloat(standardPurity),
       minimum: parseFloat(minimum),
       maximum: parseFloat(maximum),
+      isScrap: isScrap || false,
     };
 
     const karat = await KaratMasterService.createKarat(karatData, req.admin.id);
@@ -129,6 +136,15 @@ export const updateKarat = async (req, res, next) => {
       throw createAppError("Karat ID is required", 400, "ID_REQUIRED");
     }
 
+    // Get existing karat to check current isScrap status
+    const existingKarat = await KaratMaster.findById(id);
+    if (!existingKarat) {
+      throw createAppError("Karat not found", 404, "KARAT_NOT_FOUND");
+    }
+
+    // Determine if this is/will be a scrap item
+    const willBeScrap = updateData.isScrap !== undefined ? updateData.isScrap : existingKarat.isScrap;
+
     // Validate numeric fields if provided
     if (updateData.standardPurity !== undefined) {
       if (isNaN(updateData.standardPurity)) {
@@ -149,9 +165,17 @@ export const updateKarat = async (req, res, next) => {
     }
 
     if (updateData.minimum !== undefined) {
-      if (isNaN(updateData.minimum) || updateData.minimum < 0) {
+      if (isNaN(updateData.minimum)) {
         throw createAppError(
-          "Minimum must be a valid non-negative number",
+          "Minimum must be a valid number",
+          400,
+          "INVALID_MINIMUM"
+        );
+      }
+      // Only validate negative values for non-scrap items
+      if (!willBeScrap && updateData.minimum < 0) {
+        throw createAppError(
+          "Minimum cannot be negative for non-scrap items",
           400,
           "INVALID_MINIMUM"
         );
@@ -160,14 +184,34 @@ export const updateKarat = async (req, res, next) => {
     }
 
     if (updateData.maximum !== undefined) {
-      if (isNaN(updateData.maximum) || updateData.maximum < 0) {
+      if (isNaN(updateData.maximum)) {
         throw createAppError(
-          "Maximum must be a valid non-negative number",
+          "Maximum must be a valid number",
+          400,
+          "INVALID_MAXIMUM"
+        );
+      }
+      // Only validate negative values for non-scrap items
+      if (!willBeScrap && updateData.maximum < 0) {
+        throw createAppError(
+          "Maximum cannot be negative for non-scrap items",
           400,
           "INVALID_MAXIMUM"
         );
       }
       updateData.maximum = parseFloat(updateData.maximum);
+    }
+
+    // Validate min/max relationship
+    const finalMinimum = updateData.minimum !== undefined ? updateData.minimum : existingKarat.minimum;
+    const finalMaximum = updateData.maximum !== undefined ? updateData.maximum : existingKarat.maximum;
+    
+    if (finalMinimum >= finalMaximum) {
+      throw createAppError(
+        "Minimum value must be less than maximum value",
+        400,
+        "INVALID_MIN_MAX_RANGE"
+      );
     }
 
     // Trim string fields if provided
