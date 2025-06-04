@@ -22,7 +22,12 @@ import {
 import { authenticateToken } from "../../middleware/authMiddleware.js";
 const router = express.Router();
 router.use(authenticateToken);
-router.get("/divisions", validatePagination, validateSearchParams, getAllDivisions);
+router.get(
+  "/divisions",
+  validatePagination,
+  validateSearchParams,
+  getAllDivisions
+);
 router.get("/stats", getDivisionStats);
 router.get("/:id", getDivisionById);
 router.get("/code/:code", getDivisionByCode);

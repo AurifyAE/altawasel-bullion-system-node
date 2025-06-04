@@ -1,6 +1,6 @@
 import express from "express";
 import CategoryMasterController from "../../controllers/modules/CategoryMasterController.js";
-import {authenticateToken} from "../../middleware/authMiddleware.js";
+import { authenticateToken } from "../../middleware/authMiddleware.js";
 import { validateRequest } from "../../utils/validators/validation.js";
 
 const router = express.Router();
@@ -70,6 +70,5 @@ router.patch(
   "/types/:id/toggle-status",
   CategoryMasterController.toggleTypeStatus
 );
-
 
 export default router;
