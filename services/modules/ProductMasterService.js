@@ -129,7 +129,9 @@ class ProductMasterService {
         throw createAppError("Color not found", 404, "NOT_FOUND");
       }
 
-      await Color.findByIdAndDelete(id);
+      color.status = "inactive";
+      color.isActive = false;
+      await color.save();
       return { message: "Color deleted successfully" };
     } catch (error) {
       throw error;
@@ -271,7 +273,9 @@ class ProductMasterService {
         throw createAppError("Size not found", 404, "NOT_FOUND");
       }
 
-      await Size.findByIdAndDelete(id);
+      size.status = "inactive";
+      size.isActive = false;
+      await size.save();
       return { message: "Size deleted successfully" };
     } catch (error) {
       throw error;
@@ -298,8 +302,10 @@ class ProductMasterService {
       });
 
       await brand.save();
-      return await Brand.findById(brand._id)
-      .populate("createdBy", "name email");
+      return await Brand.findById(brand._id).populate(
+        "createdBy",
+        "name email"
+      );
     } catch (error) {
       throw error;
     }
@@ -414,7 +420,9 @@ class ProductMasterService {
         throw createAppError("Brand not found", 404, "NOT_FOUND");
       }
 
-      await Brand.findByIdAndDelete(id);
+      brand.status = "inactive";
+      brand.isActive = false;
+      await brand.save();
       return { message: "Brand deleted successfully" };
     } catch (error) {
       throw error;
