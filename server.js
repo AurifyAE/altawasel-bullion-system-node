@@ -1,12 +1,13 @@
-
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import adminRouter from "./routes/core/admin/index.js";
 import divisionRouter from "./routes/modules/divisionsRoutes.js";
 import karatMasterRoutes from "./routes/modules/karatMasterRoutes.js";
-import categoryMasterRoutes from './routes/modules/categoryMasterRoutes.js';
-import productMasterRoutes from './routes/modules/productMasterRoutes.js';
+import categoryMasterRoutes from "./routes/modules/categoryMasterRoutes.js";
+import productMasterRoutes from "./routes/modules/productMasterRoutes.js";
+import metalRateMasterRoutes from "./routes/modules/metalRateMasterRoutes.js";
+import currencyMasterRoutes from "./routes/modules/currencyMasterRoutes.js";
 import { mongodb } from "./config/db.js";
 import { errorHandler } from "./utils/errorHandler.js";
 
@@ -16,7 +17,7 @@ const app = express();
 const port = process.env.PORT || 4444;
 
 app.use(express.static("public"));
-app.use(express.json({ limit: "50mb" })); 
+app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ limit: "50mb", extended: true })); // Increase URL-encoded payload limit
 
 // CORS configuration - BEFORE other middleware
@@ -56,8 +57,10 @@ mongodb();
 app.use("/api/v1", adminRouter);
 app.use("/api/v1/divisions", divisionRouter);
 app.use("/api/v1/karats", karatMasterRoutes);
-app.use('/api/v1/category-master', categoryMasterRoutes);
-app.use('/api/v1/product-master', productMasterRoutes);
+app.use("/api/v1/category-master", categoryMasterRoutes);
+app.use("/api/v1/product-master", productMasterRoutes);
+app.use("/api/v1/metal-rates", metalRateMasterRoutes);
+app.use("/api/v1/currency-master", currencyMasterRoutes);
 // Global error handling middleware
 app.use(errorHandler);
 

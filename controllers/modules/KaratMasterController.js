@@ -1,3 +1,4 @@
+import KaratMaster from "../../models/modules/KaratMaster.js";
 import KaratMasterService from "../../services/modules/KaratMasterService.js";
 import { createAppError } from "../../utils/errorHandler.js";
 export const createKarat = async (req, res, next) => {
