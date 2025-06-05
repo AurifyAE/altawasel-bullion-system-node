@@ -4,9 +4,8 @@ import Type from "../../models/modules/Type.js";
 import { createAppError } from "../../utils/errorHandler.js";
 
 class CategoryMasterService {
-  
   // ==================== MAIN CATEGORY METHODS ====================
-  
+
   static async createMainCategory(mainCategoryData, adminId) {
     try {
       // Check if code already exists
@@ -21,25 +20,33 @@ class CategoryMasterService {
 
       const mainCategory = new MainCategory({
         ...mainCategoryData,
-        createdBy: adminId
+        createdBy: adminId,
       });
 
       await mainCategory.save();
-      return await MainCategory.findById(mainCategory._id).populate('createdBy', 'name email');
+      return await MainCategory.findById(mainCategory._id).populate(
+        "createdBy",
+        "name email"
+      );
     } catch (error) {
       throw error;
     }
   }
 
-  static async getAllMainCategories(page = 1, limit = 10, search = '', status = '') {
+  static async getAllMainCategories(
+    page = 1,
+    limit = 10,
+    search = "",
+    status = ""
+  ) {
     try {
       const skip = (page - 1) * limit;
       const query = {};
 
       if (search) {
         query.$or = [
-          { code: new RegExp(search, 'i') },
-          { description: new RegExp(search, 'i') }
+          { code: new RegExp(search, "i") },
+          { description: new RegExp(search, "i") },
         ];
       }
 
@@ -49,12 +56,12 @@ class CategoryMasterService {
 
       const [mainCategories, total] = await Promise.all([
         MainCategory.find(query)
-          .populate('createdBy', 'name email')
-          .populate('updatedBy', 'name email')
+          .populate("createdBy", "name email")
+          .populate("updatedBy", "name email")
           .sort({ createdAt: -1 })
           .skip(skip)
           .limit(limit),
-        MainCategory.countDocuments(query)
+        MainCategory.countDocuments(query),
       ]);
 
       return {
@@ -63,8 +70,8 @@ class CategoryMasterService {
           currentPage: page,
           totalPages: Math.ceil(total / limit),
           totalItems: total,
-          itemsPerPage: limit
-        }
+          itemsPerPage: limit,
+        },
       };
     } catch (error) {
       throw error;
@@ -74,13 +81,13 @@ class CategoryMasterService {
   static async getMainCategoryById(id) {
     try {
       const mainCategory = await MainCategory.findById(id)
-        .populate('createdBy', 'name email')
-        .populate('updatedBy', 'name email');
-      
+        .populate("createdBy", "name email")
+        .populate("updatedBy", "name email");
+
       if (!mainCategory) {
         throw createAppError("Main Category not found", 404, "NOT_FOUND");
       }
-      
+
       return mainCategory;
     } catch (error) {
       throw error;
@@ -110,8 +117,9 @@ class CategoryMasterService {
         id,
         { ...updateData, updatedBy: adminId },
         { new: true, runValidators: true }
-      ).populate('createdBy', 'name email')
-       .populate('updatedBy', 'name email');
+      )
+        .populate("createdBy", "name email")
+        .populate("updatedBy", "name email");
 
       return updatedMainCategory;
     } catch (error) {
@@ -126,18 +134,10 @@ class CategoryMasterService {
       if (!mainCategory) {
         throw createAppError("Main Category not found", 404, "NOT_FOUND");
       }
+      mainCategory.status = "inactive";
+      mainCategory.isActive = false;
+      await mainCategory.save();
 
-      // Check if there are any sub categories using this main category
-      const subCategoriesCount = await SubCategory.countDocuments({ mainCategory: id });
-      if (subCategoriesCount > 0) {
-        throw createAppError(
-          "Cannot delete Main Category. It is being used by Sub Categories",
-          400,
-          "DEPENDENCY_EXISTS"
-        );
-      }
-
-      await MainCategory.findByIdAndDelete(id);
       return { message: "Main Category deleted successfully" };
     } catch (error) {
       throw error;
@@ -145,7 +145,7 @@ class CategoryMasterService {
   }
 
   // ==================== SUB CATEGORY METHODS ====================
-  
+
   static async createSubCategory(subCategoryData, adminId) {
     try {
       // Check if code already exists within the main category
@@ -160,41 +160,48 @@ class CategoryMasterService {
 
       const subCategory = new SubCategory({
         ...subCategoryData,
-        createdBy: adminId
+        createdBy: adminId,
       });
 
       await subCategory.save();
-      return await SubCategory.findById(subCategory._id)
-        .populate('createdBy', 'name email');
+      return await SubCategory.findById(subCategory._id).populate(
+        "createdBy",
+        "name email"
+      );
     } catch (error) {
       throw error;
     }
   }
 
-  static async getAllSubCategories(page = 1, limit = 10, search = '', status = '') {
+  static async getAllSubCategories(
+    page = 1,
+    limit = 10,
+    search = "",
+    status = ""
+  ) {
     try {
       const skip = (page - 1) * limit;
       const query = {};
 
       if (search) {
         query.$or = [
-          { code: new RegExp(search, 'i') },
-          { description: new RegExp(search, 'i') }
+          { code: new RegExp(search, "i") },
+          { description: new RegExp(search, "i") },
         ];
       }
 
       if (status) {
         query.status = status;
       }
-     
+
       const [subCategories, total] = await Promise.all([
         SubCategory.find(query)
-          .populate('createdBy', 'name email')
-          .populate('updatedBy', 'name email')
+          .populate("createdBy", "name email")
+          .populate("updatedBy", "name email")
           .sort({ createdAt: -1 })
           .skip(skip)
           .limit(limit),
-        SubCategory.countDocuments(query)
+        SubCategory.countDocuments(query),
       ]);
 
       return {
@@ -203,8 +210,8 @@ class CategoryMasterService {
           currentPage: page,
           totalPages: Math.ceil(total / limit),
           totalItems: total,
-          itemsPerPage: limit
-        }
+          itemsPerPage: limit,
+        },
       };
     } catch (error) {
       throw error;
@@ -214,13 +221,13 @@ class CategoryMasterService {
   static async getSubCategoryById(id) {
     try {
       const subCategory = await SubCategory.findById(id)
-        .populate('createdBy', 'name email')
-        .populate('updatedBy', 'name email');
-      
+        .populate("createdBy", "name email")
+        .populate("updatedBy", "name email");
+
       if (!subCategory) {
         throw createAppError("Sub Category not found", 404, "NOT_FOUND");
       }
-      
+
       return subCategory;
     } catch (error) {
       throw error;
@@ -234,9 +241,7 @@ class CategoryMasterService {
         throw createAppError("Sub Category not found", 404, "NOT_FOUND");
       }
 
-    
-     
-      if (updateData.code && (updateData.code !== subCategory.code)) {
+      if (updateData.code && updateData.code !== subCategory.code) {
         const codeExists = await SubCategory.isCodeExists(updateData.code, id);
         if (codeExists) {
           throw createAppError(
@@ -252,8 +257,8 @@ class CategoryMasterService {
         { ...updateData, updatedBy: adminId },
         { new: true, runValidators: true }
       )
-       .populate('createdBy', 'name email')
-       .populate('updatedBy', 'name email');
+        .populate("createdBy", "name email")
+        .populate("updatedBy", "name email");
 
       return updatedSubCategory;
     } catch (error) {
@@ -269,17 +274,9 @@ class CategoryMasterService {
         throw createAppError("Sub Category not found", 404, "NOT_FOUND");
       }
 
-      // Check if there are any types using this sub category
-      const typesCount = await Type.countDocuments({ subCategory: id });
-      if (typesCount > 0) {
-        throw createAppError(
-          "Cannot delete Sub Category. It is being used by Types",
-          400,
-          "DEPENDENCY_EXISTS"
-        );
-      }
-
-      await SubCategory.findByIdAndDelete(id);
+      subCategory.status = "inactive";
+      subCategory.isActive = false;
+      await subCategory.save();
       return { message: "Sub Category deleted successfully" };
     } catch (error) {
       throw error;
@@ -287,10 +284,9 @@ class CategoryMasterService {
   }
 
   // ==================== TYPE METHODS ====================
-  
+
   static async createType(typeData, adminId) {
     try {
-    
       const codeExists = await Type.isCodeExists(typeData.code);
       if (codeExists) {
         throw createAppError(
@@ -302,26 +298,25 @@ class CategoryMasterService {
 
       const type = new Type({
         ...typeData,
-        createdBy: adminId
+        createdBy: adminId,
       });
 
       await type.save();
-      return await Type.findById(type._id)
-        .populate('createdBy', 'name email');
+      return await Type.findById(type._id).populate("createdBy", "name email");
     } catch (error) {
       throw error;
     }
   }
 
-  static async getAllTypes(page = 1, limit = 10, search = '', status = '') {
+  static async getAllTypes(page = 1, limit = 10, search = "", status = "") {
     try {
       const skip = (page - 1) * limit;
       const query = {};
 
       if (search) {
         query.$or = [
-          { code: new RegExp(search, 'i') },
-          { description: new RegExp(search, 'i') }
+          { code: new RegExp(search, "i") },
+          { description: new RegExp(search, "i") },
         ];
       }
 
@@ -329,16 +324,15 @@ class CategoryMasterService {
         query.status = status;
       }
 
-  
       const [types, total] = await Promise.all([
         Type.find(query)
-     
-          .populate('createdBy', 'name email')
-          .populate('updatedBy', 'name email')
+
+          .populate("createdBy", "name email")
+          .populate("updatedBy", "name email")
           .sort({ createdAt: -1 })
           .skip(skip)
           .limit(limit),
-        Type.countDocuments(query)
+        Type.countDocuments(query),
       ]);
 
       return {
@@ -347,8 +341,8 @@ class CategoryMasterService {
           currentPage: page,
           totalPages: Math.ceil(total / limit),
           totalItems: total,
-          itemsPerPage: limit
-        }
+          itemsPerPage: limit,
+        },
       };
     } catch (error) {
       throw error;
@@ -359,13 +353,13 @@ class CategoryMasterService {
     try {
       const type = await Type.findById(id)
 
-        .populate('createdBy', 'name email')
-        .populate('updatedBy', 'name email');
-      
+        .populate("createdBy", "name email")
+        .populate("updatedBy", "name email");
+
       if (!type) {
         throw createAppError("Type not found", 404, "NOT_FOUND");
       }
-      
+
       return type;
     } catch (error) {
       throw error;
@@ -379,8 +373,7 @@ class CategoryMasterService {
         throw createAppError("Type not found", 404, "NOT_FOUND");
       }
 
- 
-      if (updateData.code && (updateData.code !== type.code )) {
+      if (updateData.code && updateData.code !== type.code) {
         const codeExists = await Type.isCodeExists(updateData.code, id);
         if (codeExists) {
           throw createAppError(
@@ -396,8 +389,8 @@ class CategoryMasterService {
         { ...updateData, updatedBy: adminId },
         { new: true, runValidators: true }
       )
-       .populate('createdBy', 'name email')
-       .populate('updatedBy', 'name email');
+        .populate("createdBy", "name email")
+        .populate("updatedBy", "name email");
 
       return updatedType;
     } catch (error) {
@@ -412,7 +405,9 @@ class CategoryMasterService {
         throw createAppError("Type not found", 404, "NOT_FOUND");
       }
 
-      await Type.findByIdAndDelete(id);
+      type.status = "inactive";
+      type.isActive = false;
+      await type.save();
       return { message: "Type deleted successfully" };
     } catch (error) {
       throw error;
@@ -420,14 +415,14 @@ class CategoryMasterService {
   }
 
   // ==================== UTILITY METHODS ====================
-  
+
   static async getSubCategoriesByMainCategory(mainCategoryId) {
     try {
-      const subCategories = await SubCategory.find({ 
-        mainCategory: mainCategoryId, 
-        status: 'active' 
-      }).select('code description');
-      
+      const subCategories = await SubCategory.find({
+        mainCategory: mainCategoryId,
+        status: "active",
+      }).select("code description");
+
       return subCategories;
     } catch (error) {
       throw error;
@@ -436,11 +431,11 @@ class CategoryMasterService {
 
   static async getTypesBySubCategory(subCategoryId) {
     try {
-      const types = await Type.find({ 
-        subCategory: subCategoryId, 
-        status: 'active' 
-      }).select('code description');
-      
+      const types = await Type.find({
+        subCategory: subCategoryId,
+        status: "active",
+      }).select("code description");
+
       return types;
     } catch (error) {
       throw error;
