@@ -237,7 +237,7 @@ const TradeDebtorsSchema = new mongoose.Schema(
           fileName: String,
           filePath: String,
           fileType: String,
-          s3Key:String,
+          s3Key: String,
           uploadedAt: {
             type: Date,
             default: Date.now,
@@ -352,6 +352,7 @@ const TradeDebtorsSchema = new mongoose.Schema(
             fileName: String,
             filePath: String,
             fileType: String,
+            s3Key: String,
             uploadedAt: {
               type: Date,
               default: Date.now,

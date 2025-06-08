@@ -314,6 +314,8 @@ export const getTradeDebtorById = async (req, res, next) => {
 
 // Update trade debtor
 export const updateTradeDebtor = async (req, res, next) => {
+  let uploadedFiles = [];
+  
   try {
     const { id } = req.params;
     let updateData = { ...req.body };
@@ -325,6 +327,11 @@ export const updateTradeDebtor = async (req, res, next) => {
     console.log("Update request body:", req.body);
     console.log("Files by field:", req.filesByField);
     console.log("All files:", req.files);
+
+    // Keep track of uploaded files for cleanup on error
+    if (req.files && req.files.length > 0) {
+      uploadedFiles = req.files.map(file => file.key || file.filename).filter(Boolean);
+    }
 
     // Helper function to process uploaded files
     const processUploadedFiles = (files) => {
@@ -343,6 +350,7 @@ export const updateTradeDebtor = async (req, res, next) => {
         try {
           return JSON.parse(field);
         } catch (e) {
+          console.warn(`Failed to parse JSON field: ${field}`);
           return field;
         }
       }
@@ -356,8 +364,7 @@ export const updateTradeDebtor = async (req, res, next) => {
         const vatDocuments = processUploadedFiles(
           req.filesByField["vatGstDetails.documents"]
         );
-        let processedVatGstDetails =
-          parseJsonField(updateData.vatGstDetails) || {};
+        let processedVatGstDetails = parseJsonField(updateData.vatGstDetails) || {};
 
         // Check if we should replace existing documents or append
         const replaceVatDocs =
@@ -368,12 +375,11 @@ export const updateTradeDebtor = async (req, res, next) => {
           // Replace all existing VAT documents
           processedVatGstDetails.documents = vatDocuments;
           updateData._replaceVatDocuments = true;
+          console.log(`Replacing VAT documents with ${vatDocuments.length} new files`);
         } else {
           // Append to existing documents
-          processedVatGstDetails.documents = [
-            ...(processedVatGstDetails.documents || []),
-            ...vatDocuments,
-          ];
+          processedVatGstDetails.documents = vatDocuments; // New documents only
+          console.log(`Adding ${vatDocuments.length} new VAT documents`);
         }
 
         updateData.vatGstDetails = processedVatGstDetails;
@@ -385,6 +391,7 @@ export const updateTradeDebtor = async (req, res, next) => {
           ? updateData.removeVatDocuments
           : [updateData.removeVatDocuments];
         updateData._removeVatDocuments = documentsToRemove;
+        console.log(`Removing VAT documents:`, documentsToRemove);
       }
 
       // Process KYC documents
@@ -398,28 +405,25 @@ export const updateTradeDebtor = async (req, res, next) => {
           updateData.replaceKycDocuments === "true" ||
           updateData.replaceKycDocuments === true;
 
-        if (
-          Array.isArray(processedKycDetails) &&
-          processedKycDetails.length > 0
-        ) {
-          if (replaceKycDocs) {
-            // Replace documents in first KYC entry
-            processedKycDetails[0].documents = kycDocuments;
-            processedKycDetails[0]._replaceDocuments = true;
-          } else {
-            // Add to first KYC entry
-            processedKycDetails[0].documents = [
-              ...(processedKycDetails[0].documents || []),
-              ...kycDocuments,
-            ];
-          }
+        // Ensure processedKycDetails is an array
+        if (!Array.isArray(processedKycDetails)) {
+          processedKycDetails = [];
+        }
+
+        // Get or create the first KYC entry
+        if (processedKycDetails.length === 0) {
+          processedKycDetails.push({});
+        }
+
+        if (replaceKycDocs) {
+          // Replace documents in first KYC entry
+          processedKycDetails[0].documents = kycDocuments;
+          processedKycDetails[0]._replaceDocuments = true;
+          console.log(`Replacing KYC documents with ${kycDocuments.length} new files`);
         } else {
-          // Create new KYC entry with documents
-          processedKycDetails = [
-            {
-              documents: kycDocuments,
-            },
-          ];
+          // Add new documents (will be merged with existing in service)
+          processedKycDetails[0].documents = kycDocuments;
+          console.log(`Adding ${kycDocuments.length} new KYC documents`);
         }
 
         updateData.kycDetails = processedKycDetails;
@@ -431,9 +435,18 @@ export const updateTradeDebtor = async (req, res, next) => {
           ? updateData.removeKycDocuments
           : [updateData.removeKycDocuments];
 
-        if (updateData.kycDetails && updateData.kycDetails[0]) {
-          updateData.kycDetails[0]._removeDocuments = documentsToRemove;
+        if (!updateData.kycDetails) {
+          updateData.kycDetails = [{}];
+        } else if (!Array.isArray(updateData.kycDetails)) {
+          updateData.kycDetails = [updateData.kycDetails];
         }
+
+        if (updateData.kycDetails.length === 0) {
+          updateData.kycDetails.push({});
+        }
+
+        updateData.kycDetails[0]._removeDocuments = documentsToRemove;
+        console.log(`Removing KYC documents:`, documentsToRemove);
       }
 
       // Process general documents (add to VAT documents)
@@ -456,6 +469,7 @@ export const updateTradeDebtor = async (req, res, next) => {
           ...generalDocuments,
         ];
         updateData.vatGstDetails = vatGstDetails;
+        console.log(`Added ${generalDocuments.length} general documents to VAT section`);
       }
     }
 
@@ -483,7 +497,7 @@ export const updateTradeDebtor = async (req, res, next) => {
       "remarks",
     ];
     stringFields.forEach((field) => {
-      if (updateData[field]) {
+      if (updateData[field] && typeof updateData[field] === 'string') {
         updateData[field] =
           field === "accountCode"
             ? updateData[field].trim().toUpperCase()
@@ -535,6 +549,7 @@ export const updateTradeDebtor = async (req, res, next) => {
 
     console.log("Final update data:", JSON.stringify(updateData, null, 2));
 
+    // Call the service to update the trade debtor
     const updatedTradeDebtor = await TradeDebtorsService.updateTradeDebtor(
       id,
       updateData,
@@ -567,26 +582,32 @@ export const updateTradeDebtor = async (req, res, next) => {
     if (updatedTradeDebtor._filesManagement?.filesDeleted > 0) {
       response.filesManagement = {
         oldFilesDeleted: updatedTradeDebtor._filesManagement.filesDeleted,
+        filesFailedToDelete: updatedTradeDebtor._filesManagement.filesFailedToDelete || 0,
         message: `${updatedTradeDebtor._filesManagement.filesDeleted} old files were removed from S3`,
       };
+
+      if (updatedTradeDebtor._filesManagement.filesFailedToDelete > 0) {
+        response.filesManagement.warning = `${updatedTradeDebtor._filesManagement.filesFailedToDelete} files could not be deleted from S3`;
+      }
     }
 
     res.status(200).json(response);
   } catch (error) {
     console.error("Error updating trade debtor:", error);
 
-    // Clean up uploaded files if error occurs
-    if (req.files && req.files.length > 0) {
+    // Clean up uploaded files if error occurs and we have files to clean up
+    if (uploadedFiles.length > 0) {
+      console.log(`Cleaning up ${uploadedFiles.length} uploaded files due to error`);
       try {
-        const s3Keys = req.files.map((file) => file.key).filter((key) => key);
-        if (s3Keys.length > 0) {
-          await deleteMultipleS3Files(s3Keys);
-          console.log(
-            `Cleaned up ${s3Keys.length} uploaded files due to error`
-          );
+        const cleanupResult = await deleteMultipleS3Files(uploadedFiles);
+        if (cleanupResult.successful?.length > 0) {
+          console.log(`Successfully cleaned up ${cleanupResult.successful.length} uploaded files`);
+        }
+        if (cleanupResult.failed?.length > 0) {
+          console.warn(`Failed to clean up ${cleanupResult.failed.length} files:`, cleanupResult.failed);
         }
       } catch (cleanupError) {
-        console.error("Error cleaning up files:", cleanupError);
+        console.error("Error during file cleanup:", cleanupError);
       }
     }
 
@@ -627,13 +648,42 @@ export const hardDeleteTradeDebtor = async (req, res, next) => {
       throw createAppError("Trade debtor ID is required", 400, "MISSING_ID");
     }
 
+    console.log(`Processing hard delete request for trade debtor: ${id}`);
+
     const result = await TradeDebtorsService.hardDeleteTradeDebtor(id);
 
-    res.status(200).json({
+    const response = {
       success: true,
       message: result.message,
-      filesDeleted: result.filesDeleted || { total: 0 },
+      filesDeleted: {
+        total: result.filesDeleted?.total || 0,
+        successful: result.filesDeleted?.successful || 0,
+        failed: result.filesDeleted?.failed || 0,
+      },
+    };
+
+    // Add detailed info if there were files involved
+    if (result.filesDeleted?.total > 0) {
+      response.filesDeleted.details = {
+        successfulKeys: result.filesDeleted.successfulKeys || [],
+        failedKeys: result.filesDeleted.failedKeys || [],
+      };
+
+      if (result.filesDeleted.failed > 0) {
+        response.warning = `${result.filesDeleted.failed} files could not be deleted from S3`;
+        if (result.filesDeleted.errors) {
+          response.s3Errors = result.filesDeleted.errors;
+        }
+      }
+    }
+
+    console.log(`Hard delete completed for trade debtor ${id}:`, {
+      filesTotal: result.filesDeleted?.total || 0,
+      filesDeleted: result.filesDeleted?.successful || 0,
+      filesFailed: result.filesDeleted?.failed || 0,
     });
+
+    res.status(200).json(response);
   } catch (error) {
     console.error("Error in hard delete:", error);
     next(error);

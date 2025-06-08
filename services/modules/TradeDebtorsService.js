@@ -1,6 +1,6 @@
 import TradeDebtors from "../../models/modules/TradeDebtors.js";
 import { createAppError } from "../../utils/errorHandler.js";
-import { deleteS3File, deleteMultipleS3Files } from "../../utils/s3Utils.js";
+import { deleteMultipleS3Files } from "../../utils/s3Utils.js";
 
 class TradeDebtorsService {
   // Create new trade debtor
@@ -163,62 +163,165 @@ class TradeDebtorsService {
       throw error;
     }
   }
-  // Helper function to extract all S3 keys from a trade debtor document
   static extractS3Keys(tradeDebtor) {
     const s3Keys = [];
 
-    // Extract from VAT/GST documents
-    if (tradeDebtor.vatGstDetails?.documents?.length) {
-      tradeDebtor.vatGstDetails.documents.forEach((doc) => {
-        if (doc.s3Key) {
-          s3Keys.push(doc.s3Key);
-        }
-      });
-    }
+    try {
+      // Extract from VAT/GST documents
+      if (tradeDebtor.vatGstDetails?.documents?.length) {
+        tradeDebtor.vatGstDetails.documents.forEach((doc) => {
+          if (doc.s3Key && typeof doc.s3Key === "string" && doc.s3Key.trim()) {
+            s3Keys.push(doc.s3Key.trim());
+          }
+        });
+      }
 
-    // Extract from KYC documents
-    if (tradeDebtor.kycDetails?.length) {
-      tradeDebtor.kycDetails.forEach((kyc) => {
-        if (kyc.documents?.length) {
-          kyc.documents.forEach((doc) => {
-            if (doc.s3Key) {
-              s3Keys.push(doc.s3Key);
-            }
-          });
-        }
-      });
-    }
+      // Extract from KYC documents
+      if (tradeDebtor.kycDetails?.length) {
+        tradeDebtor.kycDetails.forEach((kyc) => {
+          if (kyc.documents?.length) {
+            kyc.documents.forEach((doc) => {
+              if (
+                doc.s3Key &&
+                typeof doc.s3Key === "string" &&
+                doc.s3Key.trim()
+              ) {
+                s3Keys.push(doc.s3Key.trim());
+              }
+            });
+          }
+        });
+      }
 
-    return s3Keys;
+      // Remove duplicates
+      return [...new Set(s3Keys)];
+    } catch (error) {
+      console.error("Error extracting S3 keys:", error);
+      return s3Keys;
+    }
   }
 
   // Helper function to extract S3 keys from update data
   static extractS3KeysFromUpdateData(updateData) {
     const s3Keys = [];
 
-    // Extract from VAT/GST documents in update data
-    if (updateData.vatGstDetails?.documents?.length) {
-      updateData.vatGstDetails.documents.forEach((doc) => {
-        if (doc.s3Key) {
-          s3Keys.push(doc.s3Key);
-        }
-      });
-    }
+    try {
+      // Extract from VAT/GST documents in update data
+      if (updateData.vatGstDetails?.documents?.length) {
+        updateData.vatGstDetails.documents.forEach((doc) => {
+          if (doc.s3Key && typeof doc.s3Key === "string" && doc.s3Key.trim()) {
+            s3Keys.push(doc.s3Key.trim());
+          }
+        });
+      }
 
-    // Extract from KYC documents in update data
-    if (updateData.kycDetails?.length) {
-      updateData.kycDetails.forEach((kyc) => {
-        if (kyc.documents?.length) {
-          kyc.documents.forEach((doc) => {
-            if (doc.s3Key) {
-              s3Keys.push(doc.s3Key);
+      // Extract from KYC documents in update data
+      if (updateData.kycDetails?.length) {
+        updateData.kycDetails.forEach((kyc) => {
+          if (kyc.documents?.length) {
+            kyc.documents.forEach((doc) => {
+              if (
+                doc.s3Key &&
+                typeof doc.s3Key === "string" &&
+                doc.s3Key.trim()
+              ) {
+                s3Keys.push(doc.s3Key.trim());
+              }
+            });
+          }
+        });
+      }
+
+      // Remove duplicates
+      return [...new Set(s3Keys)];
+    } catch (error) {
+      console.error("Error extracting S3 keys from update data:", error);
+      return s3Keys;
+    }
+  }
+
+  // Helper function to get files to delete based on replacement/removal logic
+  static getFilesToDelete(existingTradeDebtor, updateData) {
+    const filesToDelete = [];
+
+    try {
+      // Handle VAT documents
+      if (updateData.vatGstDetails?.documents) {
+        const oldVatDocs = existingTradeDebtor.vatGstDetails?.documents || [];
+
+        // If we're completely replacing VAT documents
+        if (updateData._replaceVatDocuments) {
+          oldVatDocs.forEach((doc) => {
+            if (
+              doc.s3Key &&
+              typeof doc.s3Key === "string" &&
+              doc.s3Key.trim()
+            ) {
+              filesToDelete.push(doc.s3Key.trim());
             }
           });
         }
-      });
-    }
+        // If we're selectively removing documents
+        else if (updateData._removeVatDocuments?.length) {
+          updateData._removeVatDocuments.forEach((docId) => {
+            const docToRemove = oldVatDocs.find(
+              (doc) => doc._id?.toString() === docId
+            );
+            if (
+              docToRemove?.s3Key &&
+              typeof docToRemove.s3Key === "string" &&
+              docToRemove.s3Key.trim()
+            ) {
+              filesToDelete.push(docToRemove.s3Key.trim());
+            }
+          });
+        }
+      }
 
-    return s3Keys;
+      // Handle KYC documents
+      if (updateData.kycDetails?.length) {
+        updateData.kycDetails.forEach((kycUpdate, index) => {
+          if (kycUpdate.documents) {
+            const oldKycDocs =
+              existingTradeDebtor.kycDetails?.[index]?.documents || [];
+
+            // If we're completely replacing KYC documents for this entry
+            if (kycUpdate._replaceDocuments) {
+              oldKycDocs.forEach((doc) => {
+                if (
+                  doc.s3Key &&
+                  typeof doc.s3Key === "string" &&
+                  doc.s3Key.trim()
+                ) {
+                  filesToDelete.push(doc.s3Key.trim());
+                }
+              });
+            }
+            // If we're selectively removing documents
+            else if (kycUpdate._removeDocuments?.length) {
+              kycUpdate._removeDocuments.forEach((docId) => {
+                const docToRemove = oldKycDocs.find(
+                  (doc) => doc._id?.toString() === docId
+                );
+                if (
+                  docToRemove?.s3Key &&
+                  typeof docToRemove.s3Key === "string" &&
+                  docToRemove.s3Key.trim()
+                ) {
+                  filesToDelete.push(docToRemove.s3Key.trim());
+                }
+              });
+            }
+          }
+        });
+      }
+
+      // Remove duplicates
+      return [...new Set(filesToDelete)];
+    } catch (error) {
+      console.error("Error determining files to delete:", error);
+      return filesToDelete;
+    }
   }
 
   static async updateTradeDebtor(id, updateData, adminId) {
@@ -246,91 +349,60 @@ class TradeDebtorsService {
         }
       }
 
-      // Handle file replacements and deletions
-      const filesToDelete = [];
+      // Determine which files need to be deleted
+      const filesToDelete = this.getFilesToDelete(tradeDebtor, updateData);
 
-      // Check if VAT documents are being replaced
+      // Process document updates with proper merging
       if (updateData.vatGstDetails?.documents) {
         const oldVatDocs = tradeDebtor.vatGstDetails?.documents || [];
 
-        // If we're completely replacing VAT documents (not appending)
         if (updateData._replaceVatDocuments) {
-          oldVatDocs.forEach((doc) => {
-            if (doc.s3Key) {
-              filesToDelete.push(doc.s3Key);
-            }
-          });
-        }
-        // If we're selectively removing documents
-        else if (updateData._removeVatDocuments?.length) {
-          updateData._removeVatDocuments.forEach((docId) => {
-            const docToRemove = oldVatDocs.find(
-              (doc) => doc._id?.toString() === docId
-            );
-            if (docToRemove?.s3Key) {
-              filesToDelete.push(docToRemove.s3Key);
-            }
-          });
-
-          // Filter out removed documents
+          // Complete replacement - just use new documents
+          // filesToDelete already contains old files
+        } else if (updateData._removeVatDocuments?.length) {
+          // Selective removal - merge remaining old docs with new docs
+          const remainingOldDocs = oldVatDocs.filter(
+            (doc) =>
+              !updateData._removeVatDocuments.includes(doc._id?.toString())
+          );
           updateData.vatGstDetails.documents = [
-            ...oldVatDocs.filter(
-              (doc) =>
-                !updateData._removeVatDocuments.includes(doc._id?.toString())
-            ),
+            ...remainingOldDocs,
+            ...updateData.vatGstDetails.documents,
+          ];
+        } else {
+          // Append mode - add new documents to existing ones
+          updateData.vatGstDetails.documents = [
+            ...oldVatDocs,
             ...updateData.vatGstDetails.documents,
           ];
         }
       }
 
-      // Check if KYC documents are being replaced
+      // Process KYC document updates
       if (updateData.kycDetails?.length) {
         updateData.kycDetails.forEach((kycUpdate, index) => {
           if (kycUpdate.documents) {
             const oldKycDocs = tradeDebtor.kycDetails?.[index]?.documents || [];
 
-            // If we're completely replacing KYC documents for this entry
             if (kycUpdate._replaceDocuments) {
-              oldKycDocs.forEach((doc) => {
-                if (doc.s3Key) {
-                  filesToDelete.push(doc.s3Key);
-                }
-              });
-            }
-            // If we're selectively removing documents
-            else if (kycUpdate._removeDocuments?.length) {
-              kycUpdate._removeDocuments.forEach((docId) => {
-                const docToRemove = oldKycDocs.find(
-                  (doc) => doc._id?.toString() === docId
-                );
-                if (docToRemove?.s3Key) {
-                  filesToDelete.push(docToRemove.s3Key);
-                }
-              });
-
-              // Filter out removed documents and add new ones
+              // Complete replacement - just use new documents
+              // filesToDelete already contains old files
+            } else if (kycUpdate._removeDocuments?.length) {
+              // Selective removal - merge remaining old docs with new docs
+              const remainingOldDocs = oldKycDocs.filter(
+                (doc) =>
+                  !kycUpdate._removeDocuments.includes(doc._id?.toString())
+              );
               kycUpdate.documents = [
-                ...oldKycDocs.filter(
-                  (doc) =>
-                    !kycUpdate._removeDocuments.includes(doc._id?.toString())
-                ),
+                ...remainingOldDocs,
                 ...kycUpdate.documents,
               ];
+            } else {
+              // Append mode - add new documents to existing ones
+              kycUpdate.documents = [...oldKycDocs, ...kycUpdate.documents];
             }
           }
         });
-      }
-
-      // Delete old S3 files if any need to be removed
-      if (filesToDelete.length > 0) {
-        console.log(`Deleting ${filesToDelete.length} replaced S3 files`);
-
-        try {
-          await deleteMultipleS3Files(filesToDelete);
-        } catch (s3Error) {
-          console.warn("Warning: Could not delete some old S3 files:", s3Error);
-          // Don't fail the update operation if S3 deletion fails
-        }
       }
 
       // Clean up temporary flags used for file management
@@ -343,9 +415,11 @@ class TradeDebtorsService {
         });
       }
 
-      // Set updated by
+      // Set updated by and timestamp
       updateData.updatedBy = adminId;
+      updateData.updatedAt = new Date();
 
+      // Update the database first
       const updatedTradeDebtor = await TradeDebtors.findByIdAndUpdate(
         id,
         updateData,
@@ -361,11 +435,51 @@ class TradeDebtorsService {
         { path: "updatedBy", select: "name email" },
       ]);
 
+      // Delete old S3 files if any need to be removed (after successful DB update)
+      let s3DeletionResult = { successful: [], failed: [] };
+      if (filesToDelete.length > 0) {
+        console.log(
+          `Deleting ${filesToDelete.length} replaced/removed S3 files:`,
+          filesToDelete
+        );
+
+        try {
+          s3DeletionResult = await deleteMultipleS3Files(filesToDelete);
+
+          if (s3DeletionResult.failed?.length > 0) {
+            console.warn(
+              "Some S3 files could not be deleted:",
+              s3DeletionResult.failed
+            );
+          }
+
+          if (s3DeletionResult.successful?.length > 0) {
+            console.log(
+              `Successfully deleted ${s3DeletionResult.successful.length} S3 files`
+            );
+          }
+        } catch (s3Error) {
+          console.error("Error deleting S3 files:", s3Error);
+          // Don't fail the update operation if S3 deletion fails
+          s3DeletionResult = {
+            successful: [],
+            failed: filesToDelete.map((key) => ({
+              key,
+              error: s3Error.message,
+            })),
+          };
+        }
+      }
+
       return {
         ...updatedTradeDebtor.toObject(),
         _filesManagement: {
-          filesDeleted: filesToDelete.length,
-          deletedKeys: filesToDelete,
+          filesDeleted: s3DeletionResult.successful?.length || 0,
+          filesFailedToDelete: s3DeletionResult.failed?.length || 0,
+          deletedKeys:
+            s3DeletionResult.successful?.map((result) => result.key) || [],
+          failedKeys:
+            s3DeletionResult.failed?.map((result) => result.key) || [],
         },
       };
     } catch (error) {
@@ -423,53 +537,58 @@ class TradeDebtorsService {
       // Extract all S3 keys from the document
       const s3Keys = this.extractS3Keys(tradeDebtor);
 
+      console.log(
+        `Preparing to delete trade debtor ${id} with ${s3Keys.length} associated files`
+      );
+
       // Delete the trade debtor from database first
       await TradeDebtors.findByIdAndDelete(id);
 
       // Delete associated S3 files if any exist
+      let s3DeletionResult = { successful: [], failed: [] };
       if (s3Keys.length > 0) {
         console.log(
-          `Deleting ${s3Keys.length} S3 files for trade debtor ${id}`
+          `Deleting ${s3Keys.length} S3 files for trade debtor ${id}:`,
+          s3Keys
         );
 
         try {
-          const deletionResult = await deleteMultipleS3Files(s3Keys);
+          s3DeletionResult = await deleteMultipleS3Files(s3Keys);
 
-          if (!deletionResult.success) {
+          if (s3DeletionResult.failed?.length > 0) {
             console.warn(
               "Some S3 files could not be deleted:",
-              deletionResult.failed
+              s3DeletionResult.failed
             );
           }
-
-          return {
-            message: "Trade debtor permanently deleted",
-            filesDeleted: {
-              total: s3Keys.length,
-              successful: deletionResult.successful?.length || 0,
-              failed: deletionResult.failed?.length || 0,
-            },
-          };
         } catch (s3Error) {
           console.error("Error deleting S3 files:", s3Error);
-          // Don't fail the entire operation if S3 deletion fails
-          return {
-            message:
-              "Trade debtor permanently deleted (warning: some files may remain in S3)",
-            filesDeleted: {
-              total: s3Keys.length,
-              successful: 0,
-              failed: s3Keys.length,
-              error: s3Error.message,
-            },
+          s3DeletionResult = {
+            successful: [],
+            failed: s3Keys.map((key) => ({ key, error: s3Error.message })),
           };
         }
       }
 
-      return {
+      const result = {
         message: "Trade debtor permanently deleted",
-        filesDeleted: { total: 0 },
+        filesDeleted: {
+          total: s3Keys.length,
+          successful: s3DeletionResult.successful?.length || 0,
+          failed: s3DeletionResult.failed?.length || 0,
+          successfulKeys:
+            s3DeletionResult.successful?.map((result) => result.key) || [],
+          failedKeys:
+            s3DeletionResult.failed?.map((result) => result.key) || [],
+        },
       };
+
+      if (s3DeletionResult.failed?.length > 0) {
+        result.message += " (warning: some files may remain in S3)";
+        result.filesDeleted.errors = s3DeletionResult.failed;
+      }
+
+      return result;
     } catch (error) {
       if (error.name === "CastError") {
         throw createAppError("Invalid trade debtor ID", 400, "INVALID_ID");
