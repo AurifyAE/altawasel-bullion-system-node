@@ -62,6 +62,58 @@ const TradeDebtorsSchema = new mongoose.Schema(
       maxlength: [500, "Remarks cannot exceed 500 characters"],
     },
 
+    // Balance Information - NEW SECTION
+    balances: {
+      goldBalance: {
+        totalGrams: {
+          type: Number,
+          default: 0,
+          min: [0, "Gold balance cannot be negative"],
+        },
+        totalValue: {
+          type: Number,
+          default: 0,
+          min: [0, "Gold value cannot be negative"],
+        },
+        currency: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "CurrencyMaster",
+          default: null,
+        },
+        lastUpdated: {
+          type: Date,
+          default: Date.now,
+        },
+      },
+      cashBalance: [
+        {
+          currency: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "CurrencyMaster",
+            required: true,
+          },
+          amount: {
+            type: Number,
+            default: 0,
+            // Allow negative for debit balances
+          },
+          lastUpdated: {
+            type: Date,
+            default: Date.now,
+          },
+        },
+      ],
+      // Overall balance summary
+      totalOutstanding: {
+        type: Number,
+        default: 0,
+      },
+      lastBalanceUpdate: {
+        type: Date,
+        default: Date.now,
+      },
+    },
+
     // A/C Definition Session
     acDefinition: {
       currencies: [
@@ -334,7 +386,6 @@ const TradeDebtorsSchema = new mongoose.Schema(
         issueDate: {
           type: Date,
           default: null,
-
           required: [true, "Issue date is required"],
         },
         expiryDate: {
@@ -402,11 +453,30 @@ TradeDebtorsSchema.index({ isActive: 1 });
 TradeDebtorsSchema.index({ createdAt: -1 });
 TradeDebtorsSchema.index({ "employees.email": 1 });
 TradeDebtorsSchema.index({ "vatGstDetails.vatNumber": 1 });
+// New indexes for balance queries
+TradeDebtorsSchema.index({ "balances.totalOutstanding": 1 });
+TradeDebtorsSchema.index({ "balances.goldBalance.totalGrams": 1 });
 
 // Pre-save middleware to ensure uppercase codes
 TradeDebtorsSchema.pre("save", function (next) {
   if (this.accountCode) {
     this.accountCode = this.accountCode.toUpperCase();
+  }
+
+  // Update balance timestamps when balances are modified
+  if (this.isModified('balances')) {
+    this.balances.lastBalanceUpdate = new Date();
+    
+    // Update individual balance timestamps
+    if (this.balances.goldBalance && this.isModified('balances.goldBalance')) {
+      this.balances.goldBalance.lastUpdated = new Date();
+    }
+    
+    if (this.balances.cashBalance && this.isModified('balances.cashBalance')) {
+      this.balances.cashBalance.forEach(balance => {
+        balance.lastUpdated = new Date();
+      });
+    }
   }
 
   // Ensure only one primary address
@@ -460,6 +530,30 @@ TradeDebtorsSchema.statics.getActiveDebtors = function () {
   return this.find({ isActive: true, status: "active" });
 };
 
+// Static method to get debtors with outstanding balances
+TradeDebtorsSchema.statics.getDebtorsWithOutstanding = function (minAmount = 0) {
+  return this.find({ 
+    isActive: true, 
+    status: "active",
+    "balances.totalOutstanding": { $gt: minAmount }
+  });
+};
+
+// Static method to get total gold balance across all debtors
+TradeDebtorsSchema.statics.getTotalGoldBalance = async function () {
+  const result = await this.aggregate([
+    { $match: { isActive: true, status: "active" } },
+    {
+      $group: {
+        _id: null,
+        totalGrams: { $sum: "$balances.goldBalance.totalGrams" },
+        totalValue: { $sum: "$balances.goldBalance.totalValue" }
+      }
+    }
+  ]);
+  return result[0] || { totalGrams: 0, totalValue: 0 };
+};
+
 // Instance method to get primary contact
 TradeDebtorsSchema.methods.getPrimaryContact = function () {
   return this.employees.find((emp) => emp.isPrimary) || this.employees[0];
@@ -473,6 +567,63 @@ TradeDebtorsSchema.methods.getPrimaryAddress = function () {
 // Instance method to get primary bank
 TradeDebtorsSchema.methods.getPrimaryBank = function () {
   return this.bankDetails.find((bank) => bank.isPrimary) || this.bankDetails[0];
+};
+
+// Instance method to update gold balance
+TradeDebtorsSchema.methods.updateGoldBalance = function (
+  grams, 
+  value, 
+  currency = null
+) {
+  this.balances.goldBalance.totalGrams = grams;
+  this.balances.goldBalance.totalValue = value;
+  if (currency) {
+    this.balances.goldBalance.currency = currency;
+  }
+  this.balances.goldBalance.lastUpdated = new Date();
+  this.balances.lastBalanceUpdate = new Date();
+  return this.save();
+};
+
+// Instance method to update cash balance for a specific currency
+TradeDebtorsSchema.methods.updateCashBalance = function (currencyId, amount) {
+  const existingBalance = this.balances.cashBalance.find(
+    (balance) => balance.currency.toString() === currencyId.toString()
+  );
+  
+  if (existingBalance) {
+    existingBalance.amount = amount;
+    existingBalance.lastUpdated = new Date();
+  } else {
+    this.balances.cashBalance.push({
+      currency: currencyId,
+      amount: amount,
+      lastUpdated: new Date()
+    });
+  }
+  
+  this.balances.lastBalanceUpdate = new Date();
+  return this.save();
+};
+
+// Instance method to get cash balance for a specific currency
+TradeDebtorsSchema.methods.getCashBalance = function (currencyId) {
+  const balance = this.balances.cashBalance.find(
+    (balance) => balance.currency.toString() === currencyId.toString()
+  );
+  return balance ? balance.amount : 0;
+};
+
+// Instance method to calculate total outstanding
+TradeDebtorsSchema.methods.calculateTotalOutstanding = function () {
+  // This would typically involve complex calculations based on your business logic
+  // For now, just sum up cash balances
+  const totalCash = this.balances.cashBalance.reduce((sum, balance) => {
+    return sum + (balance.amount || 0);
+  }, 0);
+  
+  this.balances.totalOutstanding = totalCash + (this.balances.goldBalance.totalValue || 0);
+  return this.balances.totalOutstanding;
 };
 
 const TradeDebtors = mongoose.model("TradeDebtors", TradeDebtorsSchema);
