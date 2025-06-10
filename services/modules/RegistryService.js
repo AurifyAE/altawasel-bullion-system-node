@@ -1,0 +1,533 @@
+import { createAppError } from "../../utils/errorHandler.js";
+import Registry from "../../models/modules/Registry.js"
+import mongoose from "mongoose";
+
+class RegistryService {
+  // Create new registry entry
+  static async createRegistry(registryData, adminId) {
+    try {
+      const registry = new Registry({
+        ...registryData,
+        createdBy: adminId
+      });
+
+      await registry.save();
+
+      return await Registry.findById(registry._id)
+        .populate('createdBy', 'name email')
+        .populate('costCenter', 'code name');
+    } catch (error) {
+      if (error.code === 11000) {
+        throw createAppError("Transaction ID already exists", 400, "DUPLICATE_TRANSACTION_ID");
+      }
+      throw error;
+    }
+  }
+
+  // Get all registries with filters, search and pagination
+  static async getAllRegistries(page, limit, filters, sort) {
+    try {
+      const skip = (page - 1) * limit;
+      const query = { isActive: true };
+
+      // Apply filters
+      if (filters.type) {
+        query.type = filters.type;
+      }
+
+      if (filters.costCenter) {
+        query.costCenter = filters.costCenter;
+      }
+
+      if (filters.status) {
+        query.status = filters.status;
+      }
+
+      // Date range filter
+      if (filters.startDate || filters.endDate) {
+        query.transactionDate = {};
+        if (filters.startDate) {
+          query.transactionDate.$gte = new Date(filters.startDate);
+        }
+        if (filters.endDate) {
+          query.transactionDate.$lte = new Date(filters.endDate);
+        }
+      }
+
+      // Search functionality
+      if (filters.search) {
+        const searchRegex = new RegExp(filters.search, 'i');
+        query.$or = [
+          { transactionId: searchRegex },
+          { description: searchRegex },
+          { reference: searchRegex },
+          { costCenter: searchRegex }
+        ];
+      }
+
+      // Sort configuration
+      const sortConfig = {};
+      sortConfig[sort.sortBy] = sort.sortOrder === 'desc' ? -1 : 1;
+
+      // Execute query
+      const [registries, total] = await Promise.all([
+        Registry.find(query)
+          .populate('createdBy', 'name email')
+          .populate('updatedBy', 'name email')
+          .populate('costCenter', 'code name')
+          .sort(sortConfig)
+          .skip(skip)
+          .limit(limit),
+        Registry.countDocuments(query)
+      ]);
+
+      // Calculate summary
+      const summaryPipeline = [
+        { $match: query },
+        {
+          $group: {
+            _id: null,
+            totalDebit: { $sum: '$debit' },
+            totalCredit: { $sum: '$credit' },
+            totalTransactions: { $sum: 1 },
+            avgValue: { $avg: '$value' }
+          }
+        }
+      ];
+
+      const summaryResult = await Registry.aggregate(summaryPipeline);
+      const summary = summaryResult[0] || {
+        totalDebit: 0,
+        totalCredit: 0,
+        totalTransactions: 0,
+        avgValue: 0
+      };
+
+      return {
+        registries,
+        pagination: {
+          currentPage: page,
+          totalPages: Math.ceil(total / limit),
+          totalItems: total,
+          itemsPerPage: limit,
+          hasNext: page < Math.ceil(total / limit),
+          hasPrev: page > 1
+        },
+        summary
+      };
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  // Get registry by ID
+  static async getRegistryById(id) {
+    try {
+      const registry = await Registry.findOne({ _id: id, isActive: true })
+        .populate('createdBy', 'name email')
+        .populate('updatedBy', 'name email')
+        .populate('costCenter', 'code name');
+
+      return registry;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  // Update registry
+  static async updateRegistry(id, updateData, adminId) {
+    try {
+      const registry = await Registry.findOneAndUpdate(
+        { _id: id, isActive: true },
+        {
+          ...updateData,
+          updatedBy: adminId
+        },
+        { new: true, runValidators: true }
+      )
+        .populate('createdBy', 'name email')
+        .populate('updatedBy', 'name email')
+        .populate('costCenter', 'code name');
+
+      return registry;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  // Soft delete registry
+  static async deleteRegistry(id, adminId) {
+    try {
+      const registry = await Registry.findOneAndUpdate(
+        { _id: id, isActive: true },
+        {
+          isActive: false,
+          updatedBy: adminId
+        },
+        { new: true }
+      );
+
+      return registry;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  // Permanent delete registry
+  static async permanentDeleteRegistry(id) {
+    try {
+      const result = await Registry.findByIdAndDelete(id);
+      return result;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  // Get registries by type with debit/credit summary
+  static async getRegistriesByType(page, limit, filters, sort) {
+    try {
+      const skip = (page - 1) * limit;
+      const query = { 
+        type: filters.type,
+        isActive: true 
+      };
+
+      // Apply additional filters
+      if (filters.costCenter) {
+        query.costCenter = filters.costCenter;
+      }
+
+      // Date range filter
+      if (filters.startDate || filters.endDate) {
+        query.transactionDate = {};
+        if (filters.startDate) {
+          query.transactionDate.$gte = new Date(filters.startDate);
+        }
+        if (filters.endDate) {
+          query.transactionDate.$lte = new Date(filters.endDate);
+        }
+      }
+
+      // Sort configuration
+      const sortConfig = {};
+      sortConfig[sort.sortBy] = sort.sortOrder === 'desc' ? -1 : 1;
+
+      // Execute query
+      const [registries, total] = await Promise.all([
+        Registry.find(query)
+          .populate('createdBy', 'name email')
+          .populate('updatedBy', 'name email')
+          .populate('costCenter', 'code name')
+          .sort(sortConfig)
+          .skip(skip)
+          .limit(limit),
+        Registry.countDocuments(query)
+      ]);
+
+      // Calculate type-specific summary
+      const summaryPipeline = [
+        { $match: query },
+        {
+          $group: {
+            _id: '$type',
+            totalDebit: { $sum: '$debit' },
+            totalCredit: { $sum: '$credit' },
+            totalTransactions: { $sum: 1 },
+            netBalance: { $sum: { $subtract: ['$credit', '$debit'] } }
+          }
+        }
+      ];
+
+      const summaryResult = await Registry.aggregate(summaryPipeline);
+      const summary = summaryResult[0] || {
+        _id: filters.type,
+        totalDebit: 0,
+        totalCredit: 0,
+        totalTransactions: 0,
+        netBalance: 0
+      };
+
+      return {
+        registries,
+        pagination: {
+          currentPage: page,
+          totalPages: Math.ceil(total / limit),
+          totalItems: total,
+          itemsPerPage: limit,
+          hasNext: page < Math.ceil(total / limit),
+          hasPrev: page > 1
+        },
+        summary
+      };
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  // Get registries by cost center
+  static async getRegistriesByCostCenter(page, limit, filters, sort) {
+    try {
+      const skip = (page - 1) * limit;
+      const query = { 
+        costCenter: filters.costCenter,
+        isActive: true 
+      };
+
+      // Apply additional filters
+      if (filters.type) {
+        query.type = filters.type;
+      }
+
+      // Date range filter
+      if (filters.startDate || filters.endDate) {
+        query.transactionDate = {};
+        if (filters.startDate) {
+          query.transactionDate.$gte = new Date(filters.startDate);
+        }
+        if (filters.endDate) {
+          query.transactionDate.$lte = new Date(filters.endDate);
+        }
+      }
+
+      // Sort configuration
+      const sortConfig = {};
+      sortConfig[sort.sortBy] = sort.sortOrder === 'desc' ? -1 : 1;
+
+      // Execute query
+      const [registries, total] = await Promise.all([
+        Registry.find(query)
+          .populate('createdBy', 'name email')
+          .populate('updatedBy', 'name email')
+          .populate('costCenter', 'code name')
+          .sort(sortConfig)
+          .skip(skip)
+          .limit(limit),
+        Registry.countDocuments(query)
+      ]);
+
+      // Calculate cost center specific summary
+      const summaryPipeline = [
+        { $match: query },
+        {
+          $group: {
+            _id: '$costCenter',
+            totalDebit: { $sum: '$debit' },
+            totalCredit: { $sum: '$credit' },
+            totalTransactions: { $sum: 1 },
+            currentBalance: { $sum: { $subtract: ['$credit', '$debit'] } },
+            typeBreakdown: {
+              $push: {
+                type: '$type',
+                debit: '$debit',
+                credit: '$credit'
+              }
+            }
+          }
+        }
+      ];
+
+      const summaryResult = await Registry.aggregate(summaryPipeline);
+      const summary = summaryResult[0] || {
+        _id: filters.costCenter,
+        totalDebit: 0,
+        totalCredit: 0,
+        totalTransactions: 0,
+        currentBalance: 0,
+        typeBreakdown: []
+      };
+
+      return {
+        registries,
+        pagination: {
+          currentPage: page,
+          totalPages: Math.ceil(total / limit),
+          totalItems: total,
+          itemsPerPage: limit,
+          hasNext: page < Math.ceil(total / limit),
+          hasPrev: page > 1
+        },
+        summary
+      };
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  // Get registry statistics
+  static async getRegistryStatistics(filters) {
+    try {
+      const query = { isActive: true };
+
+      // Apply filters
+      if (filters.type) {
+        query.type = filters.type;
+      }
+
+      if (filters.costCenter) {
+        query.costCenter = filters.costCenter;
+      }
+
+      // Date range filter
+      if (filters.startDate || filters.endDate) {
+        query.transactionDate = {};
+        if (filters.startDate) {
+          query.transactionDate.$gte = new Date(filters.startDate);
+        }
+        if (filters.endDate) {
+          query.transactionDate.$lte = new Date(filters.endDate);
+        }
+      }
+
+      // Comprehensive statistics pipeline
+      const statisticsPipeline = [
+        { $match: query },
+        {
+          $facet: {
+            overall: [
+              {
+                $group: {
+                  _id: null,
+                  totalDebit: { $sum: '$debit' },
+                  totalCredit: { $sum: '$credit' },
+                  totalTransactions: { $sum: 1 },
+                  avgTransactionValue: { $avg: '$value' },
+                  netBalance: { $sum: { $subtract: ['$credit', '$debit'] } }
+                }
+              }
+            ],
+            byType: [
+              {
+                $group: {
+                  _id: '$type',
+                  totalDebit: { $sum: '$debit' },
+                  totalCredit: { $sum: '$credit' },
+                  totalTransactions: { $sum: 1 },
+                  netBalance: { $sum: { $subtract: ['$credit', '$debit'] } }
+                }
+              },
+              { $sort: { totalTransactions: -1 } }
+            ],
+            byCostCenter: [
+              {
+                $group: {
+                  _id: '$costCenter',
+                  totalDebit: { $sum: '$debit' },
+                  totalCredit: { $sum: '$credit' },
+                  totalTransactions: { $sum: 1 },
+                  netBalance: { $sum: { $subtract: ['$credit', '$debit'] } }
+                }
+              },
+              { $sort: { totalTransactions: -1 } }
+            ],
+            byStatus: [
+              {
+                $group: {
+                  _id: '$status',
+                  count: { $sum: 1 },
+                  totalValue: { $sum: '$value' }
+                }
+              }
+            ],
+            monthlyTrend: [
+              {
+                $group: {
+                  _id: {
+                    year: { $year: '$transactionDate' },
+                    month: { $month: '$transactionDate' }
+                  },
+                  totalDebit: { $sum: '$debit' },
+                  totalCredit: { $sum: '$credit' },
+                  totalTransactions: { $sum: 1 }
+                }
+              },
+              { $sort: { '_id.year': -1, '_id.month': -1 } },
+              { $limit: 12 }
+            ]
+          }
+        }
+      ];
+
+      const result = await Registry.aggregate(statisticsPipeline);
+      
+      return {
+        overall: result[0].overall[0] || {
+          totalDebit: 0,
+          totalCredit: 0,
+          totalTransactions: 0,
+          avgTransactionValue: 0,
+          netBalance: 0
+        },
+        byType: result[0].byType,
+        byCostCenter: result[0].byCostCenter,
+        byStatus: result[0].byStatus,
+        monthlyTrend: result[0].monthlyTrend
+      };
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  // Update registry status
+  static async updateRegistryStatus(id, status, adminId) {
+    try {
+      const registry = await Registry.findOneAndUpdate(
+        { _id: id, isActive: true },
+        {
+          status,
+          updatedBy: adminId
+        },
+        { new: true, runValidators: true }
+      )
+        .populate('createdBy', 'name email')
+        .populate('updatedBy', 'name email')
+        .populate('costCenter', 'code name');
+
+      return registry;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  // Get balance for cost center (optionally filtered by type)
+  static async getRegistryBalance(costCenter, type = null) {
+    try {
+      const query = { 
+        costCenter: costCenter,
+        isActive: true 
+      };
+
+      if (type) {
+        query.type = type;
+      }
+
+      // Get the latest running balance
+      const latestTransaction = await Registry.findOne(query)
+        .sort({ transactionDate: -1, createdAt: -1 });
+
+      if (!latestTransaction) {
+        return 0;
+      }
+
+      // If type is specified, calculate balance for that type only
+      if (type) {
+        const typeBalance = await Registry.aggregate([
+          { $match: query },
+          {
+            $group: {
+              _id: null,
+              balance: { $sum: { $subtract: ['$credit', '$debit'] } }
+            }
+          }
+        ]);
+
+        return typeBalance[0]?.balance || 0;
+      }
+
+      return latestTransaction.runningBalance;
+    } catch (error) {
+      throw error;
+    }
+  }
+}
+
+export default RegistryService;

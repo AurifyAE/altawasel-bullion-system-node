@@ -11,6 +11,9 @@ import currencyMasterRoutes from "./routes/modules/currencyMasterRoutes.js";
 import tradeDebtorsRoutes from "./routes/modules/tradeDebtorsRoutes.js";
 import metalStockRoutes from "./routes/modules/metalStockRoutes.js";
 import costCenterMasterRoutes from "./routes/modules/costCenterMasterRoutes.js";
+import metalPurchaseRoutes from "./routes/modules/MetalPurchaseRoutes.js";
+import RegistryRouter from "./routes/modules/RegistryRouter.js"
+
 
 import { mongodb } from "./config/db.js";
 import { errorHandler } from "./utils/errorHandler.js";
@@ -68,6 +71,9 @@ app.use("/api/v1/currency-master", currencyMasterRoutes);
 app.use("/api/v1/trade-debtors", tradeDebtorsRoutes);
 app.use("/api/v1/metal-stocks", metalStockRoutes);
 app.use("/api/v1/cost-centers", costCenterMasterRoutes);
+app.use("/api/v1/metal-purchases", metalPurchaseRoutes);
+app.use("/api/v1/registry", RegistryRouter);
+
 // Global error handling middleware
 app.use(errorHandler);
 
