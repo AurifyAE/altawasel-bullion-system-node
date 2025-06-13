@@ -12,7 +12,9 @@ export const createVoucher = async (req, res, next) => {
       nextNumber,
       numberLength,
       dateFormat,
-      isAutoIncrement
+      includeDateInNumber,
+      isAutoIncrement,
+      resetCounterOn
     } = req.body;
 
     // Validation
@@ -32,7 +34,9 @@ export const createVoucher = async (req, res, next) => {
       nextNumber: nextNumber || 1,
       numberLength: numberLength || 4,
       dateFormat: dateFormat || "DD/MM/YYYY",
-      isAutoIncrement: isAutoIncrement !== undefined ? isAutoIncrement : true
+      includeDateInNumber: includeDateInNumber || false,
+      isAutoIncrement: isAutoIncrement !== undefined ? isAutoIncrement : true,
+      resetCounterOn: resetCounterOn || "NEVER"
     };
 
     const voucher = await VoucherMasterService.createVoucher(
@@ -114,7 +118,8 @@ export const updateVoucher = async (req, res, next) => {
     const allowedFields = [
       'code', 'description', 'voucherType', 'prefix', 
       'nextNumber', 'numberLength', 'dateFormat', 
-      'isAutoIncrement', 'isActive', 'status'
+      'includeDateInNumber', 'isAutoIncrement', 'resetCounterOn',
+      'isActive', 'status'
     ];
 
     allowedFields.forEach(field => {
@@ -209,16 +214,107 @@ export const getVouchersByType = async (req, res, next) => {
 export const generateVoucherNumber = async (req, res, next) => {
   try {
     const { id } = req.params;
+    const { customDate } = req.body;
 
     if (!id) {
       throw createAppError("Voucher ID is required", 400, "MISSING_ID");
     }
 
-    const result = await VoucherMasterService.generateVoucherNumber(id);
+    const result = await VoucherMasterService.generateVoucherNumber(id, customDate);
 
     res.status(200).json({
       success: true,
       message: "Voucher number generated successfully",
+      data: result
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Get next voucher number (preview without incrementing)
+export const getNextVoucherNumber = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { customDate } = req.query;
+
+    if (!id) {
+      throw createAppError("Voucher ID is required", 400, "MISSING_ID");
+    }
+
+    const result = await VoucherMasterService.getNextVoucherNumber(id, customDate);
+
+    res.status(200).json({
+      success: true,
+      message: "Next voucher number retrieved successfully",
+      data: result
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Reset voucher counter
+export const resetVoucherCounter = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    if (!id) {
+      throw createAppError("Voucher ID is required", 400, "MISSING_ID");
+    }
+
+    const voucher = await VoucherMasterService.resetVoucherCounter(id, req.admin.id);
+
+    res.status(200).json({
+      success: true,
+      message: "Voucher counter reset successfully",
+      data: voucher
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Get voucher configuration by type (for React frontend)
+export const getVoucherConfigByType = async (req, res, next) => {
+  try {
+    const { type } = req.params;
+
+    if (!type) {
+      throw createAppError("Voucher type is required", 400, "MISSING_TYPE");
+    }
+
+    const result = await VoucherMasterService.getVoucherConfigByType(type);
+
+    res.status(200).json({
+      success: true,
+      message: "Voucher configuration retrieved successfully",
+      data: result
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Batch generate voucher numbers
+export const batchGenerateVoucherNumbers = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { count = 1, customDate } = req.body;
+
+    if (!id) {
+      throw createAppError("Voucher ID is required", 400, "MISSING_ID");
+    }
+
+    if (count < 1 || count > 100) {
+      throw createAppError("Count must be between 1 and 100", 400, "INVALID_COUNT");
+    }
+
+    const result = await VoucherMasterService.batchGenerateVoucherNumbers(id, count, customDate);
+
+    res.status(200).json({
+      success: true,
+      message: `${count} voucher numbers generated successfully`,
       data: result
     });
   } catch (error) {

@@ -17,7 +17,8 @@ class VoucherMasterService {
 
       const voucher = new VoucherMaster({
         ...voucherData,
-        createdBy: adminId
+        createdBy: adminId,
+        lastResetDate: new Date() // Set initial reset date
       });
 
       await voucher.save();
@@ -55,7 +56,8 @@ class VoucherMasterService {
       if (filters.search) {
         query.$or = [
           { code: { $regex: filters.search, $options: 'i' } },
-          { description: { $regex: filters.search, $options: 'i' } }
+          { description: { $regex: filters.search, $options: 'i' } },
+          { prefix: { $regex: filters.search, $options: 'i' } }
         ];
       }
 
@@ -192,11 +194,98 @@ class VoucherMasterService {
     }
   }
 
-  // Generate voucher number
-  static async generateVoucherNumber(voucherId) {
+  // Generate voucher number with proper sequencing
+  static async generateVoucherNumber(voucherId, customDate = null) {
     try {
-      const voucherNumber = await VoucherMaster.generateVoucherNumber(voucherId);
-      return { voucherNumber };
+      const result = await VoucherMaster.generateVoucherNumber(voucherId, customDate);
+      return result;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  // Get next voucher number without incrementing (for preview)
+  static async getNextVoucherNumber(voucherId, customDate = null) {
+    try {
+      const result = await VoucherMaster.getNextVoucherNumber(voucherId, customDate);
+      return result;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  // Reset voucher counter manually
+  static async resetVoucherCounter(voucherId, adminId) {
+    try {
+      const voucher = await VoucherMaster.findById(voucherId);
+      if (!voucher) {
+        throw createAppError("Voucher not found", 404, "VOUCHER_NOT_FOUND");
+      }
+
+      const updatedVoucher = await VoucherMaster.findByIdAndUpdate(
+        voucherId,
+        { 
+          nextNumber: 1, 
+          lastResetDate: new Date(),
+          updatedBy: adminId 
+        },
+        { new: true }
+      )
+        .populate('createdBy', 'name email')
+        .populate('updatedBy', 'name email');
+
+      return updatedVoucher;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  // Get voucher configuration for a specific type (for React frontend)
+  static async getVoucherConfigByType(voucherType) {
+    try {
+      const voucher = await VoucherMaster.findOne({
+        voucherType: voucherType.toUpperCase(),
+        status: "active",
+        isActive: true
+      });
+
+      if (!voucher) {
+        throw createAppError(
+          `No active voucher configuration found for type: ${voucherType}`,
+          404,
+          "VOUCHER_CONFIG_NOT_FOUND"
+        );
+      }
+
+      // Get next voucher number for preview
+      const nextVoucherInfo = await this.getNextVoucherNumber(voucher._id);
+
+      return {
+        voucherConfig: voucher,
+        nextVoucherNumber: nextVoucherInfo.voucherNumber,
+        nextSequence: nextVoucherInfo.sequence,
+        currentDate: nextVoucherInfo.formattedDate
+      };
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  // Batch generate multiple voucher numbers
+  static async batchGenerateVoucherNumbers(voucherId, count = 1, customDate = null) {
+    try {
+      const voucher = await VoucherMaster.findById(voucherId);
+      if (!voucher) {
+        throw createAppError("Voucher not found", 404, "VOUCHER_NOT_FOUND");
+      }
+
+      const voucherNumbers = [];
+      for (let i = 0; i < count; i++) {
+        const result = await VoucherMaster.generateVoucherNumber(voucherId, customDate);
+        voucherNumbers.push(result);
+      }
+
+      return voucherNumbers;
     } catch (error) {
       throw error;
     }
