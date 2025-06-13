@@ -70,7 +70,7 @@ app.use("/api/v1/metal-rates", metalRateMasterRoutes);
 app.use("/api/v1/currency-master", currencyMasterRoutes);
 app.use("/api/v1/trade-debtors", tradeDebtorsRoutes);
 app.use("/api/v1/metal-stocks", metalStockRoutes);
-app.use("/api/v1/cost-centers", CostCenterMaster);
+app.use("/api/v1/cost-centers", costCenterMasterRoutes);
 app.use("/api/v1/metal-purchases", metalPurchaseRoutes);
 app.use("/api/v1/registry", RegistryRouter);
 app.use("/api/v1/voucher-master", voucherMasterRoutes);
