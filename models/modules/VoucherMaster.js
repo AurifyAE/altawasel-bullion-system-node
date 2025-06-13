@@ -19,7 +19,6 @@ const VoucherMasterSchema = new mongoose.Schema(
     voucherType: {
       type: String,
       required: [true, "Voucher type is required"],
-      enum: ["PURCHASE", "SALE", "RECEIPT", "PAYMENT", "JOURNAL", "CONTRA"],
       uppercase: true
     },
     prefix: {
