@@ -10,9 +10,9 @@ import metalRateMasterRoutes from "./routes/modules/metalRateMasterRoutes.js";
 import currencyMasterRoutes from "./routes/modules/currencyMasterRoutes.js";
 import tradeDebtorsRoutes from "./routes/modules/tradeDebtorsRoutes.js";
 import metalStockRoutes from "./routes/modules/metalStockRoutes.js";
-import costCenterMasterRoutes from "./routes/modules/costCenterMasterRoutes.js";
-import metalPurchaseRoutes from "./routes/modules/MetalPurchaseRoutes.js";
-import RegistryRouter from "./routes/modules/RegistryRouter.js"
+import CostCenterMaster from "./routes/modules/costCenterMasterRoutes.js";
+import metalPurchaseRoutes from "./routes/modules/metalPurchaseRoutes.js";
+import RegistryRouter from "./routes/modules/registryRouter.js"
 
 
 import { mongodb } from "./config/db.js";
@@ -70,7 +70,7 @@ app.use("/api/v1/metal-rates", metalRateMasterRoutes);
 app.use("/api/v1/currency-master", currencyMasterRoutes);
 app.use("/api/v1/trade-debtors", tradeDebtorsRoutes);
 app.use("/api/v1/metal-stocks", metalStockRoutes);
-app.use("/api/v1/cost-centers", costCenterMasterRoutes);
+app.use("/api/v1/cost-centers", CostCenterMaster);
 app.use("/api/v1/metal-purchases", metalPurchaseRoutes);
 app.use("/api/v1/registry", RegistryRouter);
 
