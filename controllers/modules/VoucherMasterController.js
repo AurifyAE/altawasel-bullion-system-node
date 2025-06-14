@@ -1,0 +1,246 @@
+import VoucherMasterService from "../../services/modules/VoucherMasterService.js";
+import { createAppError } from "../../utils/errorHandler.js";
+
+// Create voucher
+export const createVoucher = async (req, res, next) => {
+  try {
+    const {
+      description,
+      voucherType,
+      prefix,
+      numberLength,
+      dateFormat,
+      isAutoIncrement,
+      module,
+    } = req.body;
+
+    if (!description || !voucherType || !prefix || !module) {
+      throw createAppError(
+        "Required fields: description, voucherType, prefix, module",
+        400,
+        "REQUIRED_FIELDS_MISSING"
+      );
+    }
+
+    const voucherData = {
+      description: description.trim(),
+      voucherType: voucherType.trim(),
+      prefix: prefix.trim(),
+      numberLength: numberLength || 4,
+      dateFormat: dateFormat || "DD/MM/YYYY",
+      isAutoIncrement: isAutoIncrement !== undefined ? isAutoIncrement : true,
+      module: module.trim(),
+    };
+
+    const voucher = await VoucherMasterService.createVoucher(voucherData, req.admin.id);
+
+    res.status(201).json({
+      success: true,
+      message: "Voucher created successfully",
+      data: voucher,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Update voucher
+export const updateVoucher = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const updateData = req.body;
+
+    if (!id) throw createAppError("Voucher ID is required", 400, "MISSING_ID");
+    if (Object.keys(updateData).length === 0) {
+      throw createAppError("Update data is required", 400, "NO_UPDATE_DATA");
+    }
+
+    const cleanUpdateData = {};
+    const allowedFields = [
+      "description",
+      "voucherType",
+      "prefix",
+      "numberLength",
+      "dateFormat",
+      "isAutoIncrement",
+      "isActive",
+      "status",
+      "module",
+    ];
+
+    allowedFields.forEach((field) => {
+      if (updateData[field] !== undefined) {
+        cleanUpdateData[field] =
+          typeof updateData[field] === "string" ? updateData[field].trim() : updateData[field];
+      }
+    });
+
+    const voucher = await VoucherMasterService.updateVoucher(id, cleanUpdateData, req.admin.id);
+
+    res.status(200).json({
+      success: true,
+      message: "Voucher updated successfully",
+      data: voucher,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Get all vouchers
+export const getAllVouchers = async (req, res, next) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const filters = {
+      status: req.query.status,
+      isActive: req.query.isActive,
+      voucherType: req.query.voucherType,
+      module: req.query.module,
+      search: req.query.search,
+    };
+
+    const result = await VoucherMasterService.getAllVouchers(page, limit, filters);
+
+    res.status(200).json({
+      success: true,
+      message: "Vouchers retrieved successfully",
+      data: result,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Get voucher by ID
+export const getVoucherById = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    if (!id) throw createAppError("Voucher ID is required", 400, "MISSING_ID");
+
+    const voucher = await VoucherMasterService.getVoucherById(id);
+
+    res.status(200).json({
+      success: true,
+      message: "Voucher retrieved successfully",
+      data: voucher,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Delete voucher (soft delete)
+export const deleteVoucher = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    if (!id) throw createAppError("Voucher ID is required", 400, "MISSING_ID");
+
+    const voucher = await VoucherMasterService.deleteVoucher(id, req.admin.id);
+
+    res.status(200).json({
+      success: true,
+      message: "Voucher deleted successfully",
+      data: voucher,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Hard delete voucher
+export const hardDeleteVoucher = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    if (!id) throw createAppError("Voucher ID is required", 400, "MISSING_ID");
+
+    const result = await VoucherMasterService.hardDeleteVoucher(id);
+
+    res.status(200).json({
+      success: true,
+      message: result.message,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Get vouchers by type
+export const getVouchersByType = async (req, res, next) => {
+  try {
+    const { type } = req.params;
+    if (!type) throw createAppError("Voucher type is required", 400, "MISSING_TYPE");
+
+    const vouchers = await VoucherMasterService.getVouchersByType(type);
+
+    res.status(200).json({
+      success: true,
+      message: "Vouchers retrieved successfully",
+      data: vouchers,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getVouchersByModule = async (req, res, next) => {
+    try {
+      console.log("Requesting module:", req.params.module);
+      const { module } = req.params;
+      const page = parseInt(req.query.page) || 1;
+      const limit = parseInt(req.query.limit) || 10;
+  
+      const result = await VoucherMasterService.getVouchersByModule(module, page, limit);
+  
+      res.status(200).json({
+        success: true,
+        message: "Vouchers retrieved successfully",
+        data: result.vouchers,
+        pagination: {
+          total: result.total,
+          page: result.page,
+          limit: result.limit,
+          totalPages: Math.ceil(result.total / result.limit),
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+
+export const generateVoucherNumber = async (req, res, next) => {
+    try {
+      const { module } = req.params;
+      if (!module) {
+        throw createAppError("Module is required", 400, "MISSING_MODULE");
+      }
+  
+      console.log("Generating voucher number for module:", module); // Add logging
+  
+      const result = await VoucherMasterService.generateVoucherNumber(module);
+  
+      res.status(200).json({
+        success: true,
+        message: "Voucher number generated successfully",
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+// Get all voucher types
+// export const getAllVoucherTypes = async (req, res, next) => {
+//   try {
+//     const voucherTypes = await VoucherMasterService.getAllVoucherTypes();
+
+//     res.status(200).json({
+//       success: true,
+//       message: "Voucher types retrieved successfully",
+//       data: voucherTypes,
+//     });
+//   } catch (error) {
+//     next(error);
+//   }
+// };
