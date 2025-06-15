@@ -1,206 +1,244 @@
+
 import VoucherMaster from "../../models/modules/VoucherMaster.js";
+import VoucherSequence from "../../models/modules/VocherSequence.js";
 import { createAppError } from "../../utils/errorHandler.js";
 
 class VoucherMasterService {
-  // Create new voucher
-  static async createVoucher(voucherData, adminId) {
-    try {
-      // Check if code already exists
-      const codeExists = await VoucherMaster.isCodeExists(voucherData.code);
-      if (codeExists) {
-        throw createAppError(
-          `Voucher with code '${voucherData.code}' already exists`,
-          409,
-          "DUPLICATE_CODE"
-        );
-      }
-
-      const voucher = new VoucherMaster({
-        ...voucherData,
-        createdBy: adminId
-      });
-
-      await voucher.save();
-      return await VoucherMaster.findById(voucher._id)
-        .populate('createdBy', 'name email')
-        .populate('updatedBy', 'name email');
-    } catch (error) {
-      if (error.code === 11000) {
-        throw createAppError(
-          "Voucher code must be unique",
-          409,
-          "DUPLICATE_CODE"
-        );
-      }
-      throw error;
-    }
+  // Generate code based on prefix
+  static async generateCode(prefix) {
+    const count = await VoucherMaster.countDocuments({ prefix });
+    const sequence = (count + 1).toString().padStart(3, "0");
+    return `${prefix}${sequence}`;
   }
 
-  // Get all vouchers with pagination and filtering
-  static async getAllVouchers(page = 1, limit = 10, filters = {}) {
-    try {
-      const skip = (page - 1) * limit;
-      const query = {};
+  // Create voucher
+  static async createVoucher(voucherData, createdBy) {
+    const { prefix, module } = voucherData;
 
-      // Apply filters
-      if (filters.status) {
-        query.status = filters.status;
-      }
-      if (filters.isActive !== undefined) {
-        query.isActive = filters.isActive;
-      }
-      if (filters.voucherType) {
-        query.voucherType = filters.voucherType.toUpperCase();
-      }
-      if (filters.search) {
-        query.$or = [
-          { code: { $regex: filters.search, $options: 'i' } },
-          { description: { $regex: filters.search, $options: 'i' } }
-        ];
-      }
-
-      const [vouchers, total] = await Promise.all([
-        VoucherMaster.find(query)
-          .populate('createdBy', 'name email')
-          .populate('updatedBy', 'name email')
-          .sort({ createdAt: -1 })
-          .skip(skip)
-          .limit(parseInt(limit)),
-        VoucherMaster.countDocuments(query)
-      ]);
-
-      return {
-        vouchers,
-        pagination: {
-          currentPage: parseInt(page),
-          totalPages: Math.ceil(total / limit),
-          totalItems: total,
-          itemsPerPage: parseInt(limit)
-        }
-      };
-    } catch (error) {
-      throw error;
+    // Check if module exists
+    if (await VoucherMaster.isModuleExists(module)) {
+      throw createAppError("Module already exists", 400, "DUPLICATE_MODULE");
     }
+
+    // Generate code
+    const code = await this.generateCode(prefix);
+
+    const voucher = new VoucherMaster({
+      ...voucherData,
+      code,
+      createdBy,
+    });
+
+    await voucher.save();
+    return voucher;
+  }
+
+  // Update voucher
+  static async updateVoucher(id, updateData, updatedBy) {
+    const { prefix, module } = updateData;
+
+    const voucher = await VoucherMaster.findById(id);
+    if (!voucher) {
+      throw createAppError("Voucher not found", 404, "VOUCHER_NOT_FOUND");
+    }
+
+    if (module && (await VoucherMaster.isModuleExists(module, id))) {
+      throw createAppError("Module already exists", 400, "DUPLICATE_MODULE");
+    }
+
+    if (prefix && prefix !== voucher.prefix) {
+      updateData.code = await this.generateCode(prefix);
+    }
+
+    Object.assign(voucher, { ...updateData, updatedBy });
+    await voucher.save();
+    return voucher;
+  }
+
+  // Get all vouchers
+  static async getAllVouchers(page = 1, limit = 10, filters = {}) {
+    const { status, isActive, voucherType, module, search } = filters;
+    const query = {};
+
+    if (status) query.status = status;
+    if (isActive !== undefined) query.isActive = isActive;
+    if (voucherType) query.voucherType = voucherType.toUpperCase();
+    if (module) query.module = module;
+
+    if (search) {
+      query.$or = [
+        { code: { $regex: search, $options: "i" } },
+        { description: { $regex: search, $options: "i" } },
+        { voucherType: { $regex: search, $options: "i" } },
+        { module: { $regex: search, $options: "i" } },
+      ];
+    }
+
+    const skip = (page - 1) * limit;
+    const vouchers = await VoucherMaster.find(query)
+      .skip(skip)
+      .limit(limit)
+      .sort({ createdAt: -1 });
+
+    const total = await VoucherMaster.countDocuments(query);
+    return { vouchers, total, page, limit };
   }
 
   // Get voucher by ID
   static async getVoucherById(id) {
-    try {
-      const voucher = await VoucherMaster.findById(id)
-        .populate('createdBy', 'name email')
-        .populate('updatedBy', 'name email');
-
-      if (!voucher) {
-        throw createAppError("Voucher not found", 404, "VOUCHER_NOT_FOUND");
-      }
-
-      return voucher;
-    } catch (error) {
-      throw error;
+    const voucher = await VoucherMaster.findById(id);
+    if (!voucher) {
+      throw createAppError("Voucher not found", 404, "VOUCHER_NOT_FOUND");
     }
+    return voucher;
   }
 
-  // Update voucher
-  static async updateVoucher(id, updateData, adminId) {
-    try {
-      const voucher = await VoucherMaster.findById(id);
-      if (!voucher) {
-        throw createAppError("Voucher not found", 404, "VOUCHER_NOT_FOUND");
-      }
-
-      // Check if code is being updated and if it already exists
-      if (updateData.code && updateData.code !== voucher.code) {
-        const codeExists = await VoucherMaster.isCodeExists(updateData.code, id);
-        if (codeExists) {
-          throw createAppError(
-            `Voucher with code '${updateData.code}' already exists`,
-            409,
-            "DUPLICATE_CODE"
-          );
-        }
-      }
-
-      const updatedVoucher = await VoucherMaster.findByIdAndUpdate(
-        id,
-        { ...updateData, updatedBy: adminId },
-        { new: true, runValidators: true }
-      )
-        .populate('createdBy', 'name email')
-        .populate('updatedBy', 'name email');
-
-      return updatedVoucher;
-    } catch (error) {
-      throw error;
+  // Soft delete voucher
+  static async deleteVoucher(id, updatedBy) {
+    const voucher = await VoucherMaster.findById(id);
+    if (!voucher) {
+      throw createAppError("Voucher not found", 404, "VOUCHER_NOT_FOUND");
     }
-  }
 
-  // Delete voucher (soft delete)
-  static async deleteVoucher(id, adminId) {
-    try {
-      const voucher = await VoucherMaster.findById(id);
-      if (!voucher) {
-        throw createAppError("Voucher not found", 404, "VOUCHER_NOT_FOUND");
-      }
-
-      const deletedVoucher = await VoucherMaster.findByIdAndUpdate(
-        id,
-        { 
-          status: "inactive", 
-          isActive: false, 
-          updatedBy: adminId 
-        },
-        { new: true }
-      )
-        .populate('createdBy', 'name email')
-        .populate('updatedBy', 'name email');
-
-      return deletedVoucher;
-    } catch (error) {
-      throw error;
-    }
+    voucher.isActive = false;
+    voucher.status = "inactive";
+    voucher.updatedBy = updatedBy;
+    await voucher.save();
+    return voucher;
   }
 
   // Hard delete voucher
   static async hardDeleteVoucher(id) {
-    try {
-      const voucher = await VoucherMaster.findById(id);
-      if (!voucher) {
-        throw createAppError("Voucher not found", 404, "VOUCHER_NOT_FOUND");
-      }
-
-      await VoucherMaster.findByIdAndDelete(id);
-      return { message: "Voucher permanently deleted" };
-    } catch (error) {
-      throw error;
+    const voucher = await VoucherMaster.findByIdAndDelete(id);
+    if (!voucher) {
+      throw createAppError("Voucher not found", 404, "VOUCHER_NOT_FOUND");
     }
+    return { message: "Voucher permanently deleted" };
   }
 
   // Get vouchers by type
-  static async getVouchersByType(voucherType) {
-    try {
-      const vouchers = await VoucherMaster.find({
-        voucherType: voucherType.toUpperCase(),
-        status: "active",
-        isActive: true
-      })
-        .populate('createdBy', 'name email')
-        .sort({ code: 1 });
-
-      return vouchers;
-    } catch (error) {
-      throw error;
-    }
+  static async getVouchersByType(type) {
+    const vouchers = await VoucherMaster.find({ voucherType: type.toUpperCase() });
+    return vouchers;
   }
 
-  // Generate voucher number
-  static async generateVoucherNumber(voucherId) {
-    try {
-      const voucherNumber = await VoucherMaster.generateVoucherNumber(voucherId);
-      return { voucherNumber };
-    } catch (error) {
-      throw error;
+  // Get vouchers by module
+//   static async getVouchersByModule(module) {
+//     const vouchers = await VoucherMaster.find({ module });
+//     return vouchers;
+//   }
+static async getVouchersByModule(module, page = 1, limit = 10) {
+    if (!module) {
+      throw createAppError("Module is required", 400, "MISSING_MODULE");
     }
+  
+    const query = { module: { $regex: `^${module}$`, $options: "i" } }; // Case-insensitive
+    const skip = (page - 1) * limit;
+  
+    const vouchers = await VoucherMaster.find(query)
+      .skip(skip)
+      .limit(limit)
+      .sort({ createdAt: -1 });
+  
+    const total = await VoucherMaster.countDocuments(query);
+  
+    if (!vouchers.length && page === 1) {
+      throw createAppError("No vouchers found for module", 404, "VOUCHERS_NOT_FOUND");
+    }
+  
+    return { vouchers, total, page, limit };
   }
+
+  static async generateVoucherNumber(module) {
+    // Validate module
+    if (!module) {
+      throw createAppError("Module is required", 400, "MISSING_MODULE");
+    }
+
+    // Find VoucherMaster document (case-insensitive)
+    const voucher = await VoucherMaster.findOne({
+      module: { $regex: `^${module}$`, $options: "i" },
+    });
+    if (!voucher) {
+      throw createAppError("Voucher not found for module", 404, "VOUCHER_NOT_FOUND");
+    }
+    const updateOps = {
+        $setOnInsert: {
+          module: voucher.module,
+          isActive: true,
+        },
+      };
+      
+      if (voucher.isAutoIncrement) {
+        updateOps.$inc = { sequence: 1 };
+      } else {
+        updateOps.$setOnInsert.sequence = 1; // only if not auto-increment
+      }
+
+    // Atomically get or create sequence (case-insensitive)
+    const sequenceDoc = await VoucherSequence.findOneAndUpdate(
+      { module: { $regex: `^${module}$`, $options: "i" } },
+      updateOps,
+    //   {
+    //     $setOnInsert: { module: voucher.module, sequence: 1, isActive: true },
+    //     $inc: voucher.isAutoIncrement ? { sequence: 1 } : {}, // Increment only if auto-increment
+    //   },
+      {
+        upsert: true,
+        new: true, // Return updated document
+        setDefaultsOnInsert: true,
+      }
+    );
+
+    // console.log("Sequence for module:", module, "is:", sequenceDoc.sequence);
+
+    // Generate voucher number using the sequence before increment (or current if not auto-increment)
+    const sequence = voucher.isAutoIncrement
+      ? sequenceDoc.sequence - 1 // Use pre-incremented value
+      : sequenceDoc.sequence; // Use current value if not auto-increment
+    const voucherNumber = `${voucher.prefix}${sequence.toString().padStart(3, "0")}`;
+
+    // Format date based on voucher.dateFormat
+    const today = new Date();
+    let formattedDate;
+    switch (voucher.dateFormat) {
+      case "DD/MM/YYYY":
+        formattedDate = `${today.getDate().toString().padStart(2, "0")}/${(today.getMonth() + 1)
+          .toString()
+          .padStart(2, "0")}/${today.getFullYear()}`;
+        break;
+      case "MM/DD/YYYY":
+        formattedDate = `${(today.getMonth() + 1).toString().padStart(2, "0")}/${today
+          .getDate()
+          .toString()
+          .padStart(2, "0")}/${today.getFullYear()}`;
+        break;
+      case "YYYY-MM-DD":
+        formattedDate = `${today.getFullYear()}-${(today.getMonth() + 1).toString().padStart(2, "0")}-${today
+          .getDate()
+          .toString()
+          .padStart(2, "0")}`;
+        break;
+      default:
+        formattedDate = today.toISOString().split("T")[0]; // Fallback
+    }
+
+    return {
+      module: voucher.module,
+      prefix: voucher.prefix, // Rename from code to prefix for clarity
+      voucherNumber,
+      date: today.toISOString().split("T")[0],
+      formattedDate,
+    };
+  }
+
+  // Get all voucher types
+//   static async getAllVoucherTypes() {
+//     const voucherTypes = await VoucherMaster.find({ isActive: true }).select(
+//       "code description voucherType prefix numberLength dateFormat isAutoIncrement module"
+//     );
+//     return voucherTypes;
+//   }
 }
 
 export default VoucherMasterService;
