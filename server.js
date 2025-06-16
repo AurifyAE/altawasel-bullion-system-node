@@ -12,8 +12,8 @@ import tradeDebtorsRoutes from "./routes/modules/tradeDebtorsRoutes.js";
 import tradeCreditorRoute from "./routes/modules/tradeCreditorRoute.js";
 import metalStockRoutes from "./routes/modules/metalStockRoutes.js";
 import costCenterMasterRoutes from "./routes/modules/costCenterMasterRoutes.js";
-import metalPurchaseRoutes from "./routes/modules/MetalPurchaseRoutes.js";
-import RegistryRouter from "./routes/modules/RegistryRouter.js"
+import metalPurchaseRoutes from "./routes/modules/metalPurchaseRoutes.js";
+import RegistryRouter from "./routes/modules/registryRouter.js"
 import VoucherRoute from "./routes/modules/VoucherMasterRoute.js"
 import accountRoutes from "./routes/modules/accountMasterRoutes.js"
 import entryRoutes from "./routes/modules/entryMasterRoutes.js";

@@ -72,7 +72,7 @@ const TradeDebtorsSchema = new mongoose.Schema(
           currency: {
             type: mongoose.Schema.Types.ObjectId,
             ref: "CurrencyMaster",
-            required: true,
+            default: null,
           },
           amount: {
             type: Number,
@@ -103,7 +103,7 @@ const TradeDebtorsSchema = new mongoose.Schema(
           currency: {
             type: mongoose.Schema.Types.ObjectId,
             ref: "CurrencyMaster",
-            required: true,
+            default: null,
           },
           isDefault: {
             type: Boolean,
@@ -181,7 +181,7 @@ const TradeDebtorsSchema = new mongoose.Schema(
           trim: true,
           maxlength: [20, "Zip code cannot exceed 20 characters"],
         },
-        phoneNumber1:{
+        phoneNumber1: {
           type: String,
           default: null,
           trim: true,
@@ -219,10 +219,10 @@ const TradeDebtorsSchema = new mongoose.Schema(
           type: String,
           default: null,
           trim: true,
-          match: [
-            /https?:\/\/(www\.)?[-a-zA-Z0-9@:%._\+~#=]{2,256}\.[a-z]{2,6}\b([-a-zA-Z0-9@:%_\+.~#?&//=]*)/,
-            "Please enter a valid URL",
-          ],
+          // match: [
+          //   /https?:\/\/(www\.)?[-a-zA-Z0-9@:%._\+~#=]{2,256}\.[a-z]{2,6}\b([-a-zA-Z0-9@:%_\+.~#?&//=]*)/,
+          //   "Please enter a valid URL",
+          // ],
         },
         isPrimary: {
           type: Boolean,
@@ -469,16 +469,16 @@ TradeDebtorsSchema.pre("save", function (next) {
   }
 
   // Update balance timestamps when balances are modified
-  if (this.isModified('balances')) {
+  if (this.isModified("balances")) {
     this.balances.lastBalanceUpdate = new Date();
-    
+
     // Update individual balance timestamps
-    if (this.balances.goldBalance && this.isModified('balances.goldBalance')) {
+    if (this.balances.goldBalance && this.isModified("balances.goldBalance")) {
       this.balances.goldBalance.lastUpdated = new Date();
     }
-    
-    if (this.balances.cashBalance && this.isModified('balances.cashBalance')) {
-      this.balances.cashBalance.forEach(balance => {
+
+    if (this.balances.cashBalance && this.isModified("balances.cashBalance")) {
+      this.balances.cashBalance.forEach((balance) => {
         balance.lastUpdated = new Date();
       });
     }
@@ -536,11 +536,13 @@ TradeDebtorsSchema.statics.getActiveDebtors = function () {
 };
 
 // Static method to get debtors with outstanding balances
-TradeDebtorsSchema.statics.getDebtorsWithOutstanding = function (minAmount = 0) {
-  return this.find({ 
-    isActive: true, 
+TradeDebtorsSchema.statics.getDebtorsWithOutstanding = function (
+  minAmount = 0
+) {
+  return this.find({
+    isActive: true,
     status: "active",
-    "balances.totalOutstanding": { $gt: minAmount }
+    "balances.totalOutstanding": { $gt: minAmount },
   });
 };
 
@@ -552,9 +554,9 @@ TradeDebtorsSchema.statics.getTotalGoldBalance = async function () {
       $group: {
         _id: null,
         totalGrams: { $sum: "$balances.goldBalance.totalGrams" },
-        totalValue: { $sum: "$balances.goldBalance.totalValue" }
-      }
-    }
+        totalValue: { $sum: "$balances.goldBalance.totalValue" },
+      },
+    },
   ]);
   return result[0] || { totalGrams: 0, totalValue: 0 };
 };
@@ -576,8 +578,8 @@ TradeDebtorsSchema.methods.getPrimaryBank = function () {
 
 // Instance method to update gold balance
 TradeDebtorsSchema.methods.updateGoldBalance = function (
-  grams, 
-  value, 
+  grams,
+  value,
   currency = null
 ) {
   this.balances.goldBalance.totalGrams = grams;
@@ -595,7 +597,7 @@ TradeDebtorsSchema.methods.updateCashBalance = function (currencyId, amount) {
   const existingBalance = this.balances.cashBalance.find(
     (balance) => balance.currency.toString() === currencyId.toString()
   );
-  
+
   if (existingBalance) {
     existingBalance.amount = amount;
     existingBalance.lastUpdated = new Date();
@@ -603,10 +605,10 @@ TradeDebtorsSchema.methods.updateCashBalance = function (currencyId, amount) {
     this.balances.cashBalance.push({
       currency: currencyId,
       amount: amount,
-      lastUpdated: new Date()
+      lastUpdated: new Date(),
     });
   }
-  
+
   this.balances.lastBalanceUpdate = new Date();
   return this.save();
 };
@@ -626,8 +628,9 @@ TradeDebtorsSchema.methods.calculateTotalOutstanding = function () {
   const totalCash = this.balances.cashBalance.reduce((sum, balance) => {
     return sum + (balance.amount || 0);
   }, 0);
-  
-  this.balances.totalOutstanding = totalCash + (this.balances.goldBalance.totalValue || 0);
+
+  this.balances.totalOutstanding =
+    totalCash + (this.balances.goldBalance.totalValue || 0);
   return this.balances.totalOutstanding;
 };
 
