@@ -17,23 +17,17 @@ const DivisionMasterSchema = new mongoose.Schema(
       maxlength: [200, "Description cannot exceed 200 characters"]
     },
     costCenter: {
-      type: String,
-      required: [true, "Cost Center is required"],
-      trim: true,
-      maxlength: [50, "Cost Center cannot exceed 50 characters"],
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "CostCenterMaster",
       default: null
-
     },
     costCenterMaking: {
-      type: String,
-      required: [true, "Cost Center (Making) is required"],
-      trim: true,
-      maxlength: [50, "Cost Center (Making) cannot exceed 50 characters"],
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "CostCenterMaster",
       default: null
     },
     autoFixStockCode: {
       type: String,
-      required: [true, "Auto Fix Stock Code is required"],
       trim: true,
       uppercase: true,
       maxlength: [20, "Auto Fix Stock Code cannot exceed 20 characters"],
@@ -46,8 +40,7 @@ const DivisionMasterSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ["active", "inactive"],
-      default: "active"
+      default: "multiply"
     },
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
@@ -73,6 +66,8 @@ DivisionMasterSchema.index({ code: 1 });
 DivisionMasterSchema.index({ status: 1 });
 DivisionMasterSchema.index({ isActive: 1 });
 DivisionMasterSchema.index({ createdAt: -1 });
+DivisionMasterSchema.index({ costCenter: 1 });
+DivisionMasterSchema.index({ costCenterMaking: 1 });
 
 // Pre-save middleware to ensure uppercase codes
 DivisionMasterSchema.pre('save', function(next) {

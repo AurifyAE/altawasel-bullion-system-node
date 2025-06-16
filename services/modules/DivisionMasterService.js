@@ -1,184 +1,181 @@
 import DivisionMaster from "../../models/modules/DivisionMaster.js";
+import CostCenterMaster from "../../models/modules/CostCenterMaster.js";
 import { createAppError } from "../../utils/errorHandler.js";
+import mongoose from "mongoose";
 
-export class DivisionMasterService {
-  // Get all divisions with pagination and filtering
-  static async getAllDivisions(page = 1, limit = 10, filters = {}) {
-  try {
-    const skip = (page - 1) * limit;
-
-    // Build query object
-    const query = {};
-
-    if (filters.status) {
-      query.status = filters.status;
-    }
-
-    if (filters.isActive !== undefined) {
-      query.isActive = filters.isActive;
-    }
-
-    if (filters.search) {
-      query.$or = [
-        { code: { $regex: filters.search, $options: "i" } },
-        { description: { $regex: filters.search, $options: "i" } },
-        { costCenter: { $regex: filters.search, $options: "i" } },
-      ];
-    }
-
-    // Build sort object
-    const sortBy = filters.sortBy || 'createdAt';
-    const sortOrder = filters.sortOrder === 'asc' ? 1 : -1;
-    const sortObj = { [sortBy]: sortOrder };
-
-    const [divisions, total] = await Promise.all([
-      DivisionMaster.find(query)
-        .populate("createdBy", "name email")
-        .populate("updatedBy", "name email")
-        .sort(sortObj) // Use dynamic sorting
-        .skip(skip)
-        .limit(parseInt(limit)),
-      DivisionMaster.countDocuments(query),
-    ]);
-
-    return {
-      divisions,
-      pagination: {
-        currentPage: parseInt(page),
-        totalPages: Math.ceil(total / limit),
-        totalItems: total,
-        itemsPerPage: parseInt(limit),
-      },
-    };
-  } catch (error) {
-    throw createAppError(
-      "Failed to fetch divisions",
-      500,
-      "FETCH_DIVISIONS_ERROR",
-      error.message
-    );
-  }
-}
-
-  // Get division by ID
-  static async getDivisionById(id) {
-    try {
-      const division = await DivisionMaster.findById(id)
-        .populate("createdBy", "name email")
-        .populate("updatedBy", "name email");
-
-      if (!division) {
-        throw createAppError("Division not found", 404, "DIVISION_NOT_FOUND");
-      }
-
-      return division;
-    } catch (error) {
-      if (error.name === "CastError") {
-        throw createAppError("Invalid division ID", 400, "INVALID_DIVISION_ID");
-      }
-      throw error;
-    }
-  }
-
-  // Get division by code
-  static async getDivisionByCode(code) {
-    try {
-      const division = await DivisionMaster.findOne({
-        code: code.toUpperCase(),
-      })
-        .populate("createdBy", "name email")
-        .populate("updatedBy", "name email");
-
-      if (!division) {
-        throw createAppError("Division not found", 404, "DIVISION_NOT_FOUND");
-      }
-
-      return division;
-    } catch (error) {
-      throw error;
-    }
-  }
-
-  // Create new division
-  static async createDivision(divisionData, adminId) {
+export const DivisionMasterService = {
+  // Create Division
+  createDivision: async (divisionData, adminId) => {
     try {
       // Check if code already exists
-      const codeExists = await DivisionMaster.isCodeExists(divisionData.code);
-      if (codeExists) {
+      const isCodeExists = await DivisionMaster.isCodeExists(divisionData.code);
+      if (isCodeExists) {
         throw createAppError(
-          "Division code already exists",
+          `Division with code '${divisionData.code}' already exists`,
           409,
-          "DUPLICATE_DIVISION_CODE"
+          "DUPLICATE_CODE"
         );
       }
 
-      // Check if auto fix stock code already exists
-      const stockCodeExists = await DivisionMaster.findOne({
-        autoFixStockCode: divisionData.autoFixStockCode.toUpperCase(),
-      });
-      if (stockCodeExists) {
-        throw createAppError(
-          "Auto Fix Stock Code already exists",
-          409,
-          "DUPLICATE_STOCK_CODE"
-        );
+      // Validate cost center references if provided
+      if (divisionData.costCenter) {
+        if (!mongoose.Types.ObjectId.isValid(divisionData.costCenter)) {
+          throw createAppError("Invalid Cost Center ID", 400, "INVALID_COST_CENTER_ID");
+        }
+        const costCenter = await CostCenterMaster.findById(divisionData.costCenter);
+        if (!costCenter) {
+          throw createAppError("Cost Center not found", 404, "COST_CENTER_NOT_FOUND");
+        }
+        if (costCenter.status !== "active") {
+          throw createAppError("Cost Center is not active", 400, "COST_CENTER_INACTIVE");
+        }
+      }
+
+      if (divisionData.costCenterMaking) {
+        if (!mongoose.Types.ObjectId.isValid(divisionData.costCenterMaking)) {
+          throw createAppError("Invalid Cost Center Making ID", 400, "INVALID_COST_CENTER_MAKING_ID");
+        }
+        const costCenterMaking = await CostCenterMaster.findById(divisionData.costCenterMaking);
+        if (!costCenterMaking) {
+          throw createAppError("Cost Center Making not found", 404, "COST_CENTER_MAKING_NOT_FOUND");
+        }
+        if (costCenterMaking.status !== "active") {
+          throw createAppError("Cost Center Making is not active", 400, "COST_CENTER_MAKING_INACTIVE");
+        }
       }
 
       const division = new DivisionMaster({
         ...divisionData,
-        createdBy: adminId,
+        createdBy: adminId
       });
 
       await division.save();
-
-      return await this.getDivisionById(division._id);
+      
+      return await DivisionMaster.findById(division._id)
+        .populate('createdBy', 'name email')
+        .populate('costCenter', 'code description')
+        .populate('costCenterMaking', 'code description');
     } catch (error) {
       if (error.code === 11000) {
-        const field = Object.keys(error.keyPattern)[0];
-        throw createAppError(`${field} already exists`, 409, "DUPLICATE_FIELD");
+        throw createAppError(
+          "Division code must be unique",
+          409,
+          "DUPLICATE_CODE"
+        );
       }
       throw error;
     }
-  }
+  },
 
-  // Update division
-  static async updateDivision(id, updateData, adminId) {
+  // Get all Divisions with pagination and filtering
+  getAllDivisions: async (page = 1, limit = 10, search = '', status = '') => {
     try {
-      const existingDivision = await DivisionMaster.findById(id);
-      if (!existingDivision) {
-        throw createAppError("Division not found", 404, "DIVISION_NOT_FOUND");
+      const skip = (page - 1) * limit;
+      
+      // Build filter query
+      const filter = {};
+      if (search) {
+        filter.$or = [
+          { code: { $regex: search, $options: 'i' } },
+          { description: { $regex: search, $options: 'i' } },
+          { autoFixStockCode: { $regex: search, $options: 'i' } }
+        ];
+      }
+      if (status) {
+        filter.status = status;
       }
 
-      // Check if code is being updated and if new code already exists
-      if (updateData.code && updateData.code !== existingDivision.code) {
-        const codeExists = await DivisionMaster.isCodeExists(
-          updateData.code,
-          id
-        );
-        if (codeExists) {
+      const divisions = await DivisionMaster.find(filter)
+        .populate('createdBy', 'name email')
+        .populate('updatedBy', 'name email')
+        .populate('costCenter', 'code description')
+        .populate('costCenterMaking', 'code description')
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(parseInt(limit));
+
+      const total = await DivisionMaster.countDocuments(filter);
+
+      return {
+        divisions,
+        pagination: {
+          currentPage: parseInt(page),
+          totalPages: Math.ceil(total / limit),
+          totalItems: total,
+          itemsPerPage: parseInt(limit)
+        }
+      };
+    } catch (error) {
+      throw error;
+    }
+  },
+
+  // Get Division by ID
+  getDivisionById: async (id) => {
+    try {
+      const division = await DivisionMaster.findById(id)
+        .populate('createdBy', 'name email')
+        .populate('updatedBy', 'name email')
+        .populate('costCenter', 'code description')
+        .populate('costCenterMaking', 'code description');
+
+      if (!division) {
+        throw createAppError("Division not found", 404, "NOT_FOUND");
+      }
+
+      return division;
+    } catch (error) {
+      if (error.name === 'CastError') {
+        throw createAppError("Invalid Division ID", 400, "INVALID_ID");
+      }
+      throw error;
+    }
+  },
+
+  // Update Division
+  updateDivision: async (id, updateData, adminId) => {
+    try {
+      const division = await DivisionMaster.findById(id);
+      if (!division) {
+        throw createAppError("Division not found", 404, "NOT_FOUND");
+      }
+
+      // Check if code is being updated and if it already exists
+      if (updateData.code && updateData.code !== division.code) {
+        const isCodeExists = await DivisionMaster.isCodeExists(updateData.code, id);
+        if (isCodeExists) {
           throw createAppError(
-            "Division code already exists",
+            `Division with code '${updateData.code}' already exists`,
             409,
-            "DUPLICATE_DIVISION_CODE"
+            "DUPLICATE_CODE"
           );
         }
       }
 
-      // Check if auto fix stock code is being updated and if new code already exists
-      if (
-        updateData.autoFixStockCode &&
-        updateData.autoFixStockCode !== existingDivision.autoFixStockCode
-      ) {
-        const stockCodeExists = await DivisionMaster.findOne({
-          autoFixStockCode: updateData.autoFixStockCode.toUpperCase(),
-          _id: { $ne: id },
-        });
-        if (stockCodeExists) {
-          throw createAppError(
-            "Auto Fix Stock Code already exists",
-            409,
-            "DUPLICATE_STOCK_CODE"
-          );
+      // Validate cost center references if being updated
+      if (updateData.costCenter) {
+        if (!mongoose.Types.ObjectId.isValid(updateData.costCenter)) {
+          throw createAppError("Invalid Cost Center ID", 400, "INVALID_COST_CENTER_ID");
+        }
+        const costCenter = await CostCenterMaster.findById(updateData.costCenter);
+        if (!costCenter) {
+          throw createAppError("Cost Center not found", 404, "COST_CENTER_NOT_FOUND");
+        }
+        if (costCenter.status !== "active") {
+          throw createAppError("Cost Center is not active", 400, "COST_CENTER_INACTIVE");
+        }
+      }
+
+      if (updateData.costCenterMaking) {
+        if (!mongoose.Types.ObjectId.isValid(updateData.costCenterMaking)) {
+          throw createAppError("Invalid Cost Center Making ID", 400, "INVALID_COST_CENTER_MAKING_ID");
+        }
+        const costCenterMaking = await CostCenterMaster.findById(updateData.costCenterMaking);
+        if (!costCenterMaking) {
+          throw createAppError("Cost Center Making not found", 404, "COST_CENTER_MAKING_NOT_FOUND");
+        }
+        if (costCenterMaking.status !== "active") {
+          throw createAppError("Cost Center Making is not active", 400, "COST_CENTER_MAKING_INACTIVE");
         }
       }
 
@@ -186,35 +183,37 @@ export class DivisionMasterService {
         id,
         {
           ...updateData,
-          updatedBy: adminId,
+          updatedBy: adminId
         },
-        {
-          new: true,
-          runValidators: true,
-        }
+        { new: true, runValidators: true }
       )
-        .populate("createdBy", "name email")
-        .populate("updatedBy", "name email");
+        .populate('createdBy', 'name email')
+        .populate('updatedBy', 'name email')
+        .populate('costCenter', 'code description')
+        .populate('costCenterMaking', 'code description');
 
       return updatedDivision;
     } catch (error) {
-      if (error.name === "CastError") {
-        throw createAppError("Invalid division ID", 400, "INVALID_DIVISION_ID");
+      if (error.name === 'CastError') {
+        throw createAppError("Invalid Division ID", 400, "INVALID_ID");
       }
       if (error.code === 11000) {
-        const field = Object.keys(error.keyPattern)[0];
-        throw createAppError(`${field} already exists`, 409, "DUPLICATE_FIELD");
+        throw createAppError(
+          "Division code must be unique",
+          409,
+          "DUPLICATE_CODE"
+        );
       }
       throw error;
     }
-  }
+  },
 
-  // Soft delete division (set status to inactive)
-  static async deleteDivision(id, adminId) {
+  // Delete Division (Soft Delete)
+  deleteDivision: async (id, adminId) => {
     try {
       const division = await DivisionMaster.findById(id);
       if (!division) {
-        throw createAppError("Division not found", 404, "DIVISION_NOT_FOUND");
+        throw createAppError("Division not found", 404, "NOT_FOUND");
       }
 
       const deletedDivision = await DivisionMaster.findByIdAndUpdate(
@@ -222,91 +221,70 @@ export class DivisionMasterService {
         {
           status: "inactive",
           isActive: false,
-          updatedBy: adminId,
+          updatedBy: adminId
         },
         { new: true }
       )
-        .populate("createdBy", "name email")
-        .populate("updatedBy", "name email");
+        .populate('createdBy', 'name email')
+        .populate('updatedBy', 'name email')
+        .populate('costCenter', 'code description')
+        .populate('costCenterMaking', 'code description');
 
       return deletedDivision;
     } catch (error) {
-      if (error.name === "CastError") {
-        throw createAppError("Invalid division ID", 400, "INVALID_DIVISION_ID");
+      if (error.name === 'CastError') {
+        throw createAppError("Invalid Division ID", 400, "INVALID_ID");
       }
       throw error;
     }
-  }
+  },
 
-  // Hard delete division (permanent delete)
-  static async permanentDeleteDivision(id) {
+  // Permanently Delete Division
+  permanentDeleteDivision: async (id) => {
     try {
       const division = await DivisionMaster.findById(id);
       if (!division) {
-        throw createAppError("Division not found", 404, "DIVISION_NOT_FOUND");
+        throw createAppError("Division not found", 404, "NOT_FOUND");
       }
 
       await DivisionMaster.findByIdAndDelete(id);
       return { message: "Division permanently deleted" };
     } catch (error) {
-      if (error.name === "CastError") {
-        throw createAppError("Invalid division ID", 400, "INVALID_DIVISION_ID");
+      if (error.name === 'CastError') {
+        throw createAppError("Invalid Division ID", 400, "INVALID_ID");
       }
       throw error;
     }
-  }
+  },
 
-  // Activate division
-  static async activateDivision(id, adminId) {
+  // Restore Division
+  restoreDivision: async (id, adminId) => {
     try {
       const division = await DivisionMaster.findById(id);
       if (!division) {
-        throw createAppError("Division not found", 404, "DIVISION_NOT_FOUND");
+        throw createAppError("Division not found", 404, "NOT_FOUND");
       }
 
-      const activatedDivision = await DivisionMaster.findByIdAndUpdate(
+      const restoredDivision = await DivisionMaster.findByIdAndUpdate(
         id,
         {
           status: "active",
           isActive: true,
-          updatedBy: adminId,
+          updatedBy: adminId
         },
         { new: true }
       )
-        .populate("createdBy", "name email")
-        .populate("updatedBy", "name email");
+        .populate('createdBy', 'name email')
+        .populate('updatedBy', 'name email')
+        .populate('costCenter', 'code description')
+        .populate('costCenterMaking', 'code description');
 
-      return activatedDivision;
+      return restoredDivision;
     } catch (error) {
-      if (error.name === "CastError") {
-        throw createAppError("Invalid division ID", 400, "INVALID_DIVISION_ID");
+      if (error.name === 'CastError') {
+        throw createAppError("Invalid Division ID", 400, "INVALID_ID");
       }
       throw error;
     }
   }
-
-  // Get division statistics
-  static async getDivisionStats() {
-    try {
-      const [totalDivisions, activeDivisions, inactiveDivisions] =
-        await Promise.all([
-          DivisionMaster.countDocuments(),
-          DivisionMaster.countDocuments({ status: "active" }),
-          DivisionMaster.countDocuments({ status: "inactive" }),
-        ]);
-
-      return {
-        total: totalDivisions,
-        active: activeDivisions,
-        inactive: inactiveDivisions,
-      };
-    } catch (error) {
-      throw createAppError(
-        "Failed to fetch division statistics",
-        500,
-        "STATS_ERROR",
-        error.message
-      );
-    }
-  }
-}
+};

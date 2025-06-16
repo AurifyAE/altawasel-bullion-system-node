@@ -10,7 +10,7 @@ export const createMetalRate = async (req, res, next) => {
       convFactGms,
       currencyId,
       status,
-      currentRate,
+      convertrate,
       posMarginMin,
       posMarginMax,
       addOnRate,
@@ -23,7 +23,7 @@ export const createMetalRate = async (req, res, next) => {
       !rateType ||
       !convFactGms ||
       !currencyId ||
-      currentRate === undefined ||
+      convertrate === undefined ||
       posMarginMin === undefined ||
       posMarginMax === undefined ||
       addOnRate === undefined
@@ -38,7 +38,7 @@ export const createMetalRate = async (req, res, next) => {
     // Validate number fields
     if (
       isNaN(convFactGms) ||
-      isNaN(currentRate) ||
+      isNaN(convertrate) ||
       isNaN(posMarginMin) ||
       isNaN(posMarginMax) ||
       isNaN(addOnRate)
@@ -65,7 +65,7 @@ export const createMetalRate = async (req, res, next) => {
       convFactGms: parseFloat(convFactGms),
       currencyId,
       status: status || 'active',
-      currentRate: parseFloat(currentRate),
+      convertrate: parseFloat(convertrate),
       posMarginMin: parseFloat(posMarginMin),
       posMarginMax: parseFloat(posMarginMax),
       addOnRate: parseFloat(addOnRate),
@@ -156,7 +156,7 @@ export const updateMetalRate = async (req, res, next) => {
     }
 
     // Validate numeric fields if provided
-    const numericFields = ['convFactGms', 'currentRate', 'posMarginMin', 'posMarginMax', 'addOnRate'];
+    const numericFields = ['convFactGms', 'convertrate', 'posMarginMin', 'posMarginMax', 'addOnRate'];
     for (const field of numericFields) {
       if (updateData[field] !== undefined && isNaN(updateData[field])) {
         throw createAppError(

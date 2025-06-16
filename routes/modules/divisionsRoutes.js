@@ -1,43 +1,42 @@
 import express from "express";
 import {
-  updateDivision,
-  activateDivision,
-  bulkActivateDivisions,
-  bulkDeleteDivisions,
   createDivision,
-  deleteDivision,
   getAllDivisions,
-  getDivisionByCode,
   getDivisionById,
-  getDivisionStats,
+  updateDivision,
+  deleteDivision,
   permanentDeleteDivision,
+  restoreDivision,
 } from "../../controllers/modules/DivisionMasterController.js";
 import {
   validateCreateDivision,
   validateUpdateDivision,
-  validateBulkOperation,
   validatePagination,
   validateSearchParams,
 } from "../../utils/validators/DivisionValidation.js";
 import { authenticateToken } from "../../middleware/authMiddleware.js";
+
 const router = express.Router();
+
+// Apply authentication middleware to all routes
 router.use(authenticateToken);
+
+// GET routes
 router.get(
-  "/divisions",
+  "/",
   validatePagination,
   validateSearchParams,
   getAllDivisions
 );
-router.get("/stats", getDivisionStats);
 router.get("/:id", getDivisionById);
-router.get("/code/:code", getDivisionByCode);
+
 // POST routes
-router.post("/divisions-add", validateCreateDivision, createDivision);
-router.post("/bulk-delete", validateBulkOperation, bulkDeleteDivisions);
-router.post("/bulk-activate", validateBulkOperation, bulkActivateDivisions);
+router.post("/", validateCreateDivision, createDivision);
+
 // PUT routes
 router.put("/:id", validateUpdateDivision, updateDivision);
-router.put("/:id/activate", activateDivision);
+router.put("/:id/restore", restoreDivision);
+
 // DELETE routes
 router.delete("/:id", deleteDivision);
 router.delete("/:id/permanent", permanentDeleteDivision);

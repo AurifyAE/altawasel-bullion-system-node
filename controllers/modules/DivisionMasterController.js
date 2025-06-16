@@ -1,92 +1,15 @@
 import { DivisionMasterService } from "../../services/modules/DivisionMasterService.js";
 import { createAppError } from "../../utils/errorHandler.js";
 
-// Get all divisions
-export const getAllDivisions = async (req, res, next) => {
-  try {
-    // Use validatedQuery instead of req.query for validated parameters
-    const queryParams = req.validatedQuery || req.query;
-    const { page = 1, limit = 10, status, isActive, search, sortBy = 'createdAt', sortOrder = 'desc' } = queryParams;
-
-    const filters = {};
-    if (status) filters.status = status;
-    if (isActive !== undefined) filters.isActive = isActive === "true";
-    if (search) filters.search = search;
-    if (sortBy) filters.sortBy = sortBy;
-    if (sortOrder) filters.sortOrder = sortOrder;
-
-    const result = await DivisionMasterService.getAllDivisions(
-      parseInt(page),
-      parseInt(limit),
-      filters
-    );
-
-    res.status(200).json({
-      success: true,
-      message: "Divisions fetched successfully",
-      data: result.divisions,
-      pagination: result.pagination,
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-// Get division by ID
-export const getDivisionById = async (req, res, next) => {
-  try {
-    const { id } = req.params;
-
-    const division = await DivisionMasterService.getDivisionById(id);
-
-    res.status(200).json({
-      success: true,
-      message: "Division fetched successfully",
-      data: division,
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-// Get division by code
-export const getDivisionByCode = async (req, res, next) => {
-  try {
-    const { code } = req.params;
-
-    const division = await DivisionMasterService.getDivisionByCode(code);
-
-    res.status(200).json({
-      success: true,
-      message: "Division fetched successfully",
-      data: division,
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-// Create new division
+// Create Division
 export const createDivision = async (req, res, next) => {
   try {
-    const {
-      code,
-      description,
-      costCenter,
-      costCenterMaking,
-      autoFixStockCode,
-    } = req.body;
+    const { code, description, costCenter, costCenterMaking, autoFixStockCode } = req.body;
 
     // Validation
-    if (
-      !code ||
-      !description ||
-      !costCenter ||
-      !costCenterMaking ||
-      !autoFixStockCode
-    ) {
+    if (!code || !description) {
       throw createAppError(
-        "All fields are required: code, description, costCenter, costCenterMaking, autoFixStockCode",
+        "All required fields must be provided: code, description",
         400,
         "REQUIRED_FIELDS_MISSING"
       );
@@ -95,10 +18,12 @@ export const createDivision = async (req, res, next) => {
     const divisionData = {
       code: code.trim(),
       description: description.trim(),
-      costCenter: costCenter.trim(),
-      costCenterMaking: costCenterMaking.trim(),
-      autoFixStockCode: autoFixStockCode.trim(),
     };
+
+    // Add optional fields if provided
+    if (costCenter) divisionData.costCenter = costCenter;
+    if (costCenterMaking) divisionData.costCenterMaking = costCenterMaking;
+    if (autoFixStockCode) divisionData.autoFixStockCode = autoFixStockCode.trim();
 
     const division = await DivisionMasterService.createDivision(
       divisionData,
@@ -115,28 +40,81 @@ export const createDivision = async (req, res, next) => {
   }
 };
 
-// Update division
+// Get all Divisions
+export const getAllDivisions = async (req, res, next) => {
+  try {
+    const {
+      page = 1,
+      limit = 10,
+      search = '',
+      status = ''
+    } = req.query;
+
+    const result = await DivisionMasterService.getAllDivisions(
+      page,
+      limit,
+      search,
+      status
+    );
+
+    res.status(200).json({
+      success: true,
+      message: "Divisions retrieved successfully",
+      data: result.divisions,
+      pagination: result.pagination,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Get Division by ID
+export const getDivisionById = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    if (!id) {
+      throw createAppError("Division ID is required", 400, "MISSING_ID");
+    }
+
+    const division = await DivisionMasterService.getDivisionById(id);
+
+    res.status(200).json({
+      success: true,
+      message: "Division retrieved successfully",
+      data: division,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Update Division
 export const updateDivision = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const updateData = req.body;
+    const { code, description, costCenter, costCenterMaking, autoFixStockCode, status } = req.body;
 
-    // Remove empty fields
-    Object.keys(updateData).forEach((key) => {
-      if (updateData[key] === "" || updateData[key] == null) {
-        delete updateData[key];
-      } else if (typeof updateData[key] === "string") {
-        updateData[key] = updateData[key].trim();
-      }
-    });
+    if (!id) {
+      throw createAppError("Division ID is required", 400, "MISSING_ID");
+    }
 
-    if (Object.keys(updateData).length === 0) {
+    // Validation - at least one field should be provided
+    if (!code && !description && !costCenter && !costCenterMaking && !autoFixStockCode && !status) {
       throw createAppError(
-        "No valid fields to update",
+        "At least one field is required to update: code, description, costCenter, costCenterMaking, autoFixStockCode, or status",
         400,
         "NO_UPDATE_FIELDS"
       );
     }
+
+    const updateData = {};
+    if (code) updateData.code = code.trim();
+    if (description) updateData.description = description.trim();
+    if (costCenter !== undefined) updateData.costCenter = costCenter || null;
+    if (costCenterMaking !== undefined) updateData.costCenterMaking = costCenterMaking || null;
+    if (autoFixStockCode !== undefined) updateData.autoFixStockCode = autoFixStockCode ? autoFixStockCode.trim() : null;
+    if (status) updateData.status = status;
 
     const division = await DivisionMasterService.updateDivision(
       id,
@@ -154,10 +132,14 @@ export const updateDivision = async (req, res, next) => {
   }
 };
 
-// Soft delete division
+// Delete Division (Soft Delete)
 export const deleteDivision = async (req, res, next) => {
   try {
     const { id } = req.params;
+
+    if (!id) {
+      throw createAppError("Division ID is required", 400, "MISSING_ID");
+    }
 
     const division = await DivisionMasterService.deleteDivision(
       id,
@@ -174,10 +156,14 @@ export const deleteDivision = async (req, res, next) => {
   }
 };
 
-// Permanent delete division
+// Permanently Delete Division
 export const permanentDeleteDivision = async (req, res, next) => {
   try {
     const { id } = req.params;
+
+    if (!id) {
+      throw createAppError("Division ID is required", 400, "MISSING_ID");
+    }
 
     const result = await DivisionMasterService.permanentDeleteDivision(id);
 
@@ -190,104 +176,24 @@ export const permanentDeleteDivision = async (req, res, next) => {
   }
 };
 
-// Activate division
-export const activateDivision = async (req, res, next) => {
+// Restore Division
+export const restoreDivision = async (req, res, next) => {
   try {
     const { id } = req.params;
 
-    const division = await DivisionMasterService.activateDivision(
+    if (!id) {
+      throw createAppError("Division ID is required", 400, "MISSING_ID");
+    }
+
+    const division = await DivisionMasterService.restoreDivision(
       id,
       req.admin.id
     );
 
     res.status(200).json({
       success: true,
-      message: "Division activated successfully",
+      message: "Division restored successfully",
       data: division,
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-// Get division statistics
-export const getDivisionStats = async (req, res, next) => {
-  try {
-    const stats = await DivisionMasterService.getDivisionStats();
-
-    res.status(200).json({
-      success: true,
-      message: "Division statistics fetched successfully",
-      data: stats,
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-// Bulk operations
-export const bulkDeleteDivisions = async (req, res, next) => {
-  try {
-    const { ids } = req.body;
-
-    if (!ids || !Array.isArray(ids) || ids.length === 0) {
-      throw createAppError("Invalid or empty IDs array", 400, "INVALID_IDS");
-    }
-
-    const results = await Promise.allSettled(
-      ids.map((id) => DivisionMasterService.deleteDivision(id, req.admin.id))
-    );
-
-    const successful = results.filter(
-      (result) => result.status === "fulfilled"
-    );
-    const failed = results.filter((result) => result.status === "rejected");
-
-    res.status(200).json({
-      success: true,
-      message: `Bulk delete completed. ${successful.length} successful, ${failed.length} failed`,
-      data: {
-        successful: successful.length,
-        failed: failed.length,
-        failedItems: failed.map((item, index) => ({
-          id: ids[results.indexOf(item)],
-          error: item.reason.message,
-        })),
-      },
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-export const bulkActivateDivisions = async (req, res, next) => {
-  try {
-    const { ids } = req.body;
-
-    if (!ids || !Array.isArray(ids) || ids.length === 0) {
-      throw createAppError("Invalid or empty IDs array", 400, "INVALID_IDS");
-    }
-
-    const results = await Promise.allSettled(
-      ids.map((id) => DivisionMasterService.activateDivision(id, req.admin.id))
-    );
-
-    const successful = results.filter(
-      (result) => result.status === "fulfilled"
-    );
-    const failed = results.filter((result) => result.status === "rejected");
-
-    res.status(200).json({
-      success: true,
-      message: `Bulk activation completed. ${successful.length} successful, ${failed.length} failed`,
-      data: {
-        successful: successful.length,
-        failed: failed.length,
-        failedItems: failed.map((item, index) => ({
-          id: ids[results.indexOf(item)],
-          error: item.reason.message,
-        })),
-      },
     });
   } catch (error) {
     next(error);

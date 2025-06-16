@@ -32,7 +32,7 @@ const MetalRateMasterSchema = new mongoose.Schema(
       type: String,
       default: "null"
     },
-    currentRate: {
+    convertrate: {
       type: Number,
       required: [true, "Current rate is required"],
       min: [0, "Current rate cannot be negative"]
