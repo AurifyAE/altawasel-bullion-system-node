@@ -20,13 +20,16 @@ const DivisionMasterSchema = new mongoose.Schema(
       type: String,
       required: [true, "Cost Center is required"],
       trim: true,
-      maxlength: [50, "Cost Center cannot exceed 50 characters"]
+      maxlength: [50, "Cost Center cannot exceed 50 characters"],
+      default: null
+
     },
     costCenterMaking: {
       type: String,
       required: [true, "Cost Center (Making) is required"],
       trim: true,
-      maxlength: [50, "Cost Center (Making) cannot exceed 50 characters"]
+      maxlength: [50, "Cost Center (Making) cannot exceed 50 characters"],
+      default: null
     },
     autoFixStockCode: {
       type: String,
@@ -34,7 +37,8 @@ const DivisionMasterSchema = new mongoose.Schema(
       trim: true,
       uppercase: true,
       maxlength: [20, "Auto Fix Stock Code cannot exceed 20 characters"],
-      match: [/^[A-Z0-9]+$/, "Auto Fix Stock Code should contain only uppercase letters and numbers"]
+      match: [/^[A-Z0-9]+$/, "Auto Fix Stock Code should contain only uppercase letters and numbers"],
+      default: null
     },
     isActive: {
       type: Boolean,
@@ -48,11 +52,13 @@ const DivisionMasterSchema = new mongoose.Schema(
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Admin",
-      required: true
+      required: true,
+      default: null
     },
     updatedBy: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "Admin"
+      ref: "Admin",
+      default: null
     }
   },
   { 
