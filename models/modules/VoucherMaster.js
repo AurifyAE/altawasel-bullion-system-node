@@ -104,6 +104,7 @@
 // export default VoucherMaster;
 
 import mongoose from "mongoose";
+import moment from "moment";
 
 const VoucherMasterSchema = new mongoose.Schema(
   {
@@ -145,6 +146,10 @@ const VoucherMasterSchema = new mongoose.Schema(
       enum: ["DD/MM/YYYY", "MM/DD/YYYY", "YYYY-MM-DD"],
       default: "DD/MM/YYYY",
     },
+    includeDateInNumber: {
+      type: Boolean,
+      default: false
+    },
     isAutoIncrement: {
       type: Boolean,
       default: true,
@@ -154,6 +159,15 @@ const VoucherMasterSchema = new mongoose.Schema(
       required: [true, "Module is required"],
       trim: true,
       unique: true, // Implicitly creates a unique index
+    },
+    resetCounterOn: {
+      type: String,
+      enum: ["NEVER", "DAILY", "MONTHLY", "YEARLY"],
+      default: "NEVER"
+    },
+    lastResetDate: {
+      type: Date,
+      default: null
     },
     isActive: {
       type: Boolean,
@@ -186,6 +200,7 @@ VoucherMasterSchema.index({ voucherType: 1 });
 VoucherMasterSchema.index({ status: 1 });
 VoucherMasterSchema.index({ isActive: 1 });
 VoucherMasterSchema.index({ createdAt: -1 });
+VoucherMasterSchema.index({ voucherType: 1, status: 1, isActive: 1 });
 
 // Pre-save middleware
 VoucherMasterSchema.pre("save", function (next) {
