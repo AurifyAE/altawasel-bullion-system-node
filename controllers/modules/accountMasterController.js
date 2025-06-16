@@ -1,4 +1,4 @@
-import AccountMaster from '../../models/modules/AccountMaster.js';
+import AccountMaster from '../../models/modules/accountMaster.js';
 
 // Create a new account
 const createAccount = async (req, res) => {
