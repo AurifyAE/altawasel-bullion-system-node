@@ -10,11 +10,11 @@ export const createMetalStock = async (req, res, next) => {
       description,
       branch,
       karat,
-      standardPurity,
-      premiumDiscount,
+      pcs,
+      pcsCount,
+      totalValue,
       charges,
       makingCharge,
-      unit,
       costCenter,
       category,
       subCategory,
@@ -24,51 +24,39 @@ export const createMetalStock = async (req, res, next) => {
       brand,
       country,
       price,
-   
     } = req.body;
 
-    // Validation for required fields
-    if (
-      !metalType ||
-      !code ||
-      !description ||
-    //   !branch ||
-      !karat ||
-      standardPurity === undefined ||
-      !unit ||
-    //   !costCenter ||
-      !category ||
-      !subCategory ||
-      !type
-    ) {
-      throw createAppError(
-        "Required fields missing: metalType, code, description, branch, karat, standardPurity, unit, costCenter, category, subCategory, type",
-        400,
-        "REQUIRED_FIELDS_MISSING"
-      );
+    // Validate required fields
+    if (!metalType || !code || !description || !karat || !category || !subCategory || !type) {
+      throw createAppError("Required fields missing", 400, "REQUIRED_FIELDS_MISSING");
     }
 
-    // Validate standardPurity range
-    if (standardPurity < 0 || standardPurity > 100) {
-      throw createAppError(
-        "Standard purity must be between 0 and 100",
-        400,
-        "INVALID_PURITY_RANGE"
-      );
+    if (pcs === undefined || pcs === null) {
+      throw createAppError("Pieces tracking option is required", 400, "MISSING_PCS_OPTION");
+    }
+
+    // Validate pcsCount and totalValue when pcs is true
+    if (pcs) {
+      if (pcsCount === undefined || pcsCount === null || !Number.isInteger(pcsCount) || pcsCount < 0) {
+        throw createAppError("Piece count is required and must be a non-negative integer for piece-based stock", 400, "INVALID_PCS_COUNT");
+      }
+      if (totalValue === undefined || totalValue === null || isNaN(totalValue) || totalValue < 0) {
+        throw createAppError("Total value is required and must be a non-negative number for piece-based stock", 400, "INVALID_TOTAL_VALUE");
+      }
     }
 
     const metalStockData = {
       metalType: metalType.trim(),
       code: code.trim(),
       description: description.trim(),
-    //   branch: branch.trim(),
+      branch: branch || null,
       karat: karat.trim(),
-      standardPurity: parseFloat(standardPurity),
-      premiumDiscount: premiumDiscount ? parseFloat(premiumDiscount) : 0,
+      pcs: Boolean(pcs),
+      pcsCount: pcs ? parseInt(pcsCount) : 0,
+      totalValue: pcs ? parseFloat(totalValue) : 0,
       charges: charges || null,
       makingCharge: makingCharge || null,
-      unit: unit.trim(),
-    //   costCenter: costCenter.trim(),
+      costCenter: costCenter || null,
       category: category.trim(),
       subCategory: subCategory.trim(),
       type: type.trim(),
@@ -77,39 +65,24 @@ export const createMetalStock = async (req, res, next) => {
       brand: brand || null,
       country: country || null,
       price: price || null,
-
     };
 
-    const metalStock = await MetalStockService.createMetalStock(
-      metalStockData,
-      req.admin.id
-    );
+    const result = await MetalStockService.createMetalStock(metalStockData, req.admin.id);
 
     res.status(201).json({
       success: true,
       message: "Metal stock created successfully",
-      data: metalStock
+      data: result,
     });
   } catch (error) {
     next(error);
   }
 };
 
-// Get all metal stocks with pagination and filters
+// Get all metal stocks
 export const getAllMetalStocks = async (req, res, next) => {
   try {
-    const {
-      page = 1,
-      limit = 10,
-      search,
-      metalType,
-      branch,
-      category,
-      status,
-      isActive,
-      sortBy,
-      sortOrder
-    } = req.query;
+    const { page = 1, limit = 10, search, metalType, branch, category, status, isActive, sortBy, sortOrder } = req.query;
 
     const options = {
       page: parseInt(page),
@@ -119,9 +92,9 @@ export const getAllMetalStocks = async (req, res, next) => {
       branch,
       category,
       status,
-      isActive: isActive !== undefined ? isActive === 'true' : undefined,
+      isActive: isActive !== undefined ? isActive === "true" : undefined,
       sortBy,
-      sortOrder
+      sortOrder,
     };
 
     const result = await MetalStockService.getAllMetalStocks(options);
@@ -130,7 +103,7 @@ export const getAllMetalStocks = async (req, res, next) => {
       success: true,
       message: "Metal stocks fetched successfully",
       data: result.metalStocks,
-      pagination: result.pagination
+      pagination: result.pagination,
     });
   } catch (error) {
     next(error);
@@ -143,11 +116,7 @@ export const getMetalStockById = async (req, res, next) => {
     const { id } = req.params;
 
     if (!id) {
-      throw createAppError(
-        "Metal stock ID is required",
-        400,
-        "MISSING_ID"
-      );
+      throw createAppError("Metal stock ID is required", 400, "MISSING_ID");
     }
 
     const metalStock = await MetalStockService.getMetalStockById(id);
@@ -155,7 +124,7 @@ export const getMetalStockById = async (req, res, next) => {
     res.status(200).json({
       success: true,
       message: "Metal stock fetched successfully",
-      data: metalStock
+      data: metalStock,
     });
   } catch (error) {
     next(error);
@@ -166,49 +135,74 @@ export const getMetalStockById = async (req, res, next) => {
 export const updateMetalStock = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const updateData = req.body;
+    const {
+      metalType,
+      code,
+      description,
+      branch,
+      karat,
+      pcs,
+      pcsCount,
+      totalValue,
+      charges,
+      makingCharge,
+      costCenter,
+      category,
+      subCategory,
+      type,
+      size,
+      color,
+      brand,
+      country,
+      price,
+    } = req.body;
 
     if (!id) {
-      throw createAppError(
-        "Metal stock ID is required",
-        400,
-        "MISSING_ID"
-      );
+      throw createAppError("Metal stock ID is required", 400, "MISSING_ID");
     }
 
-    // Validate standardPurity if provided
-    if (updateData.standardPurity !== undefined) {
-      if (updateData.standardPurity < 0 || updateData.standardPurity > 100) {
-        throw createAppError(
-          "Standard purity must be between 0 and 100",
-          400,
-          "INVALID_PURITY_RANGE"
-        );
+    // Validate pcsCount and totalValue when pcs is true
+    if (pcs) {
+      if (pcsCount !== undefined && (!Number.isInteger(pcsCount) || pcsCount < 0)) {
+        throw createAppError("Piece count must be a non-negative integer for piece-based stock", 400, "INVALID_PCS_COUNT");
+      }
+      if (totalValue !== undefined && (isNaN(totalValue) || totalValue < 0)) {
+        throw createAppError("Total value must be a non-negative number for piece-based stock", 400, "INVALID_TOTAL_VALUE");
       }
     }
 
-    // Clean and format update data
     const cleanedUpdateData = {};
-    Object.keys(updateData).forEach(key => {
-      if (updateData[key] !== undefined && updateData[key] !== null) {
-        if (typeof updateData[key] === 'string') {
-          cleanedUpdateData[key] = updateData[key].trim();
-        } else {
-          cleanedUpdateData[key] = updateData[key];
-        }
-      }
-    });
+    if (metalType) cleanedUpdateData.metalType = metalType.trim();
+    if (code) cleanedUpdateData.code = code.trim();
+    if (description) cleanedUpdateData.description = description.trim();
+    if (branch !== undefined) cleanedUpdateData.branch = branch || null;
+    if (karat) cleanedUpdateData.karat = karat.trim();
+    if (pcs !== undefined) cleanedUpdateData.pcs = Boolean(pcs);
+    if (pcs) {
+      if (pcsCount !== undefined) cleanedUpdateData.pcsCount = parseInt(pcsCount);
+      if (totalValue !== undefined) cleanedUpdateData.totalValue = parseFloat(totalValue);
+    } else {
+      cleanedUpdateData.pcsCount = 0;
+      cleanedUpdateData.totalValue = 0;
+    }
+    if (charges !== undefined) cleanedUpdateData.charges = charges || null;
+    if (makingCharge !== undefined) cleanedUpdateData.makingCharge = makingCharge || null;
+    if (costCenter !== undefined) cleanedUpdateData.costCenter = costCenter || null;
+    if (category) cleanedUpdateData.category = category.trim();
+    if (subCategory) cleanedUpdateData.subCategory = subCategory.trim();
+    if (type) cleanedUpdateData.type = type.trim();
+    if (size !== undefined) cleanedUpdateData.size = size || null;
+    if (color !== undefined) cleanedUpdateData.color = color || null;
+    if (brand !== undefined) cleanedUpdateData.brand = brand || null;
+    if (country !== undefined) cleanedUpdateData.country = country || null;
+    if (price !== undefined) cleanedUpdateData.price = price || null;
 
-    const updatedMetalStock = await MetalStockService.updateMetalStock(
-      id,
-      cleanedUpdateData,
-      req.admin.id
-    );
+    const updatedMetalStock = await MetalStockService.updateMetalStock(id, cleanedUpdateData, req.admin.id);
 
     res.status(200).json({
       success: true,
       message: "Metal stock updated successfully",
-      data: updatedMetalStock
+      data: updatedMetalStock,
     });
   } catch (error) {
     next(error);
@@ -221,122 +215,35 @@ export const deleteMetalStock = async (req, res, next) => {
     const { id } = req.params;
 
     if (!id) {
-      throw createAppError(
-        "Metal stock ID is required",
-        400,
-        "MISSING_ID"
-      );
+      throw createAppError("Metal stock ID is required", 400, "MISSING_ID");
     }
 
-    const deletedMetalStock = await MetalStockService.deleteMetalStock(
-      id,
-      req.admin.id
-    );
+    const deletedMetalStock = await MetalStockService.deleteMetalStock(id, req.admin.id);
 
     res.status(200).json({
       success: true,
       message: "Metal stock deleted successfully",
-      data: deletedMetalStock
+      data: deletedMetalStock,
     });
   } catch (error) {
     next(error);
   }
 };
 
-// Hard delete metal stock (permanent deletion)
+// Hard delete metal stock
 export const hardDeleteMetalStock = async (req, res, next) => {
   try {
     const { id } = req.params;
 
     if (!id) {
-      throw createAppError(
-        "Metal stock ID is required",
-        400,
-        "MISSING_ID"
-      );
+      throw createAppError("Metal stock ID is required", 400, "MISSING_ID");
     }
 
     const result = await MetalStockService.hardDeleteMetalStock(id);
 
     res.status(200).json({
       success: true,
-      message: result.message
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-// Get low stock items
-export const getLowStockItems = async (req, res, next) => {
-  try {
-    const {
-      page = 1,
-      limit = 10,
-      branch,
-      category
-    } = req.query;
-
-    const options = {
-      page: parseInt(page),
-      limit: parseInt(limit),
-      branch,
-      category
-    };
-
-    const result = await MetalStockService.getLowStockItems(options);
-
-    res.status(200).json({
-      success: true,
-      message: "Low stock items fetched successfully",
-      data: result.lowStockItems,
-      pagination: result.pagination
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-// Update stock quantity
-export const updateStockQuantity = async (req, res, next) => {
-  try {
-    const { id } = req.params;
-    const { quantity } = req.body;
-
-    if (!id) {
-      throw createAppError(
-        "Metal stock ID is required",
-        400,
-        "MISSING_ID"
-      );
-    }
-
-    if (quantity === undefined || quantity === null) {
-      throw createAppError(
-        "Quantity is required",
-        400,
-        "MISSING_QUANTITY"
-      );
-    }
-
-    if (isNaN(quantity) || quantity < 0) {
-      throw createAppError(
-        "Quantity must be a valid non-negative number",
-        400,
-        "INVALID_QUANTITY"
-      );
-    }
-
-    const updatedMetalStock = await MetalStockService.updateStockQuantity(
-      id,
-      parseFloat(quantity),
-      req.admin.id
-    );
-
-    res.status(200).json({
-      success: true,
-      message: "Stock quantity updated successfully",
-      data: updatedMetalStock
+      message: result.message,
     });
   } catch (error) {
     next(error);
@@ -347,24 +254,110 @@ export const updateStockQuantity = async (req, res, next) => {
 export const getMetalStockStats = async (req, res, next) => {
   try {
     const { branch, category } = req.query;
-    const query = { isActive: true, status: "active" };
 
-    if (branch) query.branch = branch;
-    if (category) query.category = category;
-
-    // You can implement statistics logic here
-    // For now, returning basic stats
-    const stats = {
-      totalItems: 0,
-      lowStockItems: 0,
-      outOfStockItems: 0,
-      totalValue: 0
-    };
+    const stats = await MetalStockService.getMetalStockStats({ branch, category });
 
     res.status(200).json({
       success: true,
       message: "Metal stock statistics fetched successfully",
-      data: stats
+      data: stats,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Get stock movements
+export const getStockMovements = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { page = 1, limit = 10 } = req.query;
+
+    if (!id) {
+      throw createAppError("Metal stock ID is required", 400, "MISSING_ID");
+    }
+
+    const options = {
+      page: parseInt(page),
+      limit: parseInt(limit),
+    };
+
+    const result = await MetalStockService.getStockMovements(id, options);
+
+    res.status(200).json({
+      success: true,
+      message: "Stock movements fetched successfully",
+      data: result.movements,
+      pagination: result.pagination,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Update stock quantity
+export const updateStockQuantity = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { pcsCount, totalValue, quantity, transactionType, description, costCenterCode } = req.body;
+
+    if (!id) {
+      throw createAppError("Metal stock ID is required", 400, "MISSING_ID");
+    }
+
+    if (!transactionType) {
+      throw createAppError("Transaction type is required", 400, "MISSING_TRANSACTION_TYPE");
+    }
+
+    if (!["stock_in", "purchase"].includes(transactionType)) {
+      throw createAppError(
+        "Invalid transaction type. Must be one of: stock_in, purchase",
+        400,
+        "INVALID_TRANSACTION_TYPE"
+      );
+    }
+
+    if (!description) {
+      throw createAppError("Transaction description is required", 400, "MISSING_DESCRIPTION");
+    }
+
+    // Validate inputs based on pcs
+    const metalStock = await MetalStockService.getMetalStockById(id);
+    if (metalStock.pcs) {
+      if (pcsCount === undefined || pcsCount === null) {
+        throw createAppError("Piece count is required for piece-based stock", 400, "MISSING_PCS_COUNT");
+      }
+      if (!Number.isInteger(pcsCount) || pcsCount <= 0) {
+        throw createAppError("Piece count must be a positive integer", 400, "INVALID_PCS_COUNT");
+      }
+      if (totalValue === undefined || totalValue === null) {
+        throw createAppError("Total value is required for piece-based stock", 400, "MISSING_TOTAL_VALUE");
+      }
+      if (isNaN(totalValue) || totalValue <= 0) {
+        throw createAppError("Total value must be a positive number", 400, "INVALID_TOTAL_VALUE");
+      }
+    } else {
+      if (quantity === undefined || quantity === null) {
+        throw createAppError("Quantity is required for weight-based stock", 400, "MISSING_QUANTITY");
+      }
+      if (isNaN(quantity) || quantity <= 0) {
+        throw createAppError("Quantity must be a positive number", 400, "INVALID_QUANTITY");
+      }
+    }
+
+    const result = await MetalStockService.updateStockQuantity(
+      id,
+      { pcsCount, totalValue, quantity },
+      transactionType,
+      description,
+      req.admin.id,
+      costCenterCode
+    );
+
+    res.status(200).json({
+      success: true,
+      message: `Stock updated successfully (Pcs: ${result.adjustedPcs}, Value: ${result.adjustedValue})`,
+      data: result,
     });
   } catch (error) {
     next(error);

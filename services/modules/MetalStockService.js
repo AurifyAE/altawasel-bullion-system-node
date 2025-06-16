@@ -1,60 +1,146 @@
+import mongoose from "mongoose";
 import MetalStock from "../../models/modules/MetalStock.js";
+import Registry from "../../models/modules/Registry.js";
 import { createAppError } from "../../utils/errorHandler.js";
 
 class MetalStockService {
-  // Create new metal stock
   static async createMetalStock(metalStockData, adminId) {
+    const session = await mongoose.startSession();
+    session.startTransaction();
+    
     try {
-      // Check if code already exists
-      const codeExists = await MetalStock.isCodeExists(metalStockData.code);
-      if (codeExists) {
-        throw createAppError(
-          "Metal stock code already exists",
-          409,
-          "DUPLICATE_CODE"
-        );
+      // Check for duplicate code
+      if (await MetalStock.isCodeExists(metalStockData.code)) {
+        throw createAppError("Metal stock code already exists", 409, "DUPLICATE_CODE");
       }
 
-      // Create new metal stock
+      // Fetch karat to get standardPurity
+      const KaratMaster = mongoose.model("KaratMaster");
+      const karat = await KaratMaster.findById(metalStockData.karat);
+      if (!karat) {
+        throw createAppError("Invalid karat ID", 400, "INVALID_KARAT");
+      }
+
+      // Create metal stock
       const metalStock = new MetalStock({
         ...metalStockData,
+        standardPurity: karat.standardPurity,
         createdBy: adminId,
       });
 
-      await metalStock.save();
+      await metalStock.save({ session });
 
-      // Populate the referenced fields
-      await metalStock.populate([
-        { path: "metalType", select: "code description" },
-        { path: "branch", select: "name code" },
-        { path: "karat", select: "name value" },
-        { path: "category", select: "name code" },
-        { path: "subCategory", select: "name code" },
-        { path: "type", select: "name code" },
-        { path: "costCenter", select: "name code" },
-        { path: "createdBy", select: "name email" },
-      ]);
+      // Create Registry entries if there's initial stock
+      if ((metalStock.pcs && metalStock.pcsCount > 0 && metalStock.totalValue > 0) || 
+          (!metalStock.pcs && metalStock.totalValue > 0)) {
+        
+        // Get cost center code if available
+        let costCenterCode = null;
+        if (metalStock.costCenter) {
+          const CostCenter = mongoose.model("CostCenter");
+          const costCenter = await CostCenter.findById(metalStock.costCenter);
+          costCenterCode = costCenter ? costCenter.code : null;
+        }
 
-      return metalStock;
-    } catch (error) {
-      if (error.code === 11000) {
-        throw createAppError(
-          "Metal stock code already exists",
-          409,
-          "DUPLICATE_CODE"
+        await this.createRegistryEntries(
+          metalStock, 
+          "initial_stock", 
+          "Initial stock entry", 
+          costCenterCode,
+          session
         );
       }
+
+      await session.commitTransaction();
+
+      // Populate referenced fields
+      return await metalStock.populate([
+        { path: "metalType", select: "code description" },
+        { path: "branch", select: "name code" },
+        { path: "karat", select: "karatCode description standardPurity" },
+        { path: "category", select: "code description" },
+        { path: "subCategory", select: "code description" },
+        { path: "type", select: "code description" },
+        { path: "costCenter", select: "name code" },
+        { path: "price", select: "basePrice currency" },
+        { path: "createdBy", select: "name email" },
+      ]);
+    } catch (error) {
+      await session.abortTransaction();
+      if (error.code === 11000) {
+        throw createAppError("Metal stock code already exists", 409, "DUPLICATE_CODE");
+      }
+      throw error;
+    } finally {
+      session.endSession();
+    }
+  }
+
+  // Helper method to create Registry entries
+  static async createRegistryEntries(metalStock, transactionType, description, costCenterCode = null, session = null) {
+    try {
+      // Populate metal type if not already populated
+      if (!metalStock.metalType.code) {
+        await metalStock.populate('metalType', 'code description');
+      }
+      
+      const metalTypeCode = metalStock.metalType.code.toLowerCase();
+      const stockValue = metalStock.totalValue;
+      const registryEntries = [];
+
+      if (stockValue > 0) {
+        // Create metal-specific registry entry (e.g., "gold_stock", "silver_stock")
+        const metalRegistryEntry = new Registry({
+          costCenter: costCenterCode,
+          type: `${metalTypeCode}_stock`,
+          description: `${description} - ${metalStock.code} (${metalStock.description})`,
+          value: stockValue,
+          credit: stockValue, // Credit for stock addition
+          debit: 0,
+          reference: metalStock.code,
+          createdBy: metalStock.createdBy,
+        });
+
+        if (session) {
+          await metalRegistryEntry.save({ session });
+        } else {
+          await metalRegistryEntry.save();
+        }
+        registryEntries.push(metalRegistryEntry);
+
+        // Create general stock registry entry
+        const generalRegistryEntry = new Registry({
+          costCenter: costCenterCode,
+          type: "stock",
+          description: `${description} - ${metalStock.code} (${metalStock.description})`,
+          value: stockValue,
+          credit: stockValue, // Credit for stock addition
+          debit: 0,
+          reference: metalStock.code,
+          createdBy: metalStock.createdBy,
+        });
+
+        if (session) {
+          await generalRegistryEntry.save({ session });
+        } else {
+          await generalRegistryEntry.save();
+        }
+        registryEntries.push(generalRegistryEntry);
+      }
+
+      return registryEntries;
+    } catch (error) {
+      console.error("Error creating registry entries:", error);
       throw error;
     }
   }
 
-  // Get all metal stocks with pagination and filters
   static async getAllMetalStocks(options = {}) {
     try {
       const {
         page = 1,
         limit = 10,
-        search = "",
+        search,
         metalType,
         branch,
         category,
@@ -65,9 +151,8 @@ class MetalStockService {
       } = options;
 
       const skip = (page - 1) * limit;
-      const query = {};
+      const query = { isActive };
 
-      // Build query filters
       if (search) {
         query.$or = [
           { code: { $regex: search, $options: "i" } },
@@ -79,48 +164,31 @@ class MetalStockService {
       if (branch) query.branch = branch;
       if (category) query.category = category;
       if (status) query.status = status;
-      if (typeof isActive === "boolean") query.isActive = isActive;
 
-      // Get total count
       const totalRecords = await MetalStock.countDocuments(query);
-
-      // Get metal stocks with pagination
       const metalStocks = await MetalStock.find(query)
         .populate([
           { path: "metalType", select: "code description" },
           { path: "branch", select: "name code" },
-          {
-            path: "karat",
-            select:
-              "karatCode description minimum maximum isScrap standardPurity",
-          },
+          { path: "karat", select: "karatCode description standardPurity" },
           { path: "category", select: "code description" },
           { path: "subCategory", select: "code description" },
           { path: "type", select: "code description" },
-          // { path: 'costCenter', select: 'name code' },
-          { path: "size", select: "code description" },
-          { path: "color", select: "code description" },
-          { path: "brand", select: "code description" },
-          // { path: 'country',select: 'code description' },
-          // { path: 'price', select: 'amount currency' },
-          // { path: 'charges', select: 'name amount' },
-          // { path: 'makingCharge', select: 'name amount' },
+          { path: "price", select: "basePrice currency" },
           { path: "createdBy", select: "name email" },
           { path: "updatedBy", select: "name email" },
         ])
         .sort({ [sortBy]: sortOrder === "desc" ? -1 : 1 })
         .skip(skip)
-        .limit(parseInt(limit));
-
-      const totalPages = Math.ceil(totalRecords / limit);
+        .limit(limit);
 
       return {
         metalStocks,
         pagination: {
-          currentPage: parseInt(page),
-          totalPages,
+          currentPage: page,
+          totalPages: Math.ceil(totalRecords / limit),
           totalRecords,
-          hasNextPage: page < totalPages,
+          hasNextPage: page < Math.ceil(totalRecords / limit),
           hasPrevPage: page > 1,
         },
       };
@@ -129,22 +197,21 @@ class MetalStockService {
     }
   }
 
-  // Get metal stock by ID
   static async getMetalStockById(id) {
     try {
       const metalStock = await MetalStock.findById(id).populate([
         { path: "metalType", select: "code description" },
         { path: "branch", select: "name code" },
-        { path: "karat", select: "name value" },
-        { path: "category", select: "name code" },
-        { path: "subCategory", select: "name code" },
-        { path: "type", select: "name code" },
+        { path: "karat", select: "karatCode description standardPurity" },
+        { path: "category", select: "code description" },
+        { path: "subCategory", select: "code description" },
+        { path: "type", select: "code description" },
         { path: "costCenter", select: "name code" },
-        { path: "size", select: "name value" },
-        { path: "color", select: "name code" },
-        { path: "brand", select: "name code" },
+        { path: "size", select: "code description" },
+        { path: "color", select: "code description" },
+        { path: "brand", select: "code description" },
         { path: "country", select: "name code" },
-        { path: "price", select: "amount currency" },
+        { path: "price", select: "basePrice currency" },
         { path: "charges", select: "name amount" },
         { path: "makingCharge", select: "name amount" },
         { path: "createdBy", select: "name email" },
@@ -152,11 +219,7 @@ class MetalStockService {
       ]);
 
       if (!metalStock) {
-        throw createAppError(
-          "Metal stock not found",
-          404,
-          "METAL_STOCK_NOT_FOUND"
-        );
+        throw createAppError("Metal stock not found", 404, "METAL_STOCK_NOT_FOUND");
       }
 
       return metalStock;
@@ -165,93 +228,67 @@ class MetalStockService {
     }
   }
 
-  // Update metal stock
   static async updateMetalStock(id, updateData, adminId) {
     try {
-      // Check if metal stock exists
       const existingMetalStock = await MetalStock.findById(id);
       if (!existingMetalStock) {
-        throw createAppError(
-          "Metal stock not found",
-          404,
-          "METAL_STOCK_NOT_FOUND"
-        );
+        throw createAppError("Metal stock not found", 404, "METAL_STOCK_NOT_FOUND");
       }
 
-      // Check if code is being updated and if it already exists
       if (updateData.code && updateData.code !== existingMetalStock.code) {
-        const codeExists = await MetalStock.isCodeExists(updateData.code, id);
-        if (codeExists) {
-          throw createAppError(
-            "Metal stock code already exists",
-            409,
-            "DUPLICATE_CODE"
-          );
+        if (await MetalStock.isCodeExists(updateData.code, id)) {
+          throw createAppError("Metal stock code already exists", 409, "DUPLICATE_CODE");
         }
       }
 
-      // Update metal stock
+      if (updateData.karat) {
+        const KaratMaster = mongoose.model("KaratMaster");
+        const karat = await KaratMaster.findById(updateData.karat);
+        if (!karat) {
+          throw createAppError("Invalid karat ID", 400, "INVALID_KARAT");
+        }
+        updateData.standardPurity = karat.standardPurity;
+      }
+
       const updatedMetalStock = await MetalStock.findByIdAndUpdate(
         id,
-        {
-          ...updateData,
-          updatedBy: adminId,
-        },
+        { ...updateData, updatedBy: adminId },
         { new: true, runValidators: true }
       ).populate([
         { path: "metalType", select: "code description" },
         { path: "branch", select: "name code" },
-        {
-          path: "karat",
-          select:
-            "karatCode description minimum maximum isScrap standardPurity",
-        },
+        { path: "karat", select: "karatCode description standardPurity" },
         { path: "category", select: "code description" },
         { path: "subCategory", select: "code description" },
         { path: "type", select: "code description" },
-        // { path: 'costCenter', select: 'name code' },
+        { path: "costCenter", select: "name code" },
         { path: "size", select: "code description" },
         { path: "color", select: "code description" },
         { path: "brand", select: "code description" },
-        // { path: 'country',select: 'code description' },
-        // { path: 'price', select: 'amount currency' },
-        // { path: 'charges', select: 'name amount' },
-        // { path: 'makingCharge', select: 'name amount' },
+        { path: "country", select: "name code" },
+        { path: "price", select: "basePrice currency" },
         { path: "createdBy", select: "name email" },
         { path: "updatedBy", select: "name email" },
       ]);
 
       return updatedMetalStock;
     } catch (error) {
-      if (error.code === 11000) {
-        throw createAppError(
-          "Metal stock code already exists",
-          409,
-          "DUPLICATE_CODE"
-        );
-      }
       throw error;
     }
   }
 
-  // Delete metal stock (soft delete)
   static async deleteMetalStock(id, adminId) {
     try {
       const metalStock = await MetalStock.findById(id);
       if (!metalStock) {
-        throw createAppError(
-          "Metal stock not found",
-          404,
-          "METAL_STOCK_NOT_FOUND"
-        );
+        throw createAppError("Metal stock not found", 404, "METAL_STOCK_NOT_FOUND");
       }
 
-      // Soft delete - update status and isActive
       const deletedMetalStock = await MetalStock.findByIdAndUpdate(
         id,
         {
-          status: "inactive",
           isActive: false,
+          status: "inactive",
           updatedBy: adminId,
         },
         { new: true }
@@ -263,63 +300,256 @@ class MetalStockService {
     }
   }
 
-  // Hard delete metal stock (permanent deletion)
   static async hardDeleteMetalStock(id) {
     try {
       const metalStock = await MetalStock.findById(id);
       if (!metalStock) {
+        throw createAppError("Metal stock not found", 404, "METAL_STOCK_NOT_FOUND");
+      }
+
+      const registryEntries = await Registry.countDocuments({ reference: metalStock.code });
+      if (registryEntries > 0) {
         throw createAppError(
-          "Metal stock not found",
-          404,
-          "METAL_STOCK_NOT_FOUND"
+          "Cannot permanently delete metal stock with existing registry entries",
+          409,
+          "HAS_REGISTRY_ENTRIES"
         );
       }
 
       await MetalStock.findByIdAndDelete(id);
-      return { message: "Metal stock permanently deleted" };
+      return { message: "Metal stock permanently deleted successfully" };
     } catch (error) {
       throw error;
     }
   }
 
-  // Get low stock items
-  static async getLowStockItems(options = {}) {
+  static async updateStockQuantity(stockId, stockData, transactionType, description, adminId, costCenterCode = null) {
+    const session = await mongoose.startSession();
+    session.startTransaction();
+    
     try {
-      const { page = 1, limit = 10, branch, category } = options;
+      // Find the metal stock
+      const metalStock = await MetalStock.findById(stockId).populate('metalType', 'code description').session(session);
+      if (!metalStock) {
+        throw createAppError("Metal stock not found", 404, "METAL_STOCK_NOT_FOUND");
+      }
 
-      const skip = (page - 1) * limit;
-      const query = {
-        $expr: {
-          $lte: ["$stockQuantity", "$reorderLevel"],
-        },
-        isActive: true,
-        status: "active",
+      // Store original values
+      const originalPcsCount = metalStock.pcsCount;
+      const originalTotalValue = metalStock.totalValue;
+
+      // Update stock quantities
+      if (metalStock.pcs) {
+        // For piece-based stock
+        if (stockData.pcsCount !== undefined) {
+          metalStock.pcsCount += stockData.pcsCount;
+        }
+        if (stockData.totalValue !== undefined) {
+          metalStock.totalValue += stockData.totalValue;
+        }
+      } else {
+        // For weight-based stock
+        if (stockData.quantity !== undefined) {
+          metalStock.totalValue += stockData.quantity;
+        }
+      }
+
+      metalStock.updatedBy = adminId;
+      await metalStock.save({ session });
+
+      // Create registry entries for the stock update
+      const valueToRecord = metalStock.pcs ? stockData.totalValue : stockData.quantity;
+      if (valueToRecord > 0) {
+        await this.createRegistryEntries(
+          metalStock, 
+          transactionType, 
+          description, 
+          costCenterCode,
+          session
+        );
+      }
+
+      await session.commitTransaction();
+      
+      return {
+        metalStock,
+        adjustedPcs: metalStock.pcsCount - originalPcsCount,
+        adjustedValue: metalStock.totalValue - originalTotalValue,
+        originalPcs: originalPcsCount,
+        originalValue: originalTotalValue,
+        newPcs: metalStock.pcsCount,
+        newValue: metalStock.totalValue,
       };
+    } catch (error) {
+      await session.abortTransaction();
+      throw error;
+    } finally {
+      session.endSession();
+    }
+  }
 
-      if (branch) query.branch = branch;
-      if (category) query.category = category;
+  static async getMetalStockStats(filters = {}) {
+    try {
+      const { branch, category } = filters;
+      const baseQuery = { isActive: true, status: "active" };
 
-      const totalRecords = await MetalStock.countDocuments(query);
+      if (branch) baseQuery.branch = branch;
+      if (category) baseQuery.category = category;
 
-      const lowStockItems = await MetalStock.find(query)
-        .populate([
-          { path: "metalType", select: "code description" },
-          { path: "branch", select: "name code" },
-          { path: "category", select: "name code" },
-        ])
-        .sort({ stockQuantity: 1 })
-        .skip(skip)
-        .limit(parseInt(limit));
+      const totalStocks = await MetalStock.countDocuments(baseQuery);
 
-      const totalPages = Math.ceil(totalRecords / limit);
+      // Aggregate stock statistics
+      const stockStats = await MetalStock.aggregate([
+        { $match: baseQuery },
+        {
+          $lookup: {
+            from: "prices",
+            localField: "price",
+            foreignField: "_id",
+            as: "priceInfo",
+          },
+        },
+        { $unwind: { path: "$priceInfo", preserveNullAndEmptyArrays: true } },
+        {
+          $group: {
+            _id: null,
+            totalPcs: { $sum: "$pcsCount" },
+            totalValue: { $sum: "$totalValue" },
+            totalMonetaryValue: {
+              $sum: {
+                $multiply: [
+                  "$totalValue",
+                  { $ifNull: ["$priceInfo.basePrice", 0] },
+                  { $divide: ["$standardPurity", 100] },
+                ],
+              },
+            },
+            pieceBasedCount: { $sum: { $cond: ["$pcs", 1, 0] } },
+            weightBasedCount: { $sum: { $cond: ["$pcs", 0, 1] } },
+          },
+        },
+      ]);
+
+      const topCategories = await MetalStock.aggregate([
+        { $match: baseQuery },
+        {
+          $group: {
+            _id: "$category",
+            stockCount: { $sum: 1 },
+            totalPcs: { $sum: "$pcsCount" },
+            totalValue: { $sum: "$totalValue" },
+          },
+        },
+        {
+          $lookup: {
+            from: "maincategories",
+            localField: "_id",
+            foreignField: "_id",
+            as: "categoryInfo",
+          },
+        },
+        { $unwind: "$categoryInfo" },
+        {
+          $project: {
+            categoryName: "$categoryInfo.name",
+            categoryCode: "$categoryInfo.code",
+            stockCount: 1,
+            totalPcs: 1,
+            totalValue: 1,
+          },
+        },
+        { $sort: { stockCount: -1 } },
+        { $limit: 5 },
+      ]);
+
+      const metalTypeDistribution = await MetalStock.aggregate([
+        { $match: baseQuery },
+        {
+          $group: {
+            _id: "$metalType",
+            stockCount: { $sum: 1 },
+            totalPcs: { $sum: "$pcsCount" },
+            totalValue: { $sum: "$totalValue" },
+          },
+        },
+        {
+          $lookup: {
+            from: "divisionmasters",
+            localField: "_id",
+            foreignField: "_id",
+            as: "metalTypeInfo",
+          },
+        },
+        { $unwind: "$metalTypeInfo" },
+        {
+          $project: {
+            metalTypeName: "$metalTypeInfo.description",
+            metalTypeCode: "$metalTypeInfo.code",
+            stockCount: 1,
+            totalPcs: 1,
+            totalValue: 1,
+          },
+        },
+        { $sort: { stockCount: -1 } },
+      ]);
 
       return {
-        lowStockItems,
+        summary: {
+          totalStocks,
+          pieceBasedCount: stockStats[0]?.pieceBasedCount || 0,
+          weightBasedCount: stockStats[0]?.weightBasedCount || 0,
+        },
+        stockStatistics: {
+          totalPcs: stockStats[0]?.totalPcs || 0,
+          totalValue: stockStats[0]?.totalValue || 0,
+          totalMonetaryValue: stockStats[0]?.totalMonetaryValue || 0,
+        },
+        topCategories,
+        metalTypeDistribution,
+      };
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  static async getStockMovements(stockId, options = {}) {
+    try {
+      const { page = 1, limit = 10, sortBy = "createdAt", sortOrder = "desc" } = options;
+      const skip = (page - 1) * limit;
+
+      // Verify the metal stock exists
+      const metalStock = await MetalStock.findById(stockId);
+      if (!metalStock) {
+        throw createAppError("Metal stock not found", 404, "METAL_STOCK_NOT_FOUND");
+      }
+
+      // Get registry entries related to this stock
+      const query = { reference: metalStock.code };
+      
+      const totalRecords = await Registry.countDocuments(query);
+      const movements = await Registry.find(query)
+        .populate([
+          { path: "createdBy", select: "name email" },
+          { path: "updatedBy", select: "name email" },
+        ])
+        .sort({ [sortBy]: sortOrder === "desc" ? -1 : 1 })
+        .skip(skip)
+        .limit(limit);
+
+      return {
+        stockInfo: {
+          id: metalStock._id,
+          code: metalStock.code,
+          description: metalStock.description,
+          currentPcsCount: metalStock.pcsCount,
+          currentTotalValue: metalStock.totalValue,
+        },
+        movements,
         pagination: {
-          currentPage: parseInt(page),
-          totalPages,
+          currentPage: page,
+          totalPages: Math.ceil(totalRecords / limit),
           totalRecords,
-          hasNextPage: page < totalPages,
+          hasNextPage: page < Math.ceil(totalRecords / limit),
           hasPrevPage: page > 1,
         },
       };
@@ -328,39 +558,79 @@ class MetalStockService {
     }
   }
 
-  // Update stock quantity
-  static async updateStockQuantity(id, quantity, adminId) {
+  static async getStockMovementsSummary(stockId) {
     try {
-      const metalStock = await MetalStock.findById(id);
+      // Verify the metal stock exists
+      const metalStock = await MetalStock.findById(stockId);
       if (!metalStock) {
-        throw createAppError(
-          "Metal stock not found",
-          404,
-          "METAL_STOCK_NOT_FOUND"
-        );
+        throw createAppError("Metal stock not found", 404, "METAL_STOCK_NOT_FOUND");
       }
 
-      if (quantity < 0) {
-        throw createAppError(
-          "Stock quantity cannot be negative",
-          400,
-          "INVALID_QUANTITY"
-        );
-      }
-
-      const updatedMetalStock = await MetalStock.findByIdAndUpdate(
-        id,
+      // Get summary of movements
+      const movementsSummary = await Registry.aggregate([
+        { $match: { reference: metalStock.code } },
         {
-          stockQuantity: quantity,
-          updatedBy: adminId,
+          $group: {
+            _id: "$type",
+            totalCredit: { $sum: "$credit" },
+            totalDebit: { $sum: "$debit" },
+            transactionCount: { $sum: 1 },
+            lastTransaction: { $max: "$createdAt" },
+          },
         },
-        { new: true }
-      ).populate([
-        { path: "metalType", select: "code description" },
-        { path: "branch", select: "name code" },
+        { $sort: { lastTransaction: -1 } },
       ]);
 
-      return updatedMetalStock;
+      const overallSummary = await Registry.aggregate([
+        { $match: { reference: metalStock.code } },
+        {
+          $group: {
+            _id: null,
+            totalCredit: { $sum: "$credit" },
+            totalDebit: { $sum: "$debit" },
+            totalTransactions: { $sum: 1 },
+            firstTransaction: { $min: "$createdAt" },
+            lastTransaction: { $max: "$createdAt" },
+          },
+        },
+      ]);
+
+      return {
+        stockInfo: {
+          id: metalStock._id,
+          code: metalStock.code,
+          description: metalStock.description,
+          currentPcsCount: metalStock.pcsCount,
+          currentTotalValue: metalStock.totalValue,
+        },
+        movementsByType: movementsSummary,
+        overallSummary: overallSummary[0] || {
+          totalCredit: 0,
+          totalDebit: 0,
+          totalTransactions: 0,
+          firstTransaction: null,
+          lastTransaction: null,
+        },
+      };
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  static async getBulkStockData(stockIds) {
+    try {
+      const metalStocks = await MetalStock.find({
+        _id: { $in: stockIds },
+        isActive: true,
+      }).populate([
+        { path: "metalType", select: "code description" },
+        { path: "branch", select: "name code" },
+        { path: "karat", select: "karatCode description standardPurity" },
+        { path: "category", select: "code description" },
+        { path: "price", select: "basePrice currency" },
+      ]);
+
+      return metalStocks;
     } catch (error) {
       throw error;
     }
