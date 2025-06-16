@@ -29,6 +29,11 @@ const RegistrySchema = new mongoose.Schema(
       trim: true,
       maxlength: [500, "Description cannot exceed 500 characters"],
     },
+    paryty:{
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "TradeDebtors",
+      default: null,
+    },
     value: {
       type: Number,
       required: [true, "Transaction value is required"],

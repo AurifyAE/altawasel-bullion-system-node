@@ -15,6 +15,9 @@ import costCenterMasterRoutes from "./routes/modules/costCenterMasterRoutes.js";
 import metalPurchaseRoutes from "./routes/modules/MetalPurchaseRoutes.js";
 import RegistryRouter from "./routes/modules/RegistryRouter.js"
 import VoucherRoute from "./routes/modules/VoucherMasterRoute.js"
+import accountRoutes from "./routes/modules/accountMasterRoutes.js"
+import entryRoutes from "./routes/modules/entryMasterRoutes.js";
+// import accountRoute from './routes/modules/accountMasterRoutes.js'
 
 
 import { mongodb } from "./config/db.js";
@@ -76,7 +79,9 @@ app.use("/api/v1/metal-stocks", metalStockRoutes);
 app.use("/api/v1/cost-centers", costCenterMasterRoutes);
 app.use("/api/v1/metal-purchases", metalPurchaseRoutes);
 app.use("/api/v1/registry", RegistryRouter);
-app.use("/api/v1/voucher",VoucherRoute)
+app.use("/api/v1/voucher", VoucherRoute);
+app.use("/api/v1/account", accountRoutes);
+app.use("/api/v1/entry", entryRoutes);
 
 // Global error handling middleware
 app.use(errorHandler);
