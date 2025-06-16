@@ -1,14 +1,14 @@
-import TradeDebtors from "../../models/modules/TradeDebtors.js";
+import TradeCreditors from "../../models/modules/TradeCreditors.js";
 import { createAppError } from "../../utils/errorHandler.js";
 import { deleteMultipleS3Files } from "../../utils/s3Utils.js";
 
-class TradeDebtorsService {
-  // Create new trade debtor
-  static async createTradeDebtor(debtorData, adminId) {
+class TradeCreditorService {
+  // Create new trade creditor
+  static async createTradeCreditor(creditorData, adminId) {
     try {
       // Check if account code already exists
-      const isCodeExists = await TradeDebtors.isAccountCodeExists(
-        debtorData.accountCode
+      const isCodeExists = await TradeCreditors.isAccountCodeExists(
+        creditorData.accountCode
       );
       if (isCodeExists) {
         throw createAppError(
@@ -19,7 +19,7 @@ class TradeDebtorsService {
       }
 
       // Validate required nested data
-      if (!debtorData.addresses || debtorData.addresses.length === 0) {
+      if (!creditorData.addresses || creditorData.addresses.length === 0) {
         throw createAppError(
           "At least one address is required",
           400,
@@ -27,7 +27,7 @@ class TradeDebtorsService {
         );
       }
 
-      if (!debtorData.employees || debtorData.employees.length === 0) {
+      if (!creditorData.employees || creditorData.employees.length === 0) {
         throw createAppError(
           "At least one employee contact is required",
           400,
@@ -36,14 +36,14 @@ class TradeDebtorsService {
       }
 
       // Set created by
-      debtorData.createdBy = adminId;
+      creditorData.createdBy = adminId;
 
-      // Create trade debtor
-      const tradeDebtor = new TradeDebtors(debtorData);
-      await tradeDebtor.save();
+      // Create trade creditor
+      const tradeCreditor = new TradeCreditors(creditorData);
+      await tradeCreditor.save();
 
       // Populate references
-      await tradeDebtor.populate([
+      await tradeCreditor.populate([
         {
           path: "acDefinition.currencies.currency",
           select: "currencyCode description",
@@ -58,7 +58,7 @@ class TradeDebtorsService {
         },
       ]);
       
-      return tradeDebtor;
+      return tradeCreditor;
     } catch (error) {
       if (error.name === "ValidationError") {
         const messages = Object.values(error.errors).map((err) => err.message);
@@ -72,8 +72,8 @@ class TradeDebtorsService {
     }
   }
 
-  // Get all trade debtors with pagination and filters
-  static async getAllTradeDebtors(options = {}) {
+  // Get all trade creditors with pagination and filters
+  static async getAllTradeCreditors(options = {}) {
     try {
       const {
         page = 1,
@@ -111,8 +111,8 @@ class TradeDebtorsService {
       const sort = {};
       sort[sortBy] = sortOrder === "desc" ? -1 : 1;
 
-      const [tradeDebtors, total] = await Promise.all([
-        TradeDebtors.find(query)
+      const [tradeCreditors, total] = await Promise.all([
+        TradeCreditors.find(query)
           .populate([
             {
               path: "acDefinition.currencies.currency",
@@ -125,11 +125,11 @@ class TradeDebtorsService {
           .sort(sort)
           .skip(skip)
           .limit(parseInt(limit)),
-        TradeDebtors.countDocuments(query),
+          TradeCreditors.countDocuments(query),
       ]);
 
       return {
-        tradeDebtors,
+        tradeCreditors,
         pagination: {
           currentPage: parseInt(page),
           totalPages: Math.ceil(total / limit),
@@ -138,14 +138,14 @@ class TradeDebtorsService {
         },
       };
     } catch (error) {
-      throw createAppError("Error fetching trade debtors", 500, "FETCH_ERROR");
+      throw createAppError("Error fetching trade creditors", 500, "FETCH_ERROR");
     }
   }
 
-  // Get trade debtor by ID
-  static async getTradeDebtorById(id) {
+  // Get trade creditor by ID
+  static async getTradeCreditorById(id) {
     try {
-      const tradeDebtor = await TradeDebtors.findById(id).populate([
+      const tradeCreditor = await TradeCreditors.findById(id).populate([
         {
           path: "acDefinition.currencies.currency",
           select: "code name symbol",
@@ -156,25 +156,26 @@ class TradeDebtorsService {
         { path: "updatedBy", select: "name email" },
       ]);
 
-      if (!tradeDebtor) {
-        throw createAppError("Trade debtor not found", 404, "DEBTOR_NOT_FOUND");
+      if (!tradeCreditor) {
+        throw createAppError("Trade creditor not found", 404, "CREDITOR_NOT_FOUND");
       }
 
-      return tradeDebtor;
+      return tradeCreditor;
     } catch (error) {
       if (error.name === "CastError") {
-        throw createAppError("Invalid trade debtor ID", 400, "INVALID_ID");
+        throw createAppError("Invalid trade creditor ID", 400, "INVALID_ID");
       }
       throw error;
     }
   }
-  static extractS3Keys(tradeDebtor) {
+
+  static extractS3Keys(tradeCreditor) {
     const s3Keys = [];
 
     try {
       // Extract from VAT/GST documents
-      if (tradeDebtor.vatGstDetails?.documents?.length) {
-        tradeDebtor.vatGstDetails.documents.forEach((doc) => {
+      if (tradeCreditor.vatGstDetails?.documents?.length) {
+        tradeCreditor.vatGstDetails.documents.forEach((doc) => {
           if (doc.s3Key && typeof doc.s3Key === "string" && doc.s3Key.trim()) {
             s3Keys.push(doc.s3Key.trim());
           }
@@ -182,8 +183,8 @@ class TradeDebtorsService {
       }
 
       // Extract from KYC documents
-      if (tradeDebtor.kycDetails?.length) {
-        tradeDebtor.kycDetails.forEach((kyc) => {
+      if (tradeCreditor.kycDetails?.length) {
+        tradeCreditor.kycDetails.forEach((kyc) => {
           if (kyc.documents?.length) {
             kyc.documents.forEach((doc) => {
               if (
@@ -246,13 +247,13 @@ class TradeDebtorsService {
   }
 
   // Helper function to get files to delete based on replacement/removal logic
-  static getFilesToDelete(existingTradeDebtor, updateData) {
+  static getFilesToDelete(existingTradeCreditor, updateData) {
     const filesToDelete = [];
 
     try {
       // Handle VAT documents
       if (updateData.vatGstDetails?.documents) {
-        const oldVatDocs = existingTradeDebtor.vatGstDetails?.documents || [];
+        const oldVatDocs = existingTradeCreditor.vatGstDetails?.documents || [];
 
         // If we're completely replacing VAT documents
         if (updateData._replaceVatDocuments) {
@@ -288,7 +289,7 @@ class TradeDebtorsService {
         updateData.kycDetails.forEach((kycUpdate, index) => {
           if (kycUpdate.documents) {
             const oldKycDocs =
-              existingTradeDebtor.kycDetails?.[index]?.documents || [];
+              existingTradeCreditor.kycDetails?.[index]?.documents || [];
 
             // If we're completely replacing KYC documents for this entry
             if (kycUpdate._replaceDocuments) {
@@ -329,19 +330,19 @@ class TradeDebtorsService {
     }
   }
 
-  static async updateTradeDebtor(id, updateData, adminId) {
+  static async updateTradeCreditor(id, updateData, adminId) {
     try {
-      const tradeDebtor = await TradeDebtors.findById(id);
-      if (!tradeDebtor) {
-        throw createAppError("Trade debtor not found", 404, "DEBTOR_NOT_FOUND");
+      const tradeCreditor = await TradeCreditors.findById(id);
+      if (!tradeCreditor) {
+        throw createAppError("Trade creditor not found", 404, "CREDITOR_NOT_FOUND");
       }
 
       // Check if account code is being updated and if it already exists
       if (
         updateData.accountCode &&
-        updateData.accountCode !== tradeDebtor.accountCode
+        updateData.accountCode !== tradeCreditor.accountCode
       ) {
-        const isCodeExists = await TradeDebtors.isAccountCodeExists(
+        const isCodeExists = await TradeCreditors.isAccountCodeExists(
           updateData.accountCode,
           id
         );
@@ -355,11 +356,11 @@ class TradeDebtorsService {
       }
 
       // Determine which files need to be deleted
-      const filesToDelete = this.getFilesToDelete(tradeDebtor, updateData);
+      const filesToDelete = this.getFilesToDelete(tradeCreditor, updateData);
 
       // Process document updates with proper merging
       if (updateData.vatGstDetails?.documents) {
-        const oldVatDocs = tradeDebtor.vatGstDetails?.documents || [];
+        const oldVatDocs = tradeCreditor.vatGstDetails?.documents || [];
 
         if (updateData._replaceVatDocuments) {
           // Complete replacement - just use new documents
@@ -387,7 +388,7 @@ class TradeDebtorsService {
       if (updateData.kycDetails?.length) {
         updateData.kycDetails.forEach((kycUpdate, index) => {
           if (kycUpdate.documents) {
-            const oldKycDocs = tradeDebtor.kycDetails?.[index]?.documents || [];
+            const oldKycDocs = tradeCreditor.kycDetails?.[index]?.documents || [];
 
             if (kycUpdate._replaceDocuments) {
               // Complete replacement - just use new documents
@@ -425,7 +426,7 @@ class TradeDebtorsService {
       updateData.updatedAt = new Date();
 
       // Update the database first
-      const updatedTradeDebtor = await TradeDebtors.findByIdAndUpdate(
+      const updatedTradeCreditor = await TradeCreditors.findByIdAndUpdate(
         id,
         updateData,
         { new: true, runValidators: true }
@@ -477,7 +478,7 @@ class TradeDebtorsService {
       }
 
       return {
-        ...updatedTradeDebtor.toObject(),
+        ...updatedTradeCreditor.toObject(),
         _filesManagement: {
           filesDeleted: s3DeletionResult.successful?.length || 0,
           filesFailedToDelete: s3DeletionResult.failed?.length || 0,
@@ -497,22 +498,22 @@ class TradeDebtorsService {
         );
       }
       if (error.name === "CastError") {
-        throw createAppError("Invalid trade debtor ID", 400, "INVALID_ID");
+        throw createAppError("Invalid trade creditor ID", 400, "INVALID_ID");
       }
       throw error;
     }
   }
 
-  // Delete trade debtor (soft delete)
-  static async deleteTradeDebtor(id, adminId) {
+  // Delete trade creditor (soft delete)
+  static async deleteTradeCreditor(id, adminId) {
     try {
-      const tradeDebtor = await TradeDebtors.findById(id);
-      if (!tradeDebtor) {
-        throw createAppError("Trade debtor not found", 404, "DEBTOR_NOT_FOUND");
+      const tradeCreditor = await TradeCreditors.findById(id);
+      if (!tradeCreditor) {
+        throw createAppError("Trade creditor not found", 404, "CREDITOR_NOT_FOUND");
       }
 
       // Soft delete - mark as inactive
-      const deletedTradeDebtor = await TradeDebtors.findByIdAndUpdate(
+      const deletedTradeCreditor = await TradeCreditors.findByIdAndUpdate(
         id,
         {
           isActive: false,
@@ -522,38 +523,38 @@ class TradeDebtorsService {
         { new: true }
       );
 
-      return deletedTradeDebtor;
+      return deletedTradeCreditor;
     } catch (error) {
       if (error.name === "CastError") {
-        throw createAppError("Invalid trade debtor ID", 400, "INVALID_ID");
+        throw createAppError("Invalid trade creditor ID", 400, "INVALID_ID");
       }
       throw error;
     }
   }
 
-  // Hard delete trade debtor
-  static async hardDeleteTradeDebtor(id) {
+  // Hard delete trade creditor
+  static async hardDeleteTradeCreditor(id) {
     try {
-      const tradeDebtor = await TradeDebtors.findById(id);
-      if (!tradeDebtor) {
-        throw createAppError("Trade debtor not found", 404, "DEBTOR_NOT_FOUND");
+      const tradeCreditor = await TradeCreditors.findById(id);
+      if (!tradeCreditor) {
+        throw createAppError("Trade creditor not found", 404, "CREDITOR_NOT_FOUND");
       }
 
       // Extract all S3 keys from the document
-      const s3Keys = this.extractS3Keys(tradeDebtor);
+      const s3Keys = this.extractS3Keys(tradeCreditor);
 
       console.log(
-        `Preparing to delete trade debtor ${id} with ${s3Keys.length} associated files`
+        `Preparing to delete trade creditor ${id} with ${s3Keys.length} associated files`
       );
 
-      // Delete the trade debtor from database first
-      await TradeDebtors.findByIdAndDelete(id);
+      // Delete the trade creditor from database first
+      await TradeCreditors.findByIdAndDelete(id);
 
       // Delete associated S3 files if any exist
       let s3DeletionResult = { successful: [], failed: [] };
       if (s3Keys.length > 0) {
         console.log(
-          `Deleting ${s3Keys.length} S3 files for trade debtor ${id}:`,
+          `Deleting ${s3Keys.length} S3 files for trade creditor ${id}:`,
           s3Keys
         );
 
@@ -576,7 +577,7 @@ class TradeDebtorsService {
       }
 
       const result = {
-        message: "Trade debtor permanently deleted",
+        message: "Trade creditor permanently deleted",
         filesDeleted: {
           total: s3Keys.length,
           successful: s3DeletionResult.successful?.length || 0,
@@ -596,7 +597,7 @@ class TradeDebtorsService {
       return result;
     } catch (error) {
       if (error.name === "CastError") {
-        throw createAppError("Invalid trade debtor ID", 400, "INVALID_ID");
+        throw createAppError("Invalid trade creditor ID", 400, "INVALID_ID");
       }
       throw error;
     }
@@ -605,13 +606,13 @@ class TradeDebtorsService {
   // Toggle status
   static async toggleStatus(id, adminId) {
     try {
-      const tradeDebtor = await TradeDebtors.findById(id);
-      if (!tradeDebtor) {
-        throw createAppError("Trade debtor not found", 404, "DEBTOR_NOT_FOUND");
+      const tradeCreditor = await TradeCreditors.findById(id);
+      if (!tradeCreditor) {
+        throw createAppError("Trade creditor not found", 404, "CREDITOR_NOT_FOUND");
       }
 
-      const newStatus = tradeDebtor.status === "active" ? "inactive" : "active";
-      const updatedTradeDebtor = await TradeDebtors.findByIdAndUpdate(
+      const newStatus = tradeCreditor.status === "active" ? "inactive" : "active";
+      const updatedTradeCreditor = await TradeCreditors.findByIdAndUpdate(
         id,
         {
           status: newStatus,
@@ -621,37 +622,37 @@ class TradeDebtorsService {
         { new: true }
       );
 
-      return updatedTradeDebtor;
+      return updatedTradeCreditor;
     } catch (error) {
       if (error.name === "CastError") {
-        throw createAppError("Invalid trade debtor ID", 400, "INVALID_ID");
+        throw createAppError("Invalid trade creditor ID", 400, "INVALID_ID");
       }
       throw error;
     }
   }
 
-  // Get active debtors for dropdown
-  static async getActiveDebtorsList() {
+  // Get active creditors for dropdown
+  static async getActiveCreditorsList() {
     try {
-      const debtors = await TradeDebtors.find(
+      const creditors = await TradeCreditors.find(
         { isActive: true, status: "active" },
         { accountCode: 1, customerName: 1, shortName: 1 }
       ).sort({ customerName: 1 });
 
-      return debtors;
+      return creditors;
     } catch (error) {
       throw createAppError(
-        "Error fetching active debtors list",
+        "Error fetching active creditors list",
         500,
         "FETCH_ERROR"
       );
     }
   }
 
-  // Search debtors by name or code
-  static async searchDebtors(searchTerm) {
+  // Search creditors by name or code
+  static async searchCreditors(searchTerm) {
     try {
-      const debtors = await TradeDebtors.find(
+      const creditors = await TradeCreditors.find(
         {
           isActive: true,
           status: "active",
@@ -664,34 +665,34 @@ class TradeDebtorsService {
         { accountCode: 1, customerName: 1, shortName: 1 }
       ).limit(10);
 
-      return debtors;
+      return creditors;
     } catch (error) {
-      throw createAppError("Error searching debtors", 500, "SEARCH_ERROR");
+      throw createAppError("Error searching creditors", 500, "SEARCH_ERROR");
     }
   }
 
-  // Get debtor statistics
-  static async getDebtorStatistics() {
+  // Get creditor statistics
+  static async getCreditorStatistics() {
     try {
-      const stats = await TradeDebtors.aggregate([
+      const stats = await TradeCreditors.aggregate([
         {
           $group: {
             _id: null,
-            totalDebtors: { $sum: 1 },
-            activeDebtors: {
+            totalCreditors: { $sum: 1 },
+            activeCreditors: {
               $sum: { $cond: [{ $eq: ["$status", "active"] }, 1, 0] },
             },
-            inactiveDebtors: {
+            inactiveCreditors: {
               $sum: { $cond: [{ $eq: ["$status", "inactive"] }, 1, 0] },
             },
-            suspendedDebtors: {
+            suspendedCreditors: {
               $sum: { $cond: [{ $eq: ["$status", "suspended"] }, 1, 0] },
             },
           },
         },
       ]);
 
-      const classificationStats = await TradeDebtors.aggregate([
+      const classificationStats = await TradeCreditors.aggregate([
         {
           $group: {
             _id: "$classification",
@@ -702,16 +703,16 @@ class TradeDebtorsService {
 
       return {
         general: stats[0] || {
-          totalDebtors: 0,
-          activeDebtors: 0,
-          inactiveDebtors: 0,
-          suspendedDebtors: 0,
+          totalCreditors: 0,
+          activeCreditors: 0,
+          inactiveCreditors: 0,
+          suspendedCreditors: 0,
         },
         byClassification: classificationStats,
       };
     } catch (error) {
       throw createAppError(
-        "Error fetching debtor statistics",
+        "Error fetching creditor statistics",
         500,
         "STATS_ERROR"
       );
@@ -719,4 +720,4 @@ class TradeDebtorsService {
   }
 }
 
-export default TradeDebtorsService;
+export default TradeCreditorService;

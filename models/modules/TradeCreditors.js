@@ -1,13 +1,13 @@
 import mongoose from "mongoose";
 
-const TradeDebtorsSchema = new mongoose.Schema(
+const TradeCreditorsSchema = new mongoose.Schema(
   {
     // Basic Account Information
     accountType: {
       type: String,
       required: [true, "Account type is required"],
       trim: true,
-      default: "Debtors",
+      default: "Creditors",
     },
     title: {
       type: String,
@@ -181,7 +181,7 @@ const TradeDebtorsSchema = new mongoose.Schema(
           trim: true,
           maxlength: [20, "Zip code cannot exceed 20 characters"],
         },
-        phoneNumber1:{
+        phoneNumber1: {
           type: String,
           default: null,
           trim: true,
@@ -451,19 +451,19 @@ const TradeDebtorsSchema = new mongoose.Schema(
 );
 
 // Indexes for better performance
-TradeDebtorsSchema.index({ accountCode: 1 });
-TradeDebtorsSchema.index({ customerName: 1 });
-TradeDebtorsSchema.index({ status: 1 });
-TradeDebtorsSchema.index({ isActive: 1 });
-TradeDebtorsSchema.index({ createdAt: -1 });
-TradeDebtorsSchema.index({ "employees.email": 1 });
-TradeDebtorsSchema.index({ "vatGstDetails.vatNumber": 1 });
+TradeCreditorsSchema.index({ accountCode: 1 });
+TradeCreditorsSchema.index({ customerName: 1 });
+TradeCreditorsSchema.index({ status: 1 });
+TradeCreditorsSchema.index({ isActive: 1 });
+TradeCreditorsSchema.index({ createdAt: -1 });
+TradeCreditorsSchema.index({ "employees.email": 1 });
+TradeCreditorsSchema.index({ "vatGstDetails.vatNumber": 1 });
 // New indexes for balance queries
-TradeDebtorsSchema.index({ "balances.totalOutstanding": 1 });
-TradeDebtorsSchema.index({ "balances.goldBalance.totalGrams": 1 });
+TradeCreditorsSchema.index({ "balances.totalOutstanding": 1 });
+TradeCreditorsSchema.index({ "balances.goldBalance.totalGrams": 1 });
 
 // Pre-save middleware to ensure uppercase codes
-TradeDebtorsSchema.pre("save", function (next) {
+TradeCreditorsSchema.pre("save", function (next) {
   if (this.accountCode) {
     this.accountCode = this.accountCode.toUpperCase();
   }
@@ -518,7 +518,7 @@ TradeDebtorsSchema.pre("save", function (next) {
 });
 
 // Static method to check if account code exists
-TradeDebtorsSchema.statics.isAccountCodeExists = async function (
+TradeCreditorsSchema.statics.isAccountCodeExists = async function (
   accountCode,
   excludeId = null
 ) {
@@ -526,17 +526,17 @@ TradeDebtorsSchema.statics.isAccountCodeExists = async function (
   if (excludeId) {
     query._id = { $ne: excludeId };
   }
-  const debtor = await this.findOne(query);
-  return !!debtor;
+  const creditor = await this.findOne(query);
+  return !!creditor;
 };
 
-// Static method to get active debtors
-TradeDebtorsSchema.statics.getActiveDebtors = function () {
+// Static method to get active creditors
+TradeCreditorsSchema.statics.getActiveCreditors = function () {
   return this.find({ isActive: true, status: "active" });
 };
 
-// Static method to get debtors with outstanding balances
-TradeDebtorsSchema.statics.getDebtorsWithOutstanding = function (minAmount = 0) {
+// Static method to get creditors with outstanding balances
+TradeCreditorsSchema.statics.getCreditorsWithOutstanding = function (minAmount = 0) {
   return this.find({ 
     isActive: true, 
     status: "active",
@@ -544,8 +544,8 @@ TradeDebtorsSchema.statics.getDebtorsWithOutstanding = function (minAmount = 0) 
   });
 };
 
-// Static method to get total gold balance across all debtors
-TradeDebtorsSchema.statics.getTotalGoldBalance = async function () {
+// Static method to get total gold balance across all creditors
+TradeCreditorsSchema.statics.getTotalGoldBalance = async function () {
   const result = await this.aggregate([
     { $match: { isActive: true, status: "active" } },
     {
@@ -560,22 +560,22 @@ TradeDebtorsSchema.statics.getTotalGoldBalance = async function () {
 };
 
 // Instance method to get primary contact
-TradeDebtorsSchema.methods.getPrimaryContact = function () {
+TradeCreditorsSchema.methods.getPrimaryContact = function () {
   return this.employees.find((emp) => emp.isPrimary) || this.employees[0];
 };
 
 // Instance method to get primary address
-TradeDebtorsSchema.methods.getPrimaryAddress = function () {
+TradeCreditorsSchema.methods.getPrimaryAddress = function () {
   return this.addresses.find((addr) => addr.isPrimary) || this.addresses[0];
 };
 
 // Instance method to get primary bank
-TradeDebtorsSchema.methods.getPrimaryBank = function () {
+TradeCreditorsSchema.methods.getPrimaryBank = function () {
   return this.bankDetails.find((bank) => bank.isPrimary) || this.bankDetails[0];
 };
 
 // Instance method to update gold balance
-TradeDebtorsSchema.methods.updateGoldBalance = function (
+TradeCreditorsSchema.methods.updateGoldBalance = function (
   grams, 
   value, 
   currency = null
@@ -591,7 +591,7 @@ TradeDebtorsSchema.methods.updateGoldBalance = function (
 };
 
 // Instance method to update cash balance for a specific currency
-TradeDebtorsSchema.methods.updateCashBalance = function (currencyId, amount) {
+TradeCreditorsSchema.methods.updateCashBalance = function (currencyId, amount) {
   const existingBalance = this.balances.cashBalance.find(
     (balance) => balance.currency.toString() === currencyId.toString()
   );
@@ -612,7 +612,7 @@ TradeDebtorsSchema.methods.updateCashBalance = function (currencyId, amount) {
 };
 
 // Instance method to get cash balance for a specific currency
-TradeDebtorsSchema.methods.getCashBalance = function (currencyId) {
+TradeCreditorsSchema.methods.getCashBalance = function (currencyId) {
   const balance = this.balances.cashBalance.find(
     (balance) => balance.currency.toString() === currencyId.toString()
   );
@@ -620,7 +620,7 @@ TradeDebtorsSchema.methods.getCashBalance = function (currencyId) {
 };
 
 // Instance method to calculate total outstanding
-TradeDebtorsSchema.methods.calculateTotalOutstanding = function () {
+TradeCreditorsSchema.methods.calculateTotalOutstanding = function () {
   // This would typically involve complex calculations based on your business logic
   // For now, just sum up cash balances
   const totalCash = this.balances.cashBalance.reduce((sum, balance) => {
@@ -631,6 +631,6 @@ TradeDebtorsSchema.methods.calculateTotalOutstanding = function () {
   return this.balances.totalOutstanding;
 };
 
-const TradeDebtors = mongoose.model("TradeDebtors", TradeDebtorsSchema);
+const TradeCreditors = mongoose.model("TradeCreditors", TradeCreditorsSchema);
 
-export default TradeDebtors;
+export default TradeCreditors;
