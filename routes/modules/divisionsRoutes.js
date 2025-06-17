@@ -23,18 +23,16 @@ router.use(authenticateToken);
 
 // GET routes
 router.get(
-  "/",
-  validatePagination,
-  validateSearchParams,
+  "/divisions",
   getAllDivisions
 );
 router.get("/:id", getDivisionById);
 
 // POST routes
-router.post("/", validateCreateDivision, createDivision);
+router.post("/divisions-add", createDivision);
 
 // PUT routes
-router.put("/:id", validateUpdateDivision, updateDivision);
+router.put("/:id", updateDivision);
 router.put("/:id/restore", restoreDivision);
 
 // DELETE routes

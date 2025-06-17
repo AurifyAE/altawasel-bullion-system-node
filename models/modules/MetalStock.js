@@ -34,12 +34,7 @@ const MetalStockSchema = new mongoose.Schema(
       ref: "KaratMaster",
       required: [true, "Karat is required"],
     },
-    standardPurity: {
-      type: Number,
-      required: [true, "Standard purity is required"],
-      min: [0, "Standard purity cannot be negative"],
-      max: [100, "Standard purity cannot exceed 100%"],
-    },
+ 
     pcs: {
       type: Boolean,
       default: false, // true for pieces, false for weight-based
@@ -209,140 +204,6 @@ MetalStockSchema.pre("save", async function (next) {
   }
 });
 
-// Post-save middleware to create Registry entries when stock is added
-MetalStockSchema.post("save", async function (doc, next) {
-  try {
-    // Only create registry entries for new documents with initial stock
-    if (doc.isNew && (doc.pcsCount > 0 || doc.totalValue > 0)) {
-      await doc.createRegistryEntries("initial_stock", "Initial stock entry");
-    }
-    next();
-  } catch (error) {
-    console.error("Error creating registry entries:", error);
-    next();
-  }
-});
-
-// Method to create Registry entries for stock transactions
-MetalStockSchema.methods.createRegistryEntries = async function (transactionType, description, costCenterCode = null) {
-  try {
-    const registryEntries = [];
-    
-    // Get metal type for determining registry type
-    await this.populate('metalType', 'code description');
-    const metalTypeCode = this.metalType.code.toLowerCase();
-    
-    // Determine cost center code
-    let finalCostCenterCode = costCenterCode;
-    if (!finalCostCenterCode && this.costCenter) {
-      const CostCenter = mongoose.model("CostCenter");
-      const costCenter = await CostCenter.findById(this.costCenter);
-      finalCostCenterCode = costCenter ? costCenter.code : null;
-    }
-    
-    // Create registry entry for the metal type (e.g., "gold", "silver")
-    const metalRegistryType = `${metalTypeCode}_stock`;
-    const stockValue = this.pcs ? this.totalValue : this.totalValue;
-    
-    if (stockValue > 0) {
-      const registryEntry = new Registry({
-        costCenter: finalCostCenterCode,
-        type: metalRegistryType,
-        description: `${description} - ${this.code} (${this.description})`,
-        value: stockValue,
-        credit: stockValue, // Credit for stock addition
-        debit: 0,
-        reference: this.code,
-        createdBy: this.createdBy,
-      });
-      
-      registryEntries.push(registryEntry);
-    }
-
-    // Create a general "stock" registry entry
-    if (stockValue > 0) {
-      const generalRegistryEntry = new Registry({
-        costCenter: finalCostCenterCode,
-        type: "stock",
-        description: `${description} - ${this.code} (${this.description})`,
-        value: stockValue,
-        credit: stockValue, // Credit for stock addition
-        debit: 0,
-        reference: this.code,
-        createdBy: this.createdBy,
-      });
-      
-      registryEntries.push(generalRegistryEntry);
-    }
-
-    // Save all registry entries
-    if (registryEntries.length > 0) {
-      await Promise.all(registryEntries.map(entry => entry.save()));
-    }
-
-    return registryEntries;
-  } catch (error) {
-    console.error("Error creating registry entries:", error);
-    throw error;
-  }
-};
-
-// Static method to update stock with registry entries
-MetalStockSchema.statics.updateStockWithRegistry = async function (stockId, stockData, transactionType, description, adminId, costCenterCode = null) {
-  const session = await mongoose.startSession();
-  session.startTransaction();
-  
-  try {
-    // Find the metal stock
-    const metalStock = await this.findById(stockId).session(session);
-    if (!metalStock) {
-      throw new Error("Metal stock not found");
-    }
-
-    // Store original values
-    const originalPcsCount = metalStock.pcsCount;
-    const originalTotalValue = metalStock.totalValue;
-
-    // Update stock quantities
-    if (metalStock.pcs) {
-      // For piece-based stock
-      if (stockData.pcsCount !== undefined) {
-        metalStock.pcsCount += stockData.pcsCount;
-      }
-      if (stockData.totalValue !== undefined) {
-        metalStock.totalValue += stockData.totalValue;
-      }
-    } else {
-      // For weight-based stock
-      if (stockData.quantity !== undefined) {
-        metalStock.totalValue += stockData.quantity;
-      }
-    }
-
-    metalStock.updatedBy = adminId;
-    await metalStock.save({ session });
-
-    // Create registry entries
-    await metalStock.createRegistryEntries(transactionType, description, costCenterCode);
-
-    await session.commitTransaction();
-    
-    return {
-      metalStock,
-      adjustedPcs: metalStock.pcsCount - originalPcsCount,
-      adjustedValue: metalStock.totalValue - originalTotalValue,
-      originalPcs: originalPcsCount,
-      originalValue: originalTotalValue,
-      newPcs: metalStock.pcsCount,
-      newValue: metalStock.totalValue,
-    };
-  } catch (error) {
-    await session.abortTransaction();
-    throw error;
-  } finally {
-    session.endSession();
-  }
-};
 
 // Static method to check if code exists
 MetalStockSchema.statics.isCodeExists = async function (
@@ -355,6 +216,8 @@ MetalStockSchema.statics.isCodeExists = async function (
   }
   return !!(await this.findOne(query));
 };
+
+
 
 const MetalStock = mongoose.model("MetalStock", MetalStockSchema);
 

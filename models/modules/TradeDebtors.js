@@ -7,7 +7,7 @@ const TradeDebtorsSchema = new mongoose.Schema(
       type: String,
       required: [true, "Account type is required"],
       trim: true,
-      default: "Debtors",
+      default: "null",
     },
     title: {
       type: String,

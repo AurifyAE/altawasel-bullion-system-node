@@ -6,6 +6,7 @@ import mongoose from "mongoose";
 export const DivisionMasterService = {
   // Create Division
   createDivision: async (divisionData, adminId) => {
+    console.log(divisionData)
     try {
       // Check if code already exists
       const isCodeExists = await DivisionMaster.isCodeExists(divisionData.code);
