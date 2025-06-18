@@ -12,7 +12,7 @@ import tradeDebtorsRoutes from "./routes/modules/tradeDebtorsRoutes.js";
 import tradeCreditorRoute from "./routes/modules/tradeCreditorRoute.js";
 import metalStockRoutes from "./routes/modules/metalStockRoutes.js";
 import costCenterMasterRoutes from "./routes/modules/costCenterMasterRoutes.js";
-import metalPurchaseRoutes from "./routes/modules/metalPurchaseRoutes.js";
+import metalTransaction from "./routes/modules/metalTransactionRoutes.js";
 import RegistryRouter from "./routes/modules/registryRouter.js"
 import VoucherRoute from "./routes/modules/VoucherMasterRoute.js"
 import accountRoutes from "./routes/modules/accountMasterRoutes.js"
@@ -78,7 +78,7 @@ app.use("/api/v1/trade-debtors", tradeDebtorsRoutes);
 app.use("/api/v1/trade-creditors", tradeCreditorRoute);
 app.use("/api/v1/metal-stocks", metalStockRoutes);
 app.use("/api/v1/cost-centers", costCenterMasterRoutes);
-app.use("/api/v1/metal-purchases", metalPurchaseRoutes);
+app.use("/api/v1/metal-transaction", metalTransaction);
 app.use("/api/v1/registry", RegistryRouter);
 app.use("/api/v1/voucher", VoucherRoute);
 app.use("/api/v1/account", accountRoutes);

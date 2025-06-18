@@ -7,10 +7,7 @@ const RegistrySchema = new mongoose.Schema(
       required: [true, "Transaction ID is required"],
       trim: true,
       uppercase: true,
-      match: [
-        /^TXN-\d{4}-\d{3}$/,
-        "Transaction ID format should be TXN-YYYY-XXX",
-      ],
+    
     },
     costCenter: {
       type: String,

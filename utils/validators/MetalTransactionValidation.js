@@ -138,63 +138,70 @@ export const validateEnum = (field, allowedValues) => {
   };
 };
 
-// Metal Purchase specific validation
-export const validateMetalPurchaseCreate = [
+// Validate transaction type in URL params
+export const validateTransactionType = (req, res, next) => {
+  const { transactionType } = req.params;
+  
+  if (transactionType && !['purchase', 'sale'].includes(transactionType)) {
+    throw createAppError(
+      "Invalid transaction type. Must be 'purchase' or 'sale'",
+      400,
+      "INVALID_TRANSACTION_TYPE"
+    );
+  }
+  
+  next();
+};
+
+// Metal Transaction specific validation for CREATE
+export const validateMetalTransactionCreate = [
   validateRequiredFields([
+    'transactionType',
     'partyCode',
-    'partyCurrency', 
-    'itemCurrency',
+    'partyCurrency',
     'metalRate',
     'stockCode',
-    'description',
-    'grossWeight',
-    'purity'
+    'purity',
+    'purityWeight',
+    'weightInOz'
   ]),
+  validateEnum('transactionType', ['purchase', 'sale']),
   validateNumericFields([
     { field: 'pieces', min: 0 },
-    { field: 'grossWeight', min: 0, required: true },
+    { field: 'grossWeight', min: 0 },
     { field: 'purity', min: 0, max: 100, required: true },
-    { field: 'purityWeight', min: 0 },
-    { field: 'weightInOz', min: 0 },
+    { field: 'purityWeight', min: 0, required: true },
+    { field: 'weightInOz', min: 0, required: true },
     { field: 'crDays', min: 0 },
     { field: 'creditDays', min: 0 },
-    { field: 'metalRateRequirements.rate', min: 0 },
     { field: 'metalRateRequirements.amount', min: 0 },
-    { field: 'makingCharges.units', min: 0 },
-    { field: 'makingCharges.rate', min: 0 },
     { field: 'makingCharges.amount', min: 0 },
-    { field: 'premium.amount', min: 0 },
-    { field: 'premium.rate', min: 0 },
-    { field: 'totalAmountSession.totalAmountAED', min: 0 },
-    { field: 'totalAmountSession.netAmountAED', min: 0 },
-    { field: 'totalAmountSession.vatAmount', min: 0 },
-    { field: 'totalAmountSession.vatPercentage', min: 0, max: 100 }
+    { field: 'premium.amount' }, // Can be negative for discounts
   ]),
-  validateEnum('status', ['draft', 'confirmed', 'completed', 'cancelled']),
-  validateEnum('metalRateRequirements.rateType', ['fixed', 'lme', 'spot', 'premium'])
+  validateEnum('status', ['draft', 'confirmed', 'completed', 'cancelled'])
 ];
 
-export const validateMetalPurchaseUpdate = [
+// Metal Transaction specific validation for UPDATE
+export const validateMetalTransactionUpdate = [
   validateNumericFields([
-    { field: 'pieces', min: 0 },
     { field: 'grossWeight', min: 0 },
     { field: 'purity', min: 0, max: 100 },
     { field: 'purityWeight', min: 0 },
     { field: 'weightInOz', min: 0 },
     { field: 'crDays', min: 0 },
     { field: 'creditDays', min: 0 },
-    { field: 'metalRateRequirements.rate', min: 0 },
     { field: 'metalRateRequirements.amount', min: 0 },
-    { field: 'makingCharges.units', min: 0 },
-    { field: 'makingCharges.rate', min: 0 },
     { field: 'makingCharges.amount', min: 0 },
-    { field: 'premium.amount', min: 0 },
-    { field: 'premium.rate', min: 0 },
+    { field: 'premium.amount' }, // Can be negative for discounts
     { field: 'totalAmountSession.totalAmountAED', min: 0 },
     { field: 'totalAmountSession.netAmountAED', min: 0 },
     { field: 'totalAmountSession.vatAmount', min: 0 },
     { field: 'totalAmountSession.vatPercentage', min: 0, max: 100 }
   ]),
   validateEnum('status', ['draft', 'confirmed', 'completed', 'cancelled']),
-  validateEnum('metalRateRequirements.rateType', ['fixed', 'lme', 'spot', 'premium'])
+  validateEnum('transactionType', ['purchase', 'sale'])
 ];
+
+// Backward compatibility - keeping old validation names
+export const validateMetalPurchaseCreate = validateMetalTransactionCreate;
+export const validateMetalPurchaseUpdate = validateMetalTransactionUpdate;
