@@ -26,7 +26,7 @@ const RegistrySchema = new mongoose.Schema(
       trim: true,
       maxlength: [500, "Description cannot exceed 500 characters"],
     },
-    paryty:{
+    party: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "TradeDebtors",
       default: null,
