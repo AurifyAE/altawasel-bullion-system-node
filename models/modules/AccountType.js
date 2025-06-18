@@ -5,10 +5,15 @@ const TradeDebtorsSchema = new mongoose.Schema(
     // Basic Account Information
     accountType: {
       type: String,
-      required: [true, "Account type is required"],
+      enum: {
+        values: ["DEBTOR", "CREDITOR"],
+        message: "Account type must be either 'DEBTOR' or 'CREDITOR'",
+      },
       trim: true,
-      default: "Debtors",
-    },
+      default: null, // Set default to null explicitly
+      required: [true, "Account type is required"]
+    }
+ ,    
     title: {
       type: String,
       required: [true, "Title is required"],

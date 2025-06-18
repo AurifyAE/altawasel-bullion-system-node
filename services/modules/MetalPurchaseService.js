@@ -1,6 +1,6 @@
 import MetalPurchase from "../../models/modules/MetalPurchase.js";
 import Registry from "../../models/modules/Registry.js";
-import TradeDebtors from "../../models/modules/TradeDebtors.js";
+import TradeDebtors from "../../models/modules/AccountType.js";
 import { createAppError } from "../../utils/errorHandler.js";
 import mongoose from "mongoose";
 

@@ -1,4 +1,4 @@
-import TradeDebtors from "../../models/modules/TradeDebtors.js";
+import AccountType from "../../models/modules/AccountType.js";
 import { createAppError } from "../../utils/errorHandler.js";
 import { deleteMultipleS3Files } from "../../utils/s3Utils.js";
 
@@ -7,7 +7,7 @@ class TradeDebtorsService {
   static async createTradeDebtor(debtorData, adminId) {
     try {
       // Check if account code already exists
-      const isCodeExists = await TradeDebtors.isAccountCodeExists(
+      const isCodeExists = await AccountType.isAccountCodeExists(
         debtorData.accountCode
       );
       if (isCodeExists) {
@@ -39,7 +39,7 @@ class TradeDebtorsService {
       debtorData.createdBy = adminId;
 
       // Create trade debtor
-      const tradeDebtor = new TradeDebtors(debtorData);
+      const tradeDebtor = new AccountType(debtorData);
       await tradeDebtor.save();
 
       // Populate references
@@ -112,7 +112,7 @@ class TradeDebtorsService {
       sort[sortBy] = sortOrder === "desc" ? -1 : 1;
 
       const [tradeDebtors, total] = await Promise.all([
-        TradeDebtors.find(query)
+        AccountType.find(query)
           .populate([
             {
               path: "acDefinition.currencies.currency",
@@ -125,7 +125,7 @@ class TradeDebtorsService {
           .sort(sort)
           .skip(skip)
           .limit(parseInt(limit)),
-        TradeDebtors.countDocuments(query),
+          AccountType.countDocuments(query),
       ]);
 
       return {
@@ -145,7 +145,7 @@ class TradeDebtorsService {
   // Get trade debtor by ID
   static async getTradeDebtorById(id) {
     try {
-      const tradeDebtor = await TradeDebtors.findById(id).populate([
+      const tradeDebtor = await AccountType.findById(id).populate([
         {
           path: "acDefinition.currencies.currency",
           select: "code name symbol",
@@ -331,7 +331,7 @@ class TradeDebtorsService {
 
   static async updateTradeDebtor(id, updateData, adminId) {
     try {
-      const tradeDebtor = await TradeDebtors.findById(id);
+      const tradeDebtor = await AccountType.findById(id);
       if (!tradeDebtor) {
         throw createAppError("Trade debtor not found", 404, "DEBTOR_NOT_FOUND");
       }
@@ -341,7 +341,7 @@ class TradeDebtorsService {
         updateData.accountCode &&
         updateData.accountCode !== tradeDebtor.accountCode
       ) {
-        const isCodeExists = await TradeDebtors.isAccountCodeExists(
+        const isCodeExists = await AccountType.isAccountCodeExists(
           updateData.accountCode,
           id
         );
@@ -425,7 +425,7 @@ class TradeDebtorsService {
       updateData.updatedAt = new Date();
 
       // Update the database first
-      const updatedTradeDebtor = await TradeDebtors.findByIdAndUpdate(
+      const updatedTradeDebtor = await AccountType.findByIdAndUpdate(
         id,
         updateData,
         { new: true, runValidators: true }
@@ -506,13 +506,13 @@ class TradeDebtorsService {
   // Delete trade debtor (soft delete)
   static async deleteTradeDebtor(id, adminId) {
     try {
-      const tradeDebtor = await TradeDebtors.findById(id);
+      const tradeDebtor = await AccountType.findById(id);
       if (!tradeDebtor) {
         throw createAppError("Trade debtor not found", 404, "DEBTOR_NOT_FOUND");
       }
 
       // Soft delete - mark as inactive
-      const deletedTradeDebtor = await TradeDebtors.findByIdAndUpdate(
+      const deletedTradeDebtor = await AccountType.findByIdAndUpdate(
         id,
         {
           isActive: false,
@@ -534,7 +534,7 @@ class TradeDebtorsService {
   // Hard delete trade debtor
   static async hardDeleteTradeDebtor(id) {
     try {
-      const tradeDebtor = await TradeDebtors.findById(id);
+      const tradeDebtor = await AccountType.findById(id);
       if (!tradeDebtor) {
         throw createAppError("Trade debtor not found", 404, "DEBTOR_NOT_FOUND");
       }
@@ -547,7 +547,7 @@ class TradeDebtorsService {
       );
 
       // Delete the trade debtor from database first
-      await TradeDebtors.findByIdAndDelete(id);
+      await AccountType.findByIdAndDelete(id);
 
       // Delete associated S3 files if any exist
       let s3DeletionResult = { successful: [], failed: [] };
@@ -605,13 +605,13 @@ class TradeDebtorsService {
   // Toggle status
   static async toggleStatus(id, adminId) {
     try {
-      const tradeDebtor = await TradeDebtors.findById(id);
+      const tradeDebtor = await AccountType.findById(id);
       if (!tradeDebtor) {
         throw createAppError("Trade debtor not found", 404, "DEBTOR_NOT_FOUND");
       }
 
       const newStatus = tradeDebtor.status === "active" ? "inactive" : "active";
-      const updatedTradeDebtor = await TradeDebtors.findByIdAndUpdate(
+      const updatedTradeDebtor = await AccountType.findByIdAndUpdate(
         id,
         {
           status: newStatus,
@@ -633,7 +633,7 @@ class TradeDebtorsService {
   // Get active debtors for dropdown
   static async getActiveDebtorsList() {
     try {
-      const debtors = await TradeDebtors.find(
+      const debtors = await AccountType.find(
         { isActive: true, status: "active" },
         { accountCode: 1, customerName: 1, shortName: 1 }
       ).sort({ customerName: 1 });
@@ -651,7 +651,7 @@ class TradeDebtorsService {
   // Search debtors by name or code
   static async searchDebtors(searchTerm) {
     try {
-      const debtors = await TradeDebtors.find(
+      const debtors = await AccountType.find(
         {
           isActive: true,
           status: "active",
@@ -673,7 +673,7 @@ class TradeDebtorsService {
   // Get debtor statistics
   static async getDebtorStatistics() {
     try {
-      const stats = await TradeDebtors.aggregate([
+      const stats = await AccountType.aggregate([
         {
           $group: {
             _id: null,
@@ -691,7 +691,7 @@ class TradeDebtorsService {
         },
       ]);
 
-      const classificationStats = await TradeDebtors.aggregate([
+      const classificationStats = await AccountType.aggregate([
         {
           $group: {
             _id: "$classification",
