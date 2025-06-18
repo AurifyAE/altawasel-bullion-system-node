@@ -5,10 +5,10 @@ import entryMasterController from "../../controllers/modules/EntryMasterControll
 const router = express.Router();
 
 router.post('/', authenticateToken, entryMasterController.createEntry);
-router.get('/:id', authenticateToken, entryMasterController.getEntryById);
 router.get('/cash-receipts', authenticateToken, entryMasterController.getCashReceipts);
 router.get('/cash-payments', authenticateToken, entryMasterController.getCashPayments);
 router.get('/metal-receipts', authenticateToken, entryMasterController.getMetalReceipts);
 router.get('/metal-payments', authenticateToken, entryMasterController.getMetalPayments);
+router.get('/:id', authenticateToken, entryMasterController.getEntryById);
 
 export default router;

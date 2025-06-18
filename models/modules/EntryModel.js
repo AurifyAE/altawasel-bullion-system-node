@@ -18,7 +18,7 @@ const entrySchema = new mongoose.Schema({
     },
     party: {
         type: mongoose.Schema.Types.ObjectId,
-        ref: "TradeDebtors",
+        ref: "Account",
         default: null
     },
     enteredBy: {
