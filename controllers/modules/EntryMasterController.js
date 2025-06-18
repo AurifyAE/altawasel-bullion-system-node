@@ -1,6 +1,6 @@
 import Entry from '../../models/modules/EntryModel.js';
 import Registry from '../../models/modules/Registry.js';
-import AccountType from '../../models/modules/AccountType.js';
+import AccountType from '../../models/modules/AccountType.js'; // Make sure this is at the top
 import AccountMaster from '../../models/modules/accountMaster.js';
 
 
@@ -195,45 +195,45 @@ const handleCashReceipt = async (entry) => {
 // Helper function for cash payment
 const handleCashPayment = async (entry) => {
   console.log('Processing cash payment:', entry);
-  
-  // Find AccountType
-  const AccountType = await AccountType.findOne({ _id: entry.party });
-  if (!AccountType) {
+
+  // Rename variable to avoid shadowing
+  const accountType = await AccountType.findOne({ _id: entry.party });
+  if (!accountType) {
     throw new Error("Account not found");
   }
-  
-  console.log(`AccountType found: ${AccountType._id}`);
-  
+
+  console.log(`AccountType found: ${accountType._id}`);
+
   // Process each cash item
   for (const cashItem of entry.cash) {
     const transactionId = await Registry.generateTransactionId();
-    
+
     // Find and validate cash type account
-    console.log(cashItem.cashType,"this is cash type");
+    console.log(cashItem.cashType, "this is cash type");
     const cashType = await AccountMaster.findOne({ _id: cashItem.cashType });
     if (!cashType) {
       throw new Error(`Cash type account not found for ID: ${cashItem.cashType}`);
     }
-    
+
     console.log(`CashType found: ${cashType.name || cashType._id}`);
-    
+
     const requestedAmount = cashItem.amount || 0;
-    
+
     // Allow negative balances - no balance check needed
-    
+
     // Check if balances field exists, if not create it
-    if (!AccountType.balances) {
-      AccountType.balances = { cashBalance: [] };
+    if (!accountType.balances) {
+      accountType.balances = { cashBalance: [] };
     }
-    if (!AccountType.balances.cashBalance) {
-      AccountType.balances.cashBalance = [];
+    if (!accountType.balances.cashBalance) {
+      accountType.balances.cashBalance = [];
     }
-    
+
     // Find the currency in cashBalance array
-    let currencyBalance = AccountType.balances.cashBalance.find(
+    let currencyBalance = accountType.balances.cashBalance.find(
       balance => balance.currency.toString() === cashItem.currency.toString()
     );
-    
+
     // If currency doesn't exist, create it
     if (!currencyBalance) {
       currencyBalance = {
@@ -241,17 +241,17 @@ const handleCashPayment = async (entry) => {
         amount: 0,
         lastUpdated: new Date()
       };
-      AccountType.balances.cashBalance.push(currencyBalance);
+      accountType.balances.cashBalance.push(currencyBalance);
     }
-    
+
     // Add amount to account's cash balance
     currencyBalance.amount += requestedAmount;
     currencyBalance.lastUpdated = new Date();
-    
+
     // Deduct amount from cash type opening balance
     cashType.openingBalance = (cashType.openingBalance || 0) - requestedAmount;
     await cashType.save();
-    
+
     // Registry entry for "cash balance" (debit for payment)
     await Registry.create({
       transactionId,
@@ -282,9 +282,9 @@ const handleCashPayment = async (entry) => {
     });
     console.log(`Created cash entry for cashType: ${cashType._id}`);
   }
-  
+
   // Save account after all updates
-  await AccountType.save();
+  await accountType.save();
 };
 
 // Helper function for metal payment
