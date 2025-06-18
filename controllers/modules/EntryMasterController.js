@@ -1,6 +1,6 @@
 import Entry from '../../models/modules/EntryModel.js';
 import Registry from '../../models/modules/Registry.js';
-import TradeDebtor from '../../models/modules/TradeDebtors.js';
+import AccountType from '../../models/modules/AccountType.js';
 import AccountMaster from '../../models/modules/accountMaster.js';
 
 
@@ -112,13 +112,13 @@ const handleMetalReceipt = async (entry) => {
 // Helper function for cash receipt
 const handleCashReceipt = async (entry) => {
   
-  // Find TradeDebtor
-  const tradeDebtor = await TradeDebtor.findOne({ _id: entry.party });
-  if (!tradeDebtor) {
+  // Find AccountType
+  const AccountType = await AccountType.findOne({ _id: entry.party });
+  if (!AccountType) {
     throw new Error("Trade debtor not found");
   }
   
-  // console.log(`TradeDebtor found: ${tradeDebtor._id}`);
+  // console.log(`AccountType found: ${AccountType._id}`);
   
   // Process each cash item
   for (const cashItem of entry.cash) {
@@ -133,13 +133,13 @@ const handleCashReceipt = async (entry) => {
     // console.log(`CashType found: ${cashType.name || cashType._id}`);
     
     // Check if balances field exists
-    if (!tradeDebtor.balances || !tradeDebtor.balances.cashBalance) {
+    if (!AccountType.balances || !AccountType.balances.cashBalance) {
       throw new Error("Cash balance not found for this trade debtor");
     }
     
-    console.log(`trade debtor: ${tradeDebtor}`);
+    console.log(`trade debtor: ${AccountType}`);
     // Find the currency in cashBalance array
-    const currencyBalance = tradeDebtor.balances.cashBalance.find(
+    const currencyBalance = AccountType.balances.cashBalance.find(
       balance => balance.currency.toString() === cashItem.currency.toString()
     );
     
@@ -189,20 +189,20 @@ const handleCashReceipt = async (entry) => {
   }
   
   // Save trade debtor after all updates
-  await tradeDebtor.save();
+  await AccountType.save();
 };
 
 // Helper function for cash payment
 const handleCashPayment = async (entry) => {
   console.log('Processing cash payment:', entry);
   
-  // Find TradeDebtor
-  const tradeDebtor = await TradeDebtor.findOne({ _id: entry.party });
-  if (!tradeDebtor) {
+  // Find AccountType
+  const AccountType = await AccountType.findOne({ _id: entry.party });
+  if (!AccountType) {
     throw new Error("Trade debtor not found");
   }
   
-  console.log(`TradeDebtor found: ${tradeDebtor._id}`);
+  console.log(`AccountType found: ${AccountType._id}`);
   
   // Process each cash item
   for (const cashItem of entry.cash) {
@@ -222,15 +222,15 @@ const handleCashPayment = async (entry) => {
     // Allow negative balances - no balance check needed
     
     // Check if balances field exists, if not create it
-    if (!tradeDebtor.balances) {
-      tradeDebtor.balances = { cashBalance: [] };
+    if (!AccountType.balances) {
+      AccountType.balances = { cashBalance: [] };
     }
-    if (!tradeDebtor.balances.cashBalance) {
-      tradeDebtor.balances.cashBalance = [];
+    if (!AccountType.balances.cashBalance) {
+      AccountType.balances.cashBalance = [];
     }
     
     // Find the currency in cashBalance array
-    let currencyBalance = tradeDebtor.balances.cashBalance.find(
+    let currencyBalance = AccountType.balances.cashBalance.find(
       balance => balance.currency.toString() === cashItem.currency.toString()
     );
     
@@ -241,7 +241,7 @@ const handleCashPayment = async (entry) => {
         amount: 0,
         lastUpdated: new Date()
       };
-      tradeDebtor.balances.cashBalance.push(currencyBalance);
+      AccountType.balances.cashBalance.push(currencyBalance);
     }
     
     // Add amount to trade debtor's cash balance
@@ -284,7 +284,7 @@ const handleCashPayment = async (entry) => {
   }
   
   // Save trade debtor after all updates
-  await tradeDebtor.save();
+  await AccountType.save();
 };
 
 // Helper function for metal payment
