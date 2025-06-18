@@ -166,11 +166,18 @@ export const hardDeleteVoucher = async (req, res, next) => {
 export const getVouchersByModule = async (req, res, next) => {
   try {
     const { module } = req.params;
-    const voucherType = req.query.voucherType;
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
+    const { voucherType, page = 1, limit = 10 } = req.query;
 
-    const result = await VoucherMasterService.getVouchersByModule(module, voucherType, page, limit);
+    if (!module) {
+      throw createAppError("Module is required", 400, "MISSING_MODULE");
+    }
+
+    const result = await VoucherMasterService.getVouchersByModule(
+      module, 
+      voucherType, 
+      parseInt(page), 
+      parseInt(limit)
+    );
 
     res.status(200).json({
       success: true,
@@ -188,17 +195,25 @@ export const getVouchersByModule = async (req, res, next) => {
   }
 };
 
-// Updated generateVoucherNumber with transaction type support
+// Optimized voucher number generation
 export const generateVoucherNumber = async (req, res, next) => {
   try {
     const { module } = req.params;
-    const { transactionType } = req.query; // Get transaction type from query params
+    const { transactionType, entryType } = req.query;
 
     if (!module) {
       throw createAppError("Module is required", 400, "MISSING_MODULE");
     }
 
-    const result = await VoucherMasterService.generateVoucherNumber(module, transactionType);
+    // Determine the actual transaction type based on module and query params
+    let actualTransactionType = transactionType;
+    
+    // For entry modules, use entryType as transactionType
+    if (module.toLowerCase().includes('entry') && entryType) {
+      actualTransactionType = entryType;
+    }
+
+    const result = await VoucherMasterService.generateVoucherNumber(module, actualTransactionType);
 
     res.status(200).json({
       success: true,
@@ -210,119 +225,51 @@ export const generateVoucherNumber = async (req, res, next) => {
   }
 };
 
-// New endpoint for metal purchase voucher info
-export const getMetalPurchaseVoucherInfo = async (req, res, next) => {
-  try {
-    const { module } = req.params || { module: "metal-purchase" };
-    
-    const result = await VoucherMasterService.getMetalPurchaseVoucherInfo(module);
-
-    res.status(200).json({
-      success: true,
-      message: "Metal purchase voucher info retrieved successfully",
-      data: result,
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-// New endpoint for metal sale voucher info
-export const getMetalSaleVoucherInfo = async (req, res, next) => {
-  try {
-    const { module } = req.params || { module: "metal-sale" };
-    
-    const result = await VoucherMasterService.getMetalSaleVoucherInfo(module);
-
-    res.status(200).json({
-      success: true,
-      message: "Metal sale voucher info retrieved successfully",
-      data: result,
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-// New endpoint for Entry voucher info by type
-export const getEntryVoucherInfo = async (req, res, next) => {
-  try {
-    const { module } = req.params;
-    const { entryType } = req.query;
-
-    if (!module) {
-      throw createAppError("Module is required", 400, "MISSING_MODULE");
-    }
-
-    if (!entryType) {
-      throw createAppError("Entry type is required", 400, "MISSING_ENTRY_TYPE");
-    }
-
-    const result = await VoucherMasterService.getEntryVoucherInfo(module, entryType);
-
-    res.status(200).json({
-      success: true,
-      message: `Entry voucher info for ${entryType} retrieved successfully`,
-      data: result,
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-// New endpoint for all Entry types voucher info
-export const getAllEntryTypesVoucherInfo = async (req, res, next) => {
-  try {
-    const { module } = req.params || { module: "entry" };
-    
-    const result = await VoucherMasterService.getAllEntryTypesVoucherInfo(module);
-
-    res.status(200).json({
-      success: true,
-      message: "All entry types voucher info retrieved successfully",
-      data: result,
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-// Get voucher info for any module with transaction count
+// Consolidated voucher info endpoint
 export const getVoucherInfoByModule = async (req, res, next) => {
   try {
     const { module } = req.params;
-    const { transactionType } = req.query;
+    const { transactionType, entryType } = req.query;
 
     if (!module) {
       throw createAppError("Module is required", 400, "MISSING_MODULE");
     }
 
-    let result;
+    // Determine the actual transaction type based on module and query params
+    let actualTransactionType = transactionType;
     
-    // Route to specific methods based on module
-    if (module.toLowerCase().includes('metal')) {
-      if (transactionType === 'purchase' || module.toLowerCase().includes('purchase')) {
+    // For entry modules, use entryType as transactionType if provided
+    if (module.toLowerCase().includes('entry') && entryType) {
+      actualTransactionType = entryType;
+    }
+
+    let result;
+    const moduleLC = module.toLowerCase();
+
+    // Route to appropriate service method based on module type
+    if (moduleLC.includes('metal')) {
+      if (actualTransactionType === 'purchase' || moduleLC.includes('purchase')) {
         result = await VoucherMasterService.getMetalPurchaseVoucherInfo(module);
-      } else if (transactionType === 'sale' || module.toLowerCase().includes('sale')) {
+      } else if (actualTransactionType === 'sale' || moduleLC.includes('sale')) {
         result = await VoucherMasterService.getMetalSaleVoucherInfo(module);
       } else {
-        // Generate voucher number with transaction type
-        const voucherData = await VoucherMasterService.generateVoucherNumber(module, transactionType);
+        // General metal voucher info
+        const voucherData = await VoucherMasterService.generateVoucherNumber(module, actualTransactionType);
         result = {
           prefix: voucherData.prefix,
           currentCount: voucherData.transactionCount,
           nextSequence: voucherData.sequence,
           nextVoucherNumber: voucherData.voucherNumber,
           numberLength: voucherData.voucherConfig.numberLength,
-          voucherConfig: voucherData.voucherConfig
+          voucherConfig: voucherData.voucherConfig,
+          transactionType: actualTransactionType
         };
       }
-    } else if (module.toLowerCase().includes('entry')) {
-      // For entry modules, check if specific entry type is requested
-      if (transactionType) {
+    } else if (moduleLC.includes('entry')) {
+      if (actualTransactionType) {
         const validEntryTypes = ["metal receipt", "metal payment", "cash receipt", "cash payment"];
-        if (validEntryTypes.includes(transactionType.toLowerCase())) {
-          result = await VoucherMasterService.getEntryVoucherInfo(module, transactionType);
+        if (validEntryTypes.includes(actualTransactionType.toLowerCase())) {
+          result = await VoucherMasterService.getEntryVoucherInfo(module, actualTransactionType);
         } else {
           throw createAppError(
             `Invalid entry type. Valid types: ${validEntryTypes.join(', ')}`,
@@ -336,14 +283,15 @@ export const getVoucherInfoByModule = async (req, res, next) => {
       }
     } else {
       // For other modules, use the general voucher generation
-      const voucherData = await VoucherMasterService.generateVoucherNumber(module, transactionType);
+      const voucherData = await VoucherMasterService.generateVoucherNumber(module, actualTransactionType);
       result = {
         prefix: voucherData.prefix,
         currentCount: voucherData.transactionCount,
         nextSequence: voucherData.sequence,
         nextVoucherNumber: voucherData.voucherNumber,
         numberLength: voucherData.voucherConfig.numberLength,
-        voucherConfig: voucherData.voucherConfig
+        voucherConfig: voucherData.voucherConfig,
+        transactionType: actualTransactionType
       };
     }
 
