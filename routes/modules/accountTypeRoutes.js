@@ -12,7 +12,7 @@ import {
   getDebtorStatistics,
   bulkUpdateStatus,
   bulkDeleteDebtors,
-} from "../../controllers/modules/TradeDebtorsController.js";
+} from "../../controllers/modules/accountTypeController.js";
 import { authenticateToken } from "../../middleware/authMiddleware.js";
 import { tradeDebtorUploadHandler } from "../../utils/fileUpload.js";
 

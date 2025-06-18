@@ -1,7 +1,7 @@
 import mongoose from "mongoose";
 import MetalTransaction from "../../models/modules/MetalTransaction.js";
 import Registry from "../../models/modules/Registry.js";
-import TradeDebtors from "../../models/modules/TradeDebtors.js";
+import Account from "../../models/modules/AccountType.js";
 import { createAppError } from "../../utils/errorHandler.js";
 
 class MetalTransactionService {
@@ -12,7 +12,7 @@ class MetalTransactionService {
       session.startTransaction();
 
       // Validate party
-      const party = await TradeDebtors.findById(transactionData.partyCode).session(session);
+      const party = await Account.findById(transactionData.partyCode).session(session);
       if (!party || !party.isActive) {
         throw createAppError("Party not found or inactive", 400, "INVALID_PARTY");
       }
@@ -33,7 +33,7 @@ class MetalTransactionService {
       // Create registry entries for stock items and charges
       await this.createCompleteRegistryEntries(metalTransaction, party, adminId, session);
 
-      // Update TradeDebtors balances
+      // Update Account balances
       await this.updateTradeDebtorsBalances(party._id, metalTransaction, session);
 
       await session.commitTransaction();
@@ -150,7 +150,7 @@ class MetalTransactionService {
 
       // Update registry and balances if stock items or totals changed
       if (updateData.stockItems || updateData.totalAmountSession) {
-        const party = await TradeDebtors.findById(transaction.partyCode).session(session);
+        const party = await Account.findById(transaction.partyCode).session(session);
         await this.createReversalRegistryEntries(
           { ...transaction.toObject(), stockItems: oldStockItems, totalAmountSession: oldSessionTotals }, 
           party, 
@@ -187,7 +187,7 @@ class MetalTransactionService {
       transaction.updatedBy = adminId;
       await transaction.save({ session });
 
-      const party = await TradeDebtors.findById(transaction.partyCode).session(session);
+      const party = await Account.findById(transaction.partyCode).session(session);
       await this.createReversalRegistryEntries(transaction, party, adminId, session);
       await this.updateTradeDebtorsBalances(party._id, transaction, session, false, true);
 
@@ -217,7 +217,7 @@ class MetalTransactionService {
       transaction.updatedBy = adminId;
       await transaction.save({ session });
 
-      const party = await TradeDebtors.findById(transaction.partyCode).session(session);
+      const party = await Account.findById(transaction.partyCode).session(session);
       const tempTransaction = { ...transaction.toObject(), stockItems: [stockItemData] };
       await this.createCompleteRegistryEntries(tempTransaction, party, adminId, session);
       await this.updateTradeDebtorsBalances(party._id, tempTransaction, session);
@@ -253,7 +253,7 @@ class MetalTransactionService {
       transaction.updatedBy = adminId;
       await transaction.save({ session });
 
-      const party = await TradeDebtors.findById(transaction.partyCode).session(session);
+      const party = await Account.findById(transaction.partyCode).session(session);
       await this.createCompleteRegistryEntries(transaction, party, adminId, session);
 
       await session.commitTransaction();
@@ -754,7 +754,7 @@ class MetalTransactionService {
   }
 
   static async updateTradeDebtorsBalances(partyId, transaction, session, isUpdate = false, isReversal = false) {
-    const party = await TradeDebtors.findById(partyId).session(session);
+    const party = await Account.findById(partyId).session(session);
     if (!party) return;
 
     // Update Gold Balance
@@ -831,7 +831,7 @@ class MetalTransactionService {
 
   // Get party balance summary
   static async getPartyBalanceSummary(partyId) {
-    const party = await TradeDebtors.findById(partyId)
+    const party = await Account.findById(partyId)
       .populate('balances.goldBalance.currency', 'code symbol')
       .populate('balances.cashBalance.currency', 'code symbol');
 
@@ -993,7 +993,7 @@ class MetalTransactionService {
 
     // Check if party exists and is active
     if (transactionData.partyCode) {
-      const party = await TradeDebtors.findById(transactionData.partyCode);
+      const party = await Account.findById(transactionData.partyCode);
       if (!party || !party.isActive) {
         errors.push("Party not found or inactive");
       }

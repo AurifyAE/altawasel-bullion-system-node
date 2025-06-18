@@ -180,7 +180,7 @@ const MetalTransactionSchema = new mongoose.Schema(
     // Party Information
     partyCode: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "TradeDebtors", // For purchases: suppliers, For sales: customers
+      ref: "Account", // For purchases: suppliers, For sales: customers
       required: [true, "Party Code is required"],
       index: true,
     },

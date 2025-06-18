@@ -1,9 +1,8 @@
-import TradeCreditorsService from "../../services/modules/TradeCreditorService.js";
+import AccountTypeService from "../../services/modules/AccountTypeService.js";
 import { createAppError } from "../../utils/errorHandler.js";
-import { deleteMultipleS3Files } from "../../utils/s3Utils.js";
 
-// Create new trade creditor
-export const createTradeCreditor = async (req, res, next) => {
+// Create new trade debtor
+export const createTradeDebtor = async (req, res, next) => {
   try {
     console.log("Request body:", req.body);
     console.log("Files info:", req.filesInfo);
@@ -26,7 +25,12 @@ export const createTradeCreditor = async (req, res, next) => {
     } = req.body;
 
     // Basic validation
-    if (!accountCode || !customerName || !title) {
+    if (
+      !accountCode ||
+      !customerName ||
+      !title 
+     
+    ) {
       throw createAppError(
         "Required fields missing: accountCode, customerName, title,accountType",
         400,
@@ -190,7 +194,7 @@ export const createTradeCreditor = async (req, res, next) => {
       }
     });
 
-    const tradeCreditorData = {
+    const tradeDebtorData = {
       accountType: accountType?.trim(),
       title: title.trim(),
       accountCode: accountCode.trim().toUpperCase(),
@@ -208,19 +212,19 @@ export const createTradeCreditor = async (req, res, next) => {
     };
 
     console.log(
-      "Final trade creditor data:",
-      JSON.stringify(tradeCreditorData, null, 2)
+      "Final trade debtor data:",
+      JSON.stringify(tradeDebtorData, null, 2)
     );
 
-    const tradeCreditor = await TradeCreditorsService.createTradeCreditor(
-      tradeCreditorData,
+    const tradeDebtor = await AccountTypeService.createTradeDebtor(
+      tradeDebtorData,
       req.admin.id
     );
 
     res.status(201).json({
       success: true,
-      message: "Trade creditor created successfully",
-      data: tradeCreditor,
+      message: "Trade debtor created successfully",
+      data: tradeDebtor,
       uploadedFiles: {
         total: req.filesInfo?.length || 0,
         vatGstDocuments: processedVatGstDetails.documents?.length || 0,
@@ -232,6 +236,9 @@ export const createTradeCreditor = async (req, res, next) => {
     // If error occurs and files were uploaded, clean them up
     if (req.files && req.files.length > 0) {
       try {
+        const { deleteMultipleS3Files } = await import(
+          "../../utils/s3Utils.js"
+        );
         const s3Keys = req.files.map((file) => file.key).filter((key) => key);
         if (s3Keys.length > 0) {
           await deleteMultipleS3Files(s3Keys);
@@ -244,8 +251,13 @@ export const createTradeCreditor = async (req, res, next) => {
   }
 };
 
-// Get all trade creditors
-export const getAllTradeCreditors = async (req, res, next) => {
+
+
+
+
+
+// Get all trade debtors
+export const getAllTradeDebtors = async (req, res, next) => {
   try {
     const {
       page = 1,
@@ -267,12 +279,12 @@ export const getAllTradeCreditors = async (req, res, next) => {
       sortOrder: sortOrder.trim(),
     };
 
-    const result = await TradeCreditorsService.getAllTradeCreditors(options);
+    const result = await AccountTypeService.getAllTradeDebtors(options);
 
     res.status(200).json({
       success: true,
-      message: "Trade creditors fetched successfully",
-      data: result.tradeCreditors,
+      message: "Trade debtors fetched successfully",
+      data: result.tradeDebtors,
       pagination: result.pagination,
     });
   } catch (error) {
@@ -280,37 +292,37 @@ export const getAllTradeCreditors = async (req, res, next) => {
   }
 };
 
-// Get trade creditor by ID
-export const getTradeCreditorById = async (req, res, next) => {
+// Get trade debtor by ID
+export const getTradeDebtorById = async (req, res, next) => {
   try {
     const { id } = req.params;
 
     if (!id) {
-      throw createAppError("Trade creditor ID is required", 400, "MISSING_ID");
+      throw createAppError("Trade debtor ID is required", 400, "MISSING_ID");
     }
 
-    const tradeCreditor = await TradeCreditorsService.getTradeCreditorById(id);
+    const tradeDebtor = await AccountTypeService.getTradeDebtorById(id);
 
     res.status(200).json({
       success: true,
-      message: "Trade creditor fetched successfully",
-      data: tradeCreditor,
+      message: "Trade debtor fetched successfully",
+      data: tradeDebtor,
     });
   } catch (error) {
     next(error);
   }
 };
 
-// Update trade creditor
-export const updateTradeCreditor = async (req, res, next) => {
+// Update trade debtor
+export const updateTradeDebtor = async (req, res, next) => {
   let uploadedFiles = [];
-
+  
   try {
     const { id } = req.params;
     let updateData = { ...req.body };
 
     if (!id) {
-      throw createAppError("Trade creditor ID is required", 400, "MISSING_ID");
+      throw createAppError("Trade debtor ID is required", 400, "MISSING_ID");
     }
 
     console.log("Update request body:", req.body);
@@ -538,8 +550,8 @@ export const updateTradeCreditor = async (req, res, next) => {
 
     console.log("Final update data:", JSON.stringify(updateData, null, 2));
 
-    // Call the service to update the trade creditor
-    const updatedTradeCreditor = await TradeCreditorsService.updateTradeCreditor(
+    // Call the service to update the trade debtor
+    const updatedTradeDebtor = await AccountTypeService.updateTradeDebtor(
       id,
       updateData,
       req.admin.id
@@ -558,8 +570,8 @@ export const updateTradeCreditor = async (req, res, next) => {
 
     const response = {
       success: true,
-      message: "Trade creditor updated successfully",
-      data: updatedTradeCreditor,
+      message: "Trade debtor updated successfully",
+      data: updatedTradeDebtor,
     };
 
     // Add file upload info if files were uploaded
@@ -568,21 +580,21 @@ export const updateTradeCreditor = async (req, res, next) => {
     }
 
     // Add file management info if files were deleted
-    if (updatedTradeCreditor._filesManagement?.filesDeleted > 0) {
+    if (updatedTradeDebtor._filesManagement?.filesDeleted > 0) {
       response.filesManagement = {
-        oldFilesDeleted: updatedTradeCreditor._filesManagement.filesDeleted,
-        filesFailedToDelete: updatedTradeCreditor._filesManagement.filesFailedToDelete || 0,
-        message: `${updatedTradeCreditor._filesManagement.filesDeleted} old files were removed from S3`,
+        oldFilesDeleted: updatedTradeDebtor._filesManagement.filesDeleted,
+        filesFailedToDelete: updatedTradeDebtor._filesManagement.filesFailedToDelete || 0,
+        message: `${updatedTradeDebtor._filesManagement.filesDeleted} old files were removed from S3`,
       };
 
-      if (updatedTradeCreditor._filesManagement.filesFailedToDelete > 0) {
-        response.filesManagement.warning = `${updatedTradeCreditor._filesManagement.filesFailedToDelete} files could not be deleted from S3`;
+      if (updatedTradeDebtor._filesManagement.filesFailedToDelete > 0) {
+        response.filesManagement.warning = `${updatedTradeDebtor._filesManagement.filesFailedToDelete} files could not be deleted from S3`;
       }
     }
 
     res.status(200).json(response);
   } catch (error) {
-    console.error("Error updating trade creditor:", error);
+    console.error("Error updating trade debtor:", error);
 
     // Clean up uploaded files if error occurs and we have files to clean up
     if (uploadedFiles.length > 0) {
@@ -604,42 +616,42 @@ export const updateTradeCreditor = async (req, res, next) => {
   }
 };
 
-// Delete trade creditor (soft delete)
-export const deleteTradeCreditor = async (req, res, next) => {
+// Delete trade debtor (soft delete)
+export const deleteTradeDebtor = async (req, res, next) => {
   try {
     const { id } = req.params;
 
     if (!id) {
-      throw createAppError("Trade creditor ID is required", 400, "MISSING_ID");
+      throw createAppError("Trade debtor ID is required", 400, "MISSING_ID");
     }
 
-    const deletedTradeCreditor = await TradeCreditorsService.deleteTradeCreditor(
+    const deletedTradeDebtor = await AccountTypeService.deleteTradeDebtor(
       id,
       req.admin.id
     );
 
     res.status(200).json({
       success: true,
-      message: "Trade creditor deleted successfully",
-      data: deletedTradeCreditor,
+      message: "Trade debtor deleted successfully",
+      data: deletedTradeDebtor,
     });
   } catch (error) {
     next(error);
   }
 };
 
-// Hard delete trade creditor
-export const hardDeleteTradeCreditor = async (req, res, next) => {
+// Hard delete trade debtor
+export const hardDeleteTradeDebtor = async (req, res, next) => {
   try {
     const { id } = req.params;
 
     if (!id) {
-      throw createAppError("Trade creditor ID is required", 400, "MISSING_ID");
+      throw createAppError("Trade debtor ID is required", 400, "MISSING_ID");
     }
 
-    console.log(`Processing hard delete request for trade creditor: ${id}`);
+    console.log(`Processing hard delete request for trade debtor: ${id}`);
 
-    const result = await TradeCreditorsService.hardDeleteTradeCreditor(id);
+    const result = await AccountTypeService.hardDeleteTradeDebtor(id);
 
     const response = {
       success: true,
@@ -666,7 +678,7 @@ export const hardDeleteTradeCreditor = async (req, res, next) => {
       }
     }
 
-    console.log(`Hard delete completed for trade creditor ${id}:`, {
+    console.log(`Hard delete completed for trade debtor ${id}:`, {
       filesTotal: result.filesDeleted?.total || 0,
       filesDeleted: result.filesDeleted?.successful || 0,
       filesFailed: result.filesDeleted?.failed || 0,
@@ -680,46 +692,46 @@ export const hardDeleteTradeCreditor = async (req, res, next) => {
 };
 
 // Toggle status
-export const toggleTradeCreditorStatus = async (req, res, next) => {
+export const toggleTradeDebtorStatus = async (req, res, next) => {
   try {
     const { id } = req.params;
 
     if (!id) {
-      throw createAppError("Trade creditor ID is required", 400, "MISSING_ID");
+      throw createAppError("Trade debtor ID is required", 400, "MISSING_ID");
     }
 
-    const updatedTradeCreditor = await TradeCreditorsService.toggleStatus(
+    const updatedTradeDebtor = await AccountTypeService.toggleStatus(
       id,
       req.admin.id
     );
 
     res.status(200).json({
       success: true,
-      message: "Trade creditor status updated successfully",
-      data: updatedTradeCreditor,
+      message: "Trade debtor status updated successfully",
+      data: updatedTradeDebtor,
     });
   } catch (error) {
     next(error);
   }
 };
 
-// Get active creditors list
-export const getActiveCreditorsList = async (req, res, next) => {
+// Get active debtors list
+export const getActiveDebtorsList = async (req, res, next) => {
   try {
-    const creditors = await TradeCreditorsService.getActiveCreditorsList();
+    const debtors = await AccountTypeService.getActiveDebtorsList();
 
     res.status(200).json({
       success: true,
-      message: "Active creditors list fetched successfully",
-      data: creditors,
+      message: "Active debtors list fetched successfully",
+      data: debtors,
     });
   } catch (error) {
     next(error);
   }
 };
 
-// Search creditors
-export const searchCreditors = async (req, res, next) => {
+// Search debtors
+export const searchDebtors = async (req, res, next) => {
   try {
     const { q } = req.query;
 
@@ -731,26 +743,26 @@ export const searchCreditors = async (req, res, next) => {
       );
     }
 
-    const creditors = await TradeCreditorsService.searchCreditors(q.trim());
+    const debtors = await AccountTypeService.searchDebtors(q.trim());
 
     res.status(200).json({
       success: true,
       message: "Search results fetched successfully",
-      data: creditors,
+      data: debtors,
     });
   } catch (error) {
     next(error);
   }
 };
 
-// Get creditor statistics
-export const getCreditorStatistics = async (req, res, next) => {
+// Get debtor statistics
+export const getDebtorStatistics = async (req, res, next) => {
   try {
-    const statistics = await TradeCreditorsService.getCreditorStatistics();
+    const statistics = await AccountTypeService.getDebtorStatistics();
 
     res.status(200).json({
       success: true,
-      message: "Creditor statistics fetched successfully",
+      message: "Debtor statistics fetched successfully",
       data: statistics,
     });
   } catch (error) {
@@ -780,12 +792,12 @@ export const bulkUpdateStatus = async (req, res, next) => {
     const results = [];
     for (const id of ids) {
       try {
-        const updatedCreditor = await TradeCreditorsService.updateTradeCreditor(
+        const updatedDebtor = await AccountTypeService.updateTradeDebtor(
           id,
           { status, isActive: status === "active" },
           req.admin.id
         );
-        results.push({ id, success: true, data: updatedCreditor });
+        results.push({ id, success: true, data: updatedDebtor });
       } catch (error) {
         results.push({ id, success: false, error: error.message });
       }
@@ -802,7 +814,7 @@ export const bulkUpdateStatus = async (req, res, next) => {
 };
 
 // Bulk delete
-export const bulkDeleteCreditors = async (req, res, next) => {
+export const bulkDeleteDebtors = async (req, res, next) => {
   try {
     const { ids } = req.body;
 
@@ -813,11 +825,11 @@ export const bulkDeleteCreditors = async (req, res, next) => {
     const results = [];
     for (const id of ids) {
       try {
-        const deletedCreditor = await TradeCreditorsService.deleteTradeCreditor(
+        const deletedDebtor = await AccountTypeService.deleteTradeDebtor(
           id,
           req.admin.id
         );
-        results.push({ id, success: true, data: deletedCreditor });
+        results.push({ id, success: true, data: deletedDebtor });
       } catch (error) {
         results.push({ id, success: false, error: error.message });
       }

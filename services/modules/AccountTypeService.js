@@ -2,7 +2,7 @@ import AccountType from "../../models/modules/AccountType.js";
 import { createAppError } from "../../utils/errorHandler.js";
 import { deleteMultipleS3Files } from "../../utils/s3Utils.js";
 
-class TradeDebtorsService {
+class AccountTypeService {
   // Create new trade debtor
   static async createTradeDebtor(debtorData, adminId) {
     try {
@@ -719,4 +719,4 @@ class TradeDebtorsService {
   }
 }
 
-export default TradeDebtorsService;
+export default AccountTypeService;

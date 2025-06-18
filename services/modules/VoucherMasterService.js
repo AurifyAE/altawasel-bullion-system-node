@@ -1,6 +1,7 @@
 import VoucherMaster from "../../models/modules/VoucherMaster.js";
+import MetalTransaction from "../../models/modules/MetalTransaction.js";
+import Entry from "../../models/modules/EntryModel.js"; // Import Entry model
 import { createAppError } from "../../utils/errorHandler.js";
-import Vouchers from "../../models/modules/Voucher.js";
 
 class VoucherMasterService {
   // Generate code based on prefix
@@ -123,148 +124,316 @@ class VoucherMasterService {
     return { message: "Voucher permanently deleted" };
   }
 
-// In VoucherMasterService.js
-static async getVouchersByModule(module, voucherType, page = 1, limit = 10) {
-  if (!module) {
-    throw createAppError("Module is required", 400, "MISSING_MODULE");
-  }
-
-  const query = { module: { $regex: `^${module}$`, $options: "i" } };
-  if (voucherType) query.voucherType = { $regex: `^${voucherType}$`, $options: "i" };
-
-  const skip = (page - 1) * limit;
-
-  const vouchers = await VoucherMaster.find(query)
-    .skip(skip)
-    .limit(limit)
-    .sort({ createdAt: -1 });
-
-  const total = await VoucherMaster.countDocuments(query);
-
-  if (!vouchers.length && page === 1) {
-    throw createAppError("No vouchers found for module", 404, "VOUCHERS_NOT_FOUND");
-  }
-
-  return { vouchers, total, page, limit };
-}
-
-
-static async generateVoucherNumber(module) {
-  if (!module) {
-    throw createAppError("Module is required", 400, "MISSING_MODULE");
-  }
-
-  // Split module into words (e.g., "metal-purchase" or "purchase-metal" -> ["metal", "purchase"])
-  const moduleWords = module
-    .split(/[-_]/) // Split by hyphen or underscore
-    .filter(word => word.trim()); // Remove empty words
-
-  // Create query conditions for each word
-  const wordConditions = moduleWords.flatMap(word => [
-    { voucherType: { $regex: `^${word}$`, $options: "i" } },
-    { module: { $regex: `^${word}$`, $options: "i" } },
-  ]);
-
-  // Find VoucherMaster document where any word matches voucherType or module
-  let voucher = await VoucherMaster.findOne({
-    $or: wordConditions.length ? wordConditions : [
-      { voucherType: { $regex: `^${module}$`, $options: "i" } },
-      { module: { $regex: `^${module}$`, $options: "i" } },
-    ],
-  });
-
-  if (!voucher) {
-    throw createAppError(
-      `No voucher found for ${module}`,
-      404,
-      "VOUCHER_NOT_FOUND"
-    );
-  }
-
-  let sequence = voucher.sequence;
-  let voucherNumber;
-  let isUnique = false;
-
-  // Loop until a unique voucher number is found in the Vouchers collection
-  while (!isUnique) {
-    // Generate voucher number
-    voucherNumber = `${voucher.prefix}${sequence.toString().padStart(voucher.numberLength, "0")}`;
-
-    // Check if the voucher number already exists in the Vouchers collection
-    const existingVoucher = await Vouchers.findOne({
-      voucherNumber: { $regex: `^${voucherNumber}$`, $options: "i" },
-      $or: [
-        { voucherType: { $regex: `^${voucher.voucherType}$`, $options: "i" } },
-        { module: { $regex: `^${voucher.module}$`, $options: "i" } },
-      ],
-    });
-
-    if (existingVoucher) {
-      // If voucher number exists, increment sequence
-      sequence++;
-    } else {
-      // Voucher number is unique, exit loop
-      isUnique = true;
+  // Get vouchers by module - Updated for new logic
+  static async getVouchersByModule(module, voucherType, page = 1, limit = 10) {
+    if (!module) {
+      throw createAppError("Module is required", 400, "MISSING_MODULE");
     }
+
+    const query = { 
+      module: { $regex: `^${module}$`, $options: "i" },
+      isActive: true,
+      status: "active"
+    };
+    
+    if (voucherType) {
+      query.voucherType = { $regex: `^${voucherType}$`, $options: "i" };
+    }
+
+    const skip = (page - 1) * limit;
+
+    const vouchers = await VoucherMaster.find(query)
+      .skip(skip)
+      .limit(limit)
+      .sort({ createdAt: -1 });
+
+    const total = await VoucherMaster.countDocuments(query);
+
+    if (!vouchers.length && page === 1) {
+      throw createAppError("No vouchers found for module", 404, "VOUCHERS_NOT_FOUND");
+    }
+
+    return { vouchers, total, page, limit };
   }
 
-  // Atomically increment sequence in the VoucherMaster collection if auto-increment is enabled
-  if (voucher.isAutoIncrement) {
-    voucher = await VoucherMaster.findOneAndUpdate(
-      {
-        $or: [
-          { voucherType: { $regex: `^${voucher.voucherType}$`, $options: "i" } },
-          { module: { $regex: `^${voucher.module}$`, $options: "i" } },
-        ],
-      },
-      { $set: { sequence: sequence + 1 } },
-      { new: true }
-    );
+  // Helper method to get transaction count based on module and type
+  static async getTransactionCount(module, transactionType) {
+    const moduleLC = module.toLowerCase();
+    
+    if (moduleLC.includes('metal')) {
+      // For metal transactions
+      if (transactionType) {
+        return await MetalTransaction.countDocuments({
+          transactionType: { $regex: `^${transactionType}$`, $options: "i" }
+        });
+      }
+      return await MetalTransaction.countDocuments();
+    } else if (moduleLC.includes('entry') || moduleLC.includes('receipt') || moduleLC.includes('payment')) {
+      // For entry transactions
+      const entryTypes = ["metal receipt", "metal payment", "cash receipt", "cash payment"];
+      
+      if (transactionType && entryTypes.includes(transactionType.toLowerCase())) {
+        return await Entry.countDocuments({
+          type: { $regex: `^${transactionType}$`, $options: "i" }
+        });
+      }
+      
+      // If no specific type, count all entries
+      return await Entry.countDocuments();
+    }
+    
+    return 0;
+  }
+
+  // Generate voucher number for any module/transaction type - Updated logic
+  static async generateVoucherNumber(module, transactionType = null) {
+    if (!module) {
+      throw createAppError("Module is required", 400, "MISSING_MODULE");
+    }
+
+    // Find voucher configuration for the module
+    const voucher = await VoucherMaster.findOne({
+      module: { $regex: `^${module}$`, $options: "i" },
+      isActive: true,
+      status: "active"
+    });
 
     if (!voucher) {
       throw createAppError(
-        "Failed to update voucher sequence",
-        500,
-        "SEQUENCE_UPDATE_FAILED"
+        `No active voucher configuration found for module: ${module}`,
+        404,
+        "VOUCHER_CONFIG_NOT_FOUND"
       );
+    }
+
+    // Get transaction count based on module and type
+    const transactionCount = await this.getTransactionCount(module, transactionType);
+
+    // Generate next voucher number
+    const nextSequence = transactionCount + 1;
+    const voucherNumber = `${voucher.prefix}${nextSequence.toString().padStart(voucher.numberLength, "0")}`;
+
+    // Format date based on voucher.dateFormat
+    const today = new Date();
+    let formattedDate;
+    switch (voucher.dateFormat) {
+      case "DD/MM/YYYY":
+        formattedDate = `${today.getDate().toString().padStart(2, "0")}/${(
+          today.getMonth() + 1
+        )
+          .toString()
+          .padStart(2, "0")}/${today.getFullYear()}`;
+        break;
+      case "MM/DD/YYYY":
+        formattedDate = `${(today.getMonth() + 1).toString().padStart(2, "0")}/${today
+          .getDate()
+          .toString()
+          .padStart(2, "0")}/${today.getFullYear()}`;
+        break;
+      case "YYYY-MM-DD":
+        formattedDate = `${today.getFullYear()}-${(today.getMonth() + 1)
+          .toString()
+          .padStart(2, "0")}-${today.getDate().toString().padStart(2, "0")}`;
+        break;
+      default:
+        formattedDate = today.toISOString().split("T")[0];
+    }
+
+    // Update sequence if auto-increment is enabled
+    if (voucher.isAutoIncrement) {
+      await VoucherMaster.findByIdAndUpdate(
+        voucher._id,
+        { $inc: { sequence: 1 } }
+      );
+    }
+
+    return {
+      voucherType: voucher.voucherType,
+      module: voucher.module,
+      prefix: voucher.prefix,
+      voucherNumber,
+      sequence: nextSequence,
+      transactionCount: transactionCount,
+      transactionType: transactionType,
+      date: today.toISOString().split("T")[0],
+      formattedDate,
+      voucherConfig: {
+        numberLength: voucher.numberLength,
+        dateFormat: voucher.dateFormat,
+        isAutoIncrement: voucher.isAutoIncrement
+      }
+    };
+  }
+
+  // Get voucher info for metal purchase page
+  static async getMetalPurchaseVoucherInfo(module = "metal-purchase") {
+    try {
+      const voucher = await VoucherMaster.findOne({
+        module: { $regex: `^${module}$`, $options: "i" },
+        isActive: true,
+        status: "active"
+      });
+
+      if (!voucher) {
+        throw createAppError(
+          `No voucher configuration found for ${module}`,
+          404,
+          "VOUCHER_CONFIG_NOT_FOUND"
+        );
+      }
+
+      const purchaseCount = await MetalTransaction.countDocuments({
+        transactionType: "purchase"
+      });
+
+      const nextSequence = purchaseCount + 1;
+      const nextVoucherNumber = `${voucher.prefix}${nextSequence.toString().padStart(voucher.numberLength, "0")}`;
+
+      return {
+        prefix: voucher.prefix,
+        currentCount: purchaseCount,
+        nextSequence: nextSequence,
+        nextVoucherNumber: nextVoucherNumber,
+        numberLength: voucher.numberLength,
+        voucherConfig: voucher
+      };
+    } catch (error) {
+      throw error;
     }
   }
 
-  // Format date based on voucher.dateFormat
-  const today = new Date();
-  let formattedDate;
-  switch (voucher.dateFormat) {
-    case "DD/MM/YYYY":
-      formattedDate = `${today.getDate().toString().padStart(2, "0")}/${(
-        today.getMonth() + 1
-      )
-        .toString()
-        .padStart(2, "0")}/${today.getFullYear()}`;
-      break;
-    case "MM/DD/YYYY":
-      formattedDate = `${(today.getMonth() + 1).toString().padStart(2, "0")}/${today
-        .getDate()
-        .toString()
-        .padStart(2, "0")}/${today.getFullYear()}`;
-      break;
-    case "YYYY-MM-DD":
-      formattedDate = `${today.getFullYear()}-${(today.getMonth() + 1)
-        .toString()
-        .padStart(2, "0")}-${today.getDate().toString().padStart(2, "0")}`;
-      break;
-    default:
-      formattedDate = today.toISOString().split("T")[0];
+  // Get voucher info for metal sale page
+  static async getMetalSaleVoucherInfo(module = "metal-sale") {
+    try {
+      const voucher = await VoucherMaster.findOne({
+        module: { $regex: `^${module}$`, $options: "i" },
+        isActive: true,
+        status: "active"
+      });
+
+      if (!voucher) {
+        throw createAppError(
+          `No voucher configuration found for ${module}`,
+          404,
+          "VOUCHER_CONFIG_NOT_FOUND"
+        );
+      }
+
+      const saleCount = await MetalTransaction.countDocuments({
+        transactionType: "sale"
+      });
+
+      const nextSequence = saleCount + 1;
+      const nextVoucherNumber = `${voucher.prefix}${nextSequence.toString().padStart(voucher.numberLength, "0")}`;
+
+      return {
+        prefix: voucher.prefix,
+        currentCount: saleCount,
+        nextSequence: nextSequence,
+        nextVoucherNumber: nextVoucherNumber,
+        numberLength: voucher.numberLength,
+        voucherConfig: voucher
+      };
+    } catch (error) {
+      throw error;
+    }
   }
 
-  return {
-    voucherType: voucher.voucherType,
-    module: voucher.module,
-    prefix: voucher.prefix,
-    voucherNumber,
-    date: today.toISOString().split("T")[0],
-    formattedDate,
-  };
-}
+  // Get voucher info for Entry collections by type
+  static async getEntryVoucherInfo(module, entryType) {
+    try {
+      const validEntryTypes = ["metal receipt", "metal payment", "cash receipt", "cash payment"];
+      
+      if (!validEntryTypes.includes(entryType.toLowerCase())) {
+        throw createAppError(
+          `Invalid entry type. Valid types: ${validEntryTypes.join(', ')}`,
+          400,
+          "INVALID_ENTRY_TYPE"
+        );
+      }
+
+      const voucher = await VoucherMaster.findOne({
+        module: { $regex: `^${module}$`, $options: "i" },
+        isActive: true,
+        status: "active"
+      });
+
+      if (!voucher) {
+        throw createAppError(
+          `No voucher configuration found for ${module}`,
+          404,
+          "VOUCHER_CONFIG_NOT_FOUND"
+        );
+      }
+
+      // Count entries by specific type
+      const entryCount = await Entry.countDocuments({
+        type: { $regex: `^${entryType}$`, $options: "i" }
+      });
+
+      const nextSequence = entryCount + 1;
+      const nextVoucherNumber = `${voucher.prefix}${nextSequence.toString().padStart(voucher.numberLength, "0")}`;
+
+      return {
+        prefix: voucher.prefix,
+        currentCount: entryCount,
+        nextSequence: nextSequence,
+        nextVoucherNumber: nextVoucherNumber,
+        numberLength: voucher.numberLength,
+        entryType: entryType,
+        voucherConfig: voucher
+      };
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  // Get all entry types voucher info
+  static async getAllEntryTypesVoucherInfo(module = "entry") {
+    try {
+      const voucher = await VoucherMaster.findOne({
+        module: { $regex: `^${module}$`, $options: "i" },
+        isActive: true,
+        status: "active"
+      });
+
+      if (!voucher) {
+        throw createAppError(
+          `No voucher configuration found for ${module}`,
+          404,
+          "VOUCHER_CONFIG_NOT_FOUND"
+        );
+      }
+
+      const entryTypes = ["metal receipt", "metal payment", "cash receipt", "cash payment"];
+      const entryTypesInfo = {};
+
+      // Get count for each entry type
+      for (const type of entryTypes) {
+        const count = await Entry.countDocuments({
+          type: { $regex: `^${type}$`, $options: "i" }
+        });
+        
+        const nextSequence = count + 1;
+        const nextVoucherNumber = `${voucher.prefix}${nextSequence.toString().padStart(voucher.numberLength, "0")}`;
+        
+        entryTypesInfo[type] = {
+          currentCount: count,
+          nextSequence: nextSequence,
+          nextVoucherNumber: nextVoucherNumber
+        };
+      }
+
+      return {
+        prefix: voucher.prefix,
+        numberLength: voucher.numberLength,
+        voucherConfig: voucher,
+        entryTypes: entryTypesInfo
+      };
+    } catch (error) {
+      throw error;
+    }
+  }
 }
 
 export default VoucherMasterService;
