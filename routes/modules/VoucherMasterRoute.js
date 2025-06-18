@@ -1,12 +1,13 @@
+
 import express from "express";
 import {
   createVoucher,
   updateVoucher,
-  getAllVouchers,
+    getAllVouchers,
   getVoucherById,
   deleteVoucher,
   hardDeleteVoucher,
-  getVouchersByModule,
+  getVouchersByModule, // Updated function name
   generateVoucherNumber,
 } from "../../controllers/modules/VoucherMasterController.js";
 import { authenticateToken } from "../../middleware/authMiddleware.js";
@@ -16,13 +17,12 @@ const router = express.Router();
 // Apply authentication middleware to all routes
 router.use(authenticateToken);
 
-// 🔑 Specific first
+// Specific routes
 router.post("/", createVoucher);
-router.get("/module/:module", getVouchersByModule);
+router.get("/module/:module", getVouchersByModule); // Changed from /type/:voucherType
 router.post("/generate-number/:module", generateVoucherNumber);
-// router.get("/types", getAllVoucherTypes);
 
-// ⚠️ More general later
+// General routes
 router.get("/", getAllVouchers);
 router.get("/:id", getVoucherById);
 router.put("/:id", updateVoucher);

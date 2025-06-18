@@ -1,4 +1,3 @@
-
 import mongoose from "mongoose";
 import moment from "moment";
 
@@ -8,7 +7,7 @@ const VoucherMasterSchema = new mongoose.Schema(
       type: String,
       trim: true,
       uppercase: true,
-      unique: true, // Implicitly creates a unique index
+      unique: true,
     },
     description: {
       type: String,
@@ -20,6 +19,11 @@ const VoucherMasterSchema = new mongoose.Schema(
       type: String,
       required: [true, "Voucher type is required"],
       uppercase: true,
+    },
+    module: {
+      type: String,
+      required: [true, "Module is required"],
+      trim: true,
     },
     prefix: {
       type: String,
@@ -36,6 +40,11 @@ const VoucherMasterSchema = new mongoose.Schema(
       max: [10, "Number length cannot exceed 10"],
       default: 4,
     },
+    sequence: {
+      type: Number,
+      default: 1,
+      min: [1, "Sequence must be at least 1"],
+    },
     dateFormat: {
       type: String,
       required: [true, "Date format is required"],
@@ -49,21 +58,6 @@ const VoucherMasterSchema = new mongoose.Schema(
     isAutoIncrement: {
       type: Boolean,
       default: true,
-    },
-    module: {
-      type: String,
-      required: [true, "Module is required"],
-      trim: true,
-      unique: true, // Implicitly creates a unique index
-    },
-    resetCounterOn: {
-      type: String,
-      enum: ["NEVER", "DAILY", "MONTHLY", "YEARLY"],
-      default: "NEVER"
-    },
-    lastResetDate: {
-      type: Date,
-      default: null
     },
     isActive: {
       type: Boolean,
@@ -91,8 +85,8 @@ const VoucherMasterSchema = new mongoose.Schema(
   }
 );
 
-// Indexes (remove duplicates for code and module)
-VoucherMasterSchema.index({ voucherType: 1 });
+// Indexes
+VoucherMasterSchema.index({ voucherType: 1, module: 1 }, { unique: true });
 VoucherMasterSchema.index({ status: 1 });
 VoucherMasterSchema.index({ isActive: 1 });
 VoucherMasterSchema.index({ createdAt: -1 });
@@ -103,12 +97,16 @@ VoucherMasterSchema.pre("save", function (next) {
   if (this.prefix) this.prefix = this.prefix.toUpperCase();
   if (this.voucherType) this.voucherType = this.voucherType.toUpperCase();
   if (this.code) this.code = this.code.toUpperCase();
+  if (this.module) this.module = this.module.trim();
   next();
 });
 
-// Static method to check if module exists
-VoucherMasterSchema.statics.isModuleExists = async function (module, excludeId = null) {
-  const query = { module };
+// Static method to check if voucherType and module combination exists
+VoucherMasterSchema.statics.isVoucherTypeAndModuleExists = async function (voucherType, module, excludeId = null) {
+  const query = {
+    voucherType: { $regex: `^${voucherType}$`, $options: "i" },
+    module: { $regex: `^${module}$`, $options: "i" },
+  };
   if (excludeId) query._id = { $ne: excludeId };
   const voucher = await this.findOne(query);
   return !!voucher;
