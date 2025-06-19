@@ -1,78 +1,66 @@
-import Entry from '../../models/modules/EntryModel.js';
-import Registry from '../../models/modules/Registry.js';
-import AccountType from '../../models/modules/AccountType.js'; // Make sure this is at the top
-import AccountMaster from '../../models/modules/accountMaster.js';
+const Entry = require('../../models/modules/EntryModel');
+const Registry = require('../../models/modules/Registry.js');
+const AccountType = require ('../../models/modules/AccountType.js');
+const AccountMaster = require ('../../models/modules/accountMaster.js');
 
-
-const createEntry = async (req, res) => {
-  try {
-    const { type } = req.body;
-
-    // Validate entry type
-    const validTypes = ["metal receipt", "metal payment", "cash receipt", "cash payment"];
-    if (!validTypes.includes(type)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid entry type"
-      });
-    }
-
-    // Prepare entry data based on type
+exports.createEntry = async (data) => {
+    try {
+        
+ 
+   // Prepare entry data based on type
     let entryData = {
-      voucherId: req.body.voucherId,
-      type: req.body.type,
-      voucherCode: req.body.voucherCode,
-      voucherDate: req.body.voucherDate,
-      party: req.body.party,
-      enteredBy: req.body.enteredBy,
-      remarks: req.body.remarks
+      voucherId: data.voucherId,
+      type: data.type,
+      voucherCode: data.voucherCode,
+      voucherDate: data.voucherDate,
+      party: data.party,
+      enteredBy: data.enteredBy,
+      remarks: data.remarks
     };
 
     // Add type-specific fields
-    if (type === "metal receipt" || type === "metal payment") {
-      entryData.stocks = req.body.stocks;
-    } else if (type === "cash receipt" || type === "cash payment") {
-      entryData.cash = req.body.cash;
+    if (data.type === "metal receipt" || data.type === "metal payment") {
+      entryData.stocks = data.stocks;
+    } else if (data.type === "cash receipt" || data.type === "cash payment") {
+      entryData.cash = data.cash;
     }
 
     const entry = new Entry(entryData);
 
     // Handle metal receipt
-    if (type === "metal receipt") {
+    if (data.type === "metal receipt") {
       await handleMetalReceipt(entry);
     }
 
     // Handle cash receipt
-    if (type === "cash receipt") {
+    if (data.type === "cash receipt") {
       await handleCashReceipt(entry);
     }
 
     // Handle cash payment
-    if (type === "cash payment") {
+    if (data.type === "cash payment") {
       await handleCashPayment(entry);
     }
 
     // Handle metal payment
-    if (type === "metal payment") {
+    if (data.type === "metal payment") {
       await handleMetalPayment(entry);
     }
 
     // Save entry only after all handlers succeed
     await entry.save();
 
-    res.status(201).json({
+    return {
       success: true,
       data: entry,
-      message: `${type} entry created successfully`
-    });
-  } catch (err) {
-    console.error('Error creating entry:', err);
-    res.status(400).json({ 
-      success: false,
-      error: err.message 
-    });
+      message: `${data.type} entry created successfully`
+    };
+  } catch (error) {
+    console.error("Error creating entry:", error);
+    throw new Error("Failed to create entry");
   }
 };
+
 
 // Helper function for metal receipt
 const handleMetalReceipt = async (entry) => {
@@ -164,9 +152,7 @@ const handleCashReceipt = async (entry) => {
     await Registry.create({
       transactionId,
       type: "PARTY_CASH_BALANCE",
-      description: cashItem.remarks && cashItem.remarks.trim() !== ""
-        ? cashItem.remarks
-        : (entry.remarks && entry.remarks.trim() !== "" ? entry.remarks : "No description"),
+      description: cashItem.remarks || entry.remarks || "",
       value: requestedAmount,
       runningBalance: 0,
       previousBalance: 0,
@@ -330,82 +316,3 @@ const handleMetalPayment = async (entry) => {
 };
 
 
-const getCashPayments = async (req, res) => {
-  try {
-    const entries = await Entry.find({ type: "cash payment" })
-      .populate('voucherId')
-      .populate('party')
-      .populate('enteredBy')
-      .populate('stocks.stock')
-      .sort({ createdAt: -1 });
-    res.json(entries);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-};
-
-const getCashReceipts = async (req, res) => {
-  try {
-    const entries = await Entry.find({ type: "cash receipt" })
-      .populate('voucherId')
-      .populate('party')
-      .populate('enteredBy')
-      .populate('stocks.stock')
-      .sort({ createdAt: -1 });
-    res.json(entries);
-  } catch (err) {
-    console.error(err); // Add this line
-    res.status(500).json({ error: err.message });
-  }
-};
-
-const getMetalPayments = async (req, res) => {
-  try {
-    const entries = await Entry.find({ type: "metal payment" })
-      .populate('voucherId')
-      .populate('party')
-      .populate('enteredBy')
-      .populate('stocks.stock')
-      .sort({ createdAt: -1 });
-    res.json(entries);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-};
-
-const getMetalReceipts = async (req, res) => {
-  try {
-    const entries = await Entry.find({ type: "metal receipt" })
-      .populate('voucherId')
-      .populate('party')
-      .populate('enteredBy')
-      .populate('stocks.stock')
-      .sort({ createdAt: -1 });
-    res.json(entries);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-};
-
-const getEntryById = async (req, res) => {
-  try {
-    const entry = await Entry.findById(req.params.id)
-      .populate('voucherId')
-      .populate('party')
-      .populate('enteredBy')
-      .populate('stocks.stock');
-    if (!entry) return res.status(404).json({ error: 'Entry not found' });
-    res.json(entry);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-};
-
-export default {
-  createEntry,
-  getCashPayments,
-  getCashReceipts,
-  getMetalPayments,
-  getMetalReceipts,
-  getEntryById
-};
