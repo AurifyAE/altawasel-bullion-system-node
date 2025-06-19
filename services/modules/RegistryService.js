@@ -556,7 +556,7 @@ class RegistryService {
     const registries = await Registry.find(filter)
       .populate('createdBy', 'name email')
       .populate('updatedBy', 'name email')
-      .populate('costCenter', 'code name')
+      // .populate('costCenter', 'code name')
       .sort({ transactionDate: -1 })
       .skip(skip)
       .limit(limit);
