@@ -496,8 +496,17 @@ export const getProfitLossAnalysis = async (req, res, next) => {
 
 export const getUnfixedTransactions = async (req, res, next) => {
   try {
-    const { page = 1, limit = 50, transactionType, partyCode, status, startDate, endDate } = req.query;
+    const { 
+      page = 1, 
+      limit = 50, 
+      transactionType, 
+      partyCode, 
+      status, 
+      startDate, 
+      endDate 
+    } = req.query;
 
+    // Build filters object
     const filters = {};
     if (transactionType) filters.transactionType = transactionType;
     if (partyCode) filters.partyCode = partyCode;
@@ -505,19 +514,33 @@ export const getUnfixedTransactions = async (req, res, next) => {
     if (startDate) filters.startDate = startDate;
     if (endDate) filters.endDate = endDate;
 
+    // Get unfixed transactions data
     const result = await MetalTransactionService.getUnfixedTransactions(
       parseInt(page),
       parseInt(limit),
       filters
     );
 
+    // Return comprehensive response with all required data
     res.status(200).json({
       success: true,
       message: "Unfixed transactions retrieved successfully",
-      data: result.parties,
+      data: {
+        transactions: result.transactions,
+        parties: result.parties,
+        summary: result.summary,
+      },
       pagination: result.pagination,
+      filters: {
+        applied: filters,
+        available: {
+          transactionTypes: ["purchase", "sale"],
+          statuses: ["draft", "confirmed", "completed", "cancelled"],
+        }
+      }
     });
   } catch (error) {
+    console.error('Error in getUnfixedTransactions:', error);
     next(error);
   }
 };

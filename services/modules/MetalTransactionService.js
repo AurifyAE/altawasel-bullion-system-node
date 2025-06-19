@@ -148,77 +148,153 @@ class MetalTransactionService {
       .limit(limit);
   }
 static async getUnfixedTransactions(page = 1, limit = 50, filters = {}) {
-    const skip = (page - 1) * limit;
-    const query = {
-      isActive: true,
-      unfix: true, // Show only transactions where unfix is true
-    };
+  const skip = (page - 1) * limit;
+  const query = {
+    isActive: true,
+    unfix: true, // Show only transactions where unfix is true
+  };
 
-    // Apply filters
-    if (filters.transactionType) {
-      query.transactionType = filters.transactionType;
-    }
-    if (filters.partyCode) {
-      query.partyCode = filters.partyCode;
-    }
-    if (filters.status) {
-      query.status = filters.status;
-    }
-    if (filters.startDate && filters.endDate) {
-      query.voucherDate = {
-        $gte: new Date(filters.startDate),
-        $lte: new Date(filters.endDate),
-      };
-    }
-
-    const transactions = await MetalTransaction.find(query)
-      .populate({
-        path: "partyCode",
-        select: "accountCode customerName email phone balances limitsMargins",
-        populate: [
-          {
-            path: "balances.goldBalance.currency",
-            model: "CurrencyMaster",
-            select: "code symbol"
-          },
-          {
-            path: "balances.cashBalance.currency",
-            model: "CurrencyMaster",
-            select: "code symbol"
-          }
-        ]
-      })
-      .select("partyCode") // Only select partyCode field from transactions
-      .sort({ voucherDate: -1, createdAt: -1 })
-      .skip(skip)
-      .limit(limit);
-
-    const total = await MetalTransaction.countDocuments(query);
-
-    // Extract only party data and remove duplicates
-    const partyDataMap = new Map();
-    transactions.forEach(transaction => {
-      if (transaction.partyCode && transaction.partyCode._id) {
-        const partyId = transaction.partyCode._id.toString();
-        if (!partyDataMap.has(partyId)) {
-          partyDataMap.set(partyId, transaction.partyCode);
-        }
-      }
-    });
-
-    const uniquePartyData = Array.from(partyDataMap.values());
-
-    return {
-      parties: uniquePartyData,
-      pagination: {
-        currentPage: page,
-        totalPages: Math.ceil(total / limit),
-        totalItems: total,
-        hasNext: page < Math.ceil(total / limit),
-        hasPrev: page > 1,
-      },
+  // Apply filters
+  if (filters.transactionType) {
+    query.transactionType = filters.transactionType;
+  }
+  if (filters.partyCode) {
+    query.partyCode = filters.partyCode;
+  }
+  if (filters.status) {
+    query.status = filters.status;
+  }
+  if (filters.startDate && filters.endDate) {
+    query.voucherDate = {
+      $gte: new Date(filters.startDate),
+      $lte: new Date(filters.endDate),
     };
   }
+
+  const transactions = await MetalTransaction.find(query)
+    .populate({
+      path: "partyCode",
+      select: "accountCode customerName email phone balances limitsMargins",
+      populate: [
+        {
+          path: "balances.goldBalance.currency",
+          select: "code symbol",
+        },
+        {
+          path: "balances.cashBalance.currency",
+          select: "code symbol",
+        },
+      ],
+    })
+    .populate("partyCurrency", "code symbol")
+    .populate("itemCurrency", "code symbol")
+    .populate("baseCurrency", "code symbol")
+    .populate("stockItems.stockCode", "code description specifications")
+    .populate("stockItems.metalRate", "metalType rate effectiveDate")
+    .populate("createdBy", "name email")
+    .populate("updatedBy", "name email")
+    .sort({ voucherDate: -1, createdAt: -1 })
+    .skip(skip)
+    .limit(limit);
+
+  const total = await MetalTransaction.countDocuments(query);
+
+  // Extract unique party data
+  const partyDataMap = new Map();
+  transactions.forEach((transaction) => {
+    if (transaction.partyCode && transaction.partyCode._id) {
+      const partyId = transaction.partyCode._id.toString();
+      if (!partyDataMap.has(partyId)) {
+        partyDataMap.set(partyId, transaction.partyCode);
+      }
+    }
+  });
+
+  const uniquePartyData = Array.from(partyDataMap.values());
+
+  // Transform transactions for unfix screen with required fields
+  const transformedTransactions = transactions.map(transaction => ({
+    _id: transaction._id,
+    transactionType: transaction.transactionType,
+    voucherDate: transaction.voucherDate,
+    formattedVoucherDate: transaction.formattedVoucherDate,
+    voucherNumber: transaction.voucherNumber,
+    voucherType: transaction.voucherType,
+    
+    // Party Information
+    partyCode: {
+      _id: transaction.partyCode._id,
+      accountCode: transaction.partyCode.accountCode,
+      customerName: transaction.partyCode.customerName,
+      email: transaction.partyCode.email,
+      phone: transaction.partyCode.phone,
+    },
+    
+    // Currency Information
+    partyCurrency: transaction.partyCurrency,
+    itemCurrency: transaction.itemCurrency,
+    baseCurrency: transaction.baseCurrency,
+    
+    // Status and Flags
+    status: transaction.status,
+    fixed: transaction.fixed,
+    unfix: transaction.unfix,
+    
+    // Stock Items with essential data
+    stockItems: transaction.stockItems.map(item => ({
+      _id: item._id,
+      stockCode: item.stockCode,
+      description: item.description,
+      pieces: item.pieces,
+      grossWeight: item.grossWeight,
+      purity: item.purity,
+      purityWeight: item.purityWeight,
+      pureWeight: item.pureWeight,
+      weightInOz: item.weightInOz,
+      metalRate: item.metalRate,
+      metalRateRequirements: item.metalRateRequirements,
+      makingCharges: item.makingCharges,
+      premium: item.premium,
+      itemTotal: item.itemTotal,
+      itemStatus: item.itemStatus,
+    })),
+    
+    // Session Totals
+    totalAmountSession: transaction.totalAmountSession,
+    
+    // Metadata
+    createdAt: transaction.createdAt,
+    updatedAt: transaction.updatedAt,
+    createdBy: transaction.createdBy,
+    updatedBy: transaction.updatedBy,
+    notes: transaction.notes,
+    
+    // Virtual fields
+    isPurchase: transaction.isPurchase,
+    isSale: transaction.isSale,
+    totalStockItems: transaction.totalStockItems,
+  }));
+
+  return {
+    transactions: transformedTransactions,
+    parties: uniquePartyData,
+    pagination: {
+      currentPage: page,
+      totalPages: Math.ceil(total / limit),
+      totalItems: total,
+      hasNext: page < Math.ceil(total / limit),
+      hasPrev: page > 1,
+    },
+    summary: {
+      totalUnfixedTransactions: total,
+      totalPurchases: transformedTransactions.filter(t => t.transactionType === 'purchase').length,
+      totalSales: transformedTransactions.filter(t => t.transactionType === 'sale').length,
+      totalAmount: transformedTransactions.reduce((sum, t) => sum + (t.totalAmountSession?.totalAmountAED || 0), 0),
+      totalNetAmount: transformedTransactions.reduce((sum, t) => sum + (t.totalAmountSession?.netAmountAED || 0), 0),
+      totalVatAmount: transformedTransactions.reduce((sum, t) => sum + (t.totalAmountSession?.vatAmount || 0), 0),
+    }
+  };
+}
 
   // Get unfixed transactions with detailed account information
   static async getUnfixedTransactionsWithAccounts(
