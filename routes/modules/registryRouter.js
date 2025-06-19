@@ -11,6 +11,8 @@ import {
   updateRegistryStatus,
   getRegistriesByCostCenter,
   getRegistryBalance,
+  getRegistryStockBalance,
+  getRegistryPremiumDiscount,
 } from "../../controllers/modules/RegistryController.js";
 import { authenticateToken } from "../../middleware/authMiddleware.js";
 import {
@@ -35,6 +37,15 @@ router.get("/", validatePagination, validateDateRange, getAllRegistries);
 
 // Get registry statistics
 router.get("/statistics", validateDateRange, getRegistryStatistics);
+
+// getting registry for stock_balance
+router.get(
+  "/get-stock-balance",
+  getRegistryStockBalance
+);
+
+router.get('/premium-discount', getRegistryPremiumDiscount);
+
 
 // Get balance for cost center
 router.get("/balance/:costCenter", getRegistryBalance);
@@ -89,5 +100,7 @@ router.delete(
   validateObjectId("id"),
   permanentDeleteRegistry
 );
+
+
 
 export default router;

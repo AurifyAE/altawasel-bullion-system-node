@@ -528,6 +528,104 @@ class RegistryService {
       throw error;
     }
   }
+
+
+  // Getting stock balance 
+
+   static async getStockBalanceRegistries({ page = 1, limit = 10, search = '' }) {
+  try {
+    const filter = {
+      type: { $in: ["STOCK_BALANCE", "stock_balance"] },
+      isActive: true,
+    };
+
+    if (search) {
+      filter.$or = [
+        { 'costCenter.name': { $regex: search, $options: 'i' } },
+        { 'costCenter.code': { $regex: search, $options: 'i' } },
+        // Add more fields as needed
+      ];
+    }
+
+    const skip = (page - 1) * limit;
+
+    // Count total items
+    const totalItems = await Registry.countDocuments(filter);
+
+    // Fetch paginated data
+    const registries = await Registry.find(filter)
+      .populate('createdBy', 'name email')
+      .populate('updatedBy', 'name email')
+      // .populate('costCenter', 'code name')
+      .sort({ transactionDate: -1 })
+      .skip(skip)
+      .limit(limit);
+
+    // Example summary calculation (customize as needed)
+    const summary = {
+      totalDebit: 0,
+      totalCredit: 0,
+      totalTransactions: totalItems,
+      avgValue: 0,
+    };
+
+    const totalPages = Math.ceil(totalItems / limit);
+
+    return { registries, totalItems, totalPages, summary };
+  } catch (error) {
+    throw error;
+  }
+}
+
+
+// getting premium discount registries
+
+static async getPremiumDiscountRegistries({ page = 1, limit = 10, search = '' }) {
+  try {
+    const filter = {
+      type: { $in: ["PREMIUM-DISCOUNT", "premium-discount"] },
+      isActive: true,
+    };
+
+    if (search) {
+      filter.$or = [
+        { 'costCenter.name': { $regex: search, $options: 'i' } },
+        { 'costCenter.code': { $regex: search, $options: 'i' } },
+        // Add more fields as needed
+      ];
+    }
+
+    const skip = (page - 1) * limit;
+
+    // Count total items
+    const totalItems = await Registry.countDocuments(filter);
+
+    // Fetch paginated data
+    const registries = await Registry.find(filter)
+      .populate('createdBy', 'name email')
+      .populate('updatedBy', 'name email')
+      .populate('costCenter', 'code name')
+      .sort({ transactionDate: -1 })
+      .skip(skip)
+      .limit(limit);
+
+    // Example summary calculation (customize as needed)
+    const summary = {
+      totalDebit: 0,
+      totalCredit: 0,
+      totalTransactions: totalItems,
+      avgValue: 0,
+    };
+
+    const totalPages = Math.ceil(totalItems / limit);
+
+    return { registries, totalItems, totalPages, summary };
+  } catch (error) {
+    throw error;
+  }
+}
+
+
 }
 
 export default RegistryService;
