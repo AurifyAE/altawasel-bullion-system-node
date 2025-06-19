@@ -79,7 +79,7 @@ class MetalTransactionService {
     }
 
     const transactions = await MetalTransaction.find(query)
-      .populate("partyCode", "name code email phone")
+      .populate("partyCode", "accountCode customerName ")
       .populate("partyCurrency", "code symbol")
       .populate("itemCurrency", "code symbol")
       .populate("baseCurrency", "code symbol")
