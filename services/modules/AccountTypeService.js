@@ -91,6 +91,7 @@ class AccountTypeService {
       // Search functionality
       if (search) {
         query.$or = [
+          { accountType: { $regex: search, $options: "i" } },
           { customerName: { $regex: search, $options: "i" } },
           { accountCode: { $regex: search, $options: "i" } },
           { shortName: { $regex: search, $options: "i" } },
