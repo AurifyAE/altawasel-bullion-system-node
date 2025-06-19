@@ -79,11 +79,14 @@ const handleMetalReceipt = async (entry) => {
   for (const stock of entry.stocks) {
     const transactionId = await Registry.generateTransactionId();
 
+     const description = stock.remarks && stock.remarks.trim() !== "" 
+      ? stock.remarks 
+      : "No description";
     // Registry entry for "stock balance"
     await Registry.create({
       transactionId,
       type: "STOCK_BALANCE",
-      description: stock.remarks || "",
+      description,
       value: stock.purityWeight,
       runningBalance: 0,
       previousBalance: 0,
