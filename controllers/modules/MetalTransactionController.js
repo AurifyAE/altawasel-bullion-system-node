@@ -492,3 +492,61 @@ export const getProfitLossAnalysis = async (req, res, next) => {
     next(error);
   }
 };
+
+
+export const getUnfixedTransactions = async (req, res, next) => {
+  try {
+    const { page = 1, limit = 50, transactionType, partyCode, status, startDate, endDate } = req.query;
+
+    const filters = {};
+    if (transactionType) filters.transactionType = transactionType;
+    if (partyCode) filters.partyCode = partyCode;
+    if (status) filters.status = status;
+    if (startDate) filters.startDate = startDate;
+    if (endDate) filters.endDate = endDate;
+
+    const result = await MetalTransactionService.getUnfixedTransactions(
+      parseInt(page),
+      parseInt(limit),
+      filters
+    );
+
+    res.status(200).json({
+      success: true,
+      message: "Unfixed transactions retrieved successfully",
+      data: result.parties,
+      pagination: result.pagination,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Get unfixed transactions with detailed account information
+export const getUnfixedTransactionsWithAccounts = async (req, res, next) => {
+  try {
+    const { page = 1, limit = 50, transactionType, partyCode, status, startDate, endDate } = req.query;
+
+    const filters = {};
+    if (transactionType) filters.transactionType = transactionType;
+    if (partyCode) filters.partyCode = partyCode;
+    if (status) filters.status = status;
+    if (startDate) filters.startDate = startDate;
+    if (endDate) filters.endDate = endDate;
+
+    const result = await MetalTransactionService.getUnfixedTransactionsWithAccounts(
+      parseInt(page),
+      parseInt(limit),
+      filters
+    );
+
+    res.status(200).json({
+      success: true,
+      message: "Unfixed transactions with account details retrieved successfully",
+      data: result.transactions,
+      pagination: result.pagination,
+    });
+  } catch (error) {
+    next(error);
+  }
+};

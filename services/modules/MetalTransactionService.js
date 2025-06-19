@@ -12,9 +12,15 @@ class MetalTransactionService {
       session.startTransaction();
 
       // Validate party
-      const party = await Account.findById(transactionData.partyCode).session(session);
+      const party = await Account.findById(transactionData.partyCode).session(
+        session
+      );
       if (!party || !party.isActive) {
-        throw createAppError("Party not found or inactive", 400, "INVALID_PARTY");
+        throw createAppError(
+          "Party not found or inactive",
+          400,
+          "INVALID_PARTY"
+        );
       }
 
       // Create metal transaction
@@ -31,10 +37,19 @@ class MetalTransactionService {
       await metalTransaction.save({ session });
 
       // Create registry entries for stock items and charges
-      await this.createCompleteRegistryEntries(metalTransaction, party, adminId, session);
+      await this.createCompleteRegistryEntries(
+        metalTransaction,
+        party,
+        adminId,
+        session
+      );
 
       // Update Account balances
-      await this.updateTradeDebtorsBalances(party._id, metalTransaction, session);
+      await this.updateTradeDebtorsBalances(
+        party._id,
+        metalTransaction,
+        session
+      );
 
       await session.commitTransaction();
       return await this.getMetalTransactionById(metalTransaction._id);
@@ -51,7 +66,8 @@ class MetalTransactionService {
     const skip = (page - 1) * limit;
     const query = { isActive: true };
 
-    if (filters.transactionType) query.transactionType = filters.transactionType;
+    if (filters.transactionType)
+      query.transactionType = filters.transactionType;
     if (filters.partyCode) query.partyCode = filters.partyCode;
     if (filters.status) query.status = filters.status;
     if (filters.stockCode) query["stockItems.stockCode"] = filters.stockCode;
@@ -102,14 +118,22 @@ class MetalTransactionService {
       .populate("updatedBy", "name email");
 
     if (!transaction || !transaction.isActive) {
-      throw createAppError("Metal transaction not found", 404, "TRANSACTION_NOT_FOUND");
+      throw createAppError(
+        "Metal transaction not found",
+        404,
+        "TRANSACTION_NOT_FOUND"
+      );
     }
 
     return transaction;
   }
 
   // Get transactions by party
-  static async getTransactionsByParty(partyId, limit = 50, transactionType = null) {
+  static async getTransactionsByParty(
+    partyId,
+    limit = 50,
+    transactionType = null
+  ) {
     const query = { partyCode: partyId, isActive: true };
     if (transactionType) query.transactionType = transactionType;
 
@@ -123,6 +147,288 @@ class MetalTransactionService {
       .sort({ voucherDate: -1, createdAt: -1 })
       .limit(limit);
   }
+static async getUnfixedTransactions(page = 1, limit = 50, filters = {}) {
+    const skip = (page - 1) * limit;
+    const query = {
+      isActive: true,
+      unfix: true, // Show only transactions where unfix is true
+    };
+
+    // Apply filters
+    if (filters.transactionType) {
+      query.transactionType = filters.transactionType;
+    }
+    if (filters.partyCode) {
+      query.partyCode = filters.partyCode;
+    }
+    if (filters.status) {
+      query.status = filters.status;
+    }
+    if (filters.startDate && filters.endDate) {
+      query.voucherDate = {
+        $gte: new Date(filters.startDate),
+        $lte: new Date(filters.endDate),
+      };
+    }
+
+    const transactions = await MetalTransaction.find(query)
+      .populate({
+        path: "partyCode",
+        select: "accountCode customerName email phone balances limitsMargins",
+        populate: [
+          {
+            path: "balances.goldBalance.currency",
+            model: "CurrencyMaster",
+            select: "code symbol"
+          },
+          {
+            path: "balances.cashBalance.currency",
+            model: "CurrencyMaster",
+            select: "code symbol"
+          }
+        ]
+      })
+      .select("partyCode") // Only select partyCode field from transactions
+      .sort({ voucherDate: -1, createdAt: -1 })
+      .skip(skip)
+      .limit(limit);
+
+    const total = await MetalTransaction.countDocuments(query);
+
+    // Extract only party data and remove duplicates
+    const partyDataMap = new Map();
+    transactions.forEach(transaction => {
+      if (transaction.partyCode && transaction.partyCode._id) {
+        const partyId = transaction.partyCode._id.toString();
+        if (!partyDataMap.has(partyId)) {
+          partyDataMap.set(partyId, transaction.partyCode);
+        }
+      }
+    });
+
+    const uniquePartyData = Array.from(partyDataMap.values());
+
+    return {
+      parties: uniquePartyData,
+      pagination: {
+        currentPage: page,
+        totalPages: Math.ceil(total / limit),
+        totalItems: total,
+        hasNext: page < Math.ceil(total / limit),
+        hasPrev: page > 1,
+      },
+    };
+  }
+
+  // Get unfixed transactions with detailed account information
+  static async getUnfixedTransactionsWithAccounts(
+    page = 1,
+    limit = 50,
+    filters = {}
+  ) {
+    const skip = (page - 1) * limit;
+    const matchStage = {
+      isActive: true,
+      isFixed: false, // Assuming you have an isFixed field
+    };
+
+    // Apply filters to match stage
+    if (filters.transactionType) {
+      matchStage.transactionType = filters.transactionType;
+    }
+    if (filters.partyCode) {
+      matchStage.partyCode = new mongoose.Types.ObjectId(filters.partyCode);
+    }
+    if (filters.status) {
+      matchStage.status = filters.status;
+    }
+    if (filters.startDate && filters.endDate) {
+      matchStage.voucherDate = {
+        $gte: new Date(filters.startDate),
+        $lte: new Date(filters.endDate),
+      };
+    }
+
+    const pipeline = [
+      { $match: matchStage },
+      {
+        $lookup: {
+          from: "accounts", // Your account collection name
+          localField: "partyCode",
+          foreignField: "_id",
+          as: "accountDetails",
+        },
+      },
+      {
+        $unwind: "$accountDetails",
+      },
+      {
+        $lookup: {
+          from: "currencymasters",
+          localField: "partyCurrency",
+          foreignField: "_id",
+          as: "partyCurrencyDetails",
+        },
+      },
+      {
+        $lookup: {
+          from: "currencymasters",
+          localField: "itemCurrency",
+          foreignField: "_id",
+          as: "itemCurrencyDetails",
+        },
+      },
+      {
+        $lookup: {
+          from: "currencymasters",
+          localField: "baseCurrency",
+          foreignField: "_id",
+          as: "baseCurrencyDetails",
+        },
+      },
+      {
+        $lookup: {
+          from: "currencymasters",
+          localField: "accountDetails.balances.goldBalance.currency",
+          foreignField: "_id",
+          as: "goldCurrencyDetails",
+        },
+      },
+      {
+        $lookup: {
+          from: "currencymasters",
+          localField: "accountDetails.balances.cashBalance.currency",
+          foreignField: "_id",
+          as: "cashCurrencyDetails",
+        },
+      },
+      {
+        $project: {
+          // Transaction fields
+          _id: 1,
+          transactionType: 1,
+          voucherDate: 1,
+          voucherNumber: 1,
+          status: 1,
+          isFixed: 1,
+          stockItems: 1,
+          totalAmountSession: 1,
+          createdAt: 1,
+          updatedAt: 1,
+
+          // Account information
+          accountInfo: {
+            id: "$accountDetails._id",
+            accountCode: "$accountDetails.accountCode",
+            customerName: "$accountDetails.customerName",
+            email: "$accountDetails.email",
+            phone: "$accountDetails.phone",
+            isActive: "$accountDetails.isActive",
+          },
+
+          // Gold Balance
+          goldBalance: {
+            totalGrams: "$accountDetails.balances.goldBalance.totalGrams",
+            totalValue: "$accountDetails.balances.goldBalance.totalValue",
+            currency: {
+              $arrayElemAt: [
+                {
+                  $map: {
+                    input: "$goldCurrencyDetails",
+                    as: "curr",
+                    in: {
+                      code: "$$curr.code",
+                      symbol: "$$curr.symbol",
+                    },
+                  },
+                },
+                0,
+              ],
+            },
+            lastUpdated: "$accountDetails.balances.goldBalance.lastUpdated",
+          },
+
+          // Cash Balance (array)
+          cashBalance: {
+            $map: {
+              input: "$accountDetails.balances.cashBalance",
+              as: "cash",
+              in: {
+                amount: "$$cash.amount",
+                currency: {
+                  $let: {
+                    vars: {
+                      currencyMatch: {
+                        $arrayElemAt: [
+                          {
+                            $filter: {
+                              input: "$cashCurrencyDetails",
+                              cond: { $eq: ["$$this._id", "$$cash.currency"] },
+                            },
+                          },
+                          0,
+                        ],
+                      },
+                    },
+                    in: {
+                      code: "$$currencyMatch.code",
+                      symbol: "$$currencyMatch.symbol",
+                    },
+                  },
+                },
+                lastUpdated: "$$cash.lastUpdated",
+              },
+            },
+          },
+
+          // Limits and Margins
+          limitsMargins: {
+            $map: {
+              input: "$accountDetails.limitsMargins",
+              as: "limit",
+              in: {
+                creditDaysAmt: "$$limit.creditDaysAmt",
+                creditDaysMtl: "$$limit.creditDaysMtl",
+                shortMargin: "$$limit.shortMargin",
+                longMargin: "$$limit.longMargin",
+              },
+            },
+          },
+
+          // Currency details
+          currencies: {
+            party: { $arrayElemAt: ["$partyCurrencyDetails", 0] },
+            item: { $arrayElemAt: ["$itemCurrencyDetails", 0] },
+            base: { $arrayElemAt: ["$baseCurrencyDetails", 0] },
+          },
+        },
+      },
+      {
+        $sort: { voucherDate: -1, createdAt: -1 },
+      },
+      {
+        $facet: {
+          data: [{ $skip: skip }, { $limit: limit }],
+          totalCount: [{ $count: "count" }],
+        },
+      },
+    ];
+
+    const result = await MetalTransaction.aggregate(pipeline);
+    const transactions = result[0].data || [];
+    const totalCount = result[0].totalCount[0]?.count || 0;
+
+    return {
+      transactions,
+      pagination: {
+        currentPage: page,
+        totalPages: Math.ceil(totalCount / limit),
+        totalItems: totalCount,
+        hasNext: page < Math.ceil(totalCount / limit),
+        hasPrev: page > 1,
+      },
+    };
+  }
 
   // Update metal transaction
   static async updateMetalTransaction(transactionId, updateData, adminId) {
@@ -130,9 +436,15 @@ class MetalTransactionService {
     try {
       session.startTransaction();
 
-      const transaction = await MetalTransaction.findById(transactionId).session(session);
+      const transaction = await MetalTransaction.findById(
+        transactionId
+      ).session(session);
       if (!transaction || !transaction.isActive) {
-        throw createAppError("Metal transaction not found", 404, "TRANSACTION_NOT_FOUND");
+        throw createAppError(
+          "Metal transaction not found",
+          404,
+          "TRANSACTION_NOT_FOUND"
+        );
       }
 
       const oldStockItems = [...transaction.stockItems];
@@ -150,15 +462,31 @@ class MetalTransactionService {
 
       // Update registry and balances if stock items or totals changed
       if (updateData.stockItems || updateData.totalAmountSession) {
-        const party = await Account.findById(transaction.partyCode).session(session);
-        await this.createReversalRegistryEntries(
-          { ...transaction.toObject(), stockItems: oldStockItems, totalAmountSession: oldSessionTotals }, 
-          party, 
-          adminId, 
+        const party = await Account.findById(transaction.partyCode).session(
           session
         );
-        await this.createCompleteRegistryEntries(transaction, party, adminId, session);
-        await this.updateTradeDebtorsBalances(party._id, transaction, session, true);
+        await this.createReversalRegistryEntries(
+          {
+            ...transaction.toObject(),
+            stockItems: oldStockItems,
+            totalAmountSession: oldSessionTotals,
+          },
+          party,
+          adminId,
+          session
+        );
+        await this.createCompleteRegistryEntries(
+          transaction,
+          party,
+          adminId,
+          session
+        );
+        await this.updateTradeDebtorsBalances(
+          party._id,
+          transaction,
+          session,
+          true
+        );
       }
 
       await session.commitTransaction();
@@ -177,9 +505,15 @@ class MetalTransactionService {
     try {
       session.startTransaction();
 
-      const transaction = await MetalTransaction.findById(transactionId).session(session);
+      const transaction = await MetalTransaction.findById(
+        transactionId
+      ).session(session);
       if (!transaction || !transaction.isActive) {
-        throw createAppError("Metal transaction not found", 404, "TRANSACTION_NOT_FOUND");
+        throw createAppError(
+          "Metal transaction not found",
+          404,
+          "TRANSACTION_NOT_FOUND"
+        );
       }
 
       transaction.isActive = false;
@@ -187,9 +521,22 @@ class MetalTransactionService {
       transaction.updatedBy = adminId;
       await transaction.save({ session });
 
-      const party = await Account.findById(transaction.partyCode).session(session);
-      await this.createReversalRegistryEntries(transaction, party, adminId, session);
-      await this.updateTradeDebtorsBalances(party._id, transaction, session, false, true);
+      const party = await Account.findById(transaction.partyCode).session(
+        session
+      );
+      await this.createReversalRegistryEntries(
+        transaction,
+        party,
+        adminId,
+        session
+      );
+      await this.updateTradeDebtorsBalances(
+        party._id,
+        transaction,
+        session,
+        false,
+        true
+      );
 
       await session.commitTransaction();
       return { message: "Metal transaction deleted successfully" };
@@ -207,9 +554,15 @@ class MetalTransactionService {
     try {
       session.startTransaction();
 
-      const transaction = await MetalTransaction.findById(transactionId).session(session);
+      const transaction = await MetalTransaction.findById(
+        transactionId
+      ).session(session);
       if (!transaction || !transaction.isActive) {
-        throw createAppError("Metal transaction not found", 404, "TRANSACTION_NOT_FOUND");
+        throw createAppError(
+          "Metal transaction not found",
+          404,
+          "TRANSACTION_NOT_FOUND"
+        );
       }
 
       transaction.addStockItem(stockItemData);
@@ -217,10 +570,24 @@ class MetalTransactionService {
       transaction.updatedBy = adminId;
       await transaction.save({ session });
 
-      const party = await Account.findById(transaction.partyCode).session(session);
-      const tempTransaction = { ...transaction.toObject(), stockItems: [stockItemData] };
-      await this.createCompleteRegistryEntries(tempTransaction, party, adminId, session);
-      await this.updateTradeDebtorsBalances(party._id, tempTransaction, session);
+      const party = await Account.findById(transaction.partyCode).session(
+        session
+      );
+      const tempTransaction = {
+        ...transaction.toObject(),
+        stockItems: [stockItemData],
+      };
+      await this.createCompleteRegistryEntries(
+        tempTransaction,
+        party,
+        adminId,
+        session
+      );
+      await this.updateTradeDebtorsBalances(
+        party._id,
+        tempTransaction,
+        session
+      );
 
       await session.commitTransaction();
       return await this.getMetalTransactionById(transactionId);
@@ -233,19 +600,34 @@ class MetalTransactionService {
   }
 
   // Update stock item
-  static async updateStockItem(transactionId, stockItemId, updateData, adminId) {
+  static async updateStockItem(
+    transactionId,
+    stockItemId,
+    updateData,
+    adminId
+  ) {
     const session = await mongoose.startSession();
     try {
       session.startTransaction();
 
-      const transaction = await MetalTransaction.findById(transactionId).session(session);
+      const transaction = await MetalTransaction.findById(
+        transactionId
+      ).session(session);
       if (!transaction || !transaction.isActive) {
-        throw createAppError("Metal transaction not found", 404, "TRANSACTION_NOT_FOUND");
+        throw createAppError(
+          "Metal transaction not found",
+          404,
+          "TRANSACTION_NOT_FOUND"
+        );
       }
 
       const stockItem = transaction.getStockItem(stockItemId);
       if (!stockItem) {
-        throw createAppError("Stock item not found", 404, "STOCK_ITEM_NOT_FOUND");
+        throw createAppError(
+          "Stock item not found",
+          404,
+          "STOCK_ITEM_NOT_FOUND"
+        );
       }
 
       Object.assign(stockItem, updateData);
@@ -253,8 +635,15 @@ class MetalTransactionService {
       transaction.updatedBy = adminId;
       await transaction.save({ session });
 
-      const party = await Account.findById(transaction.partyCode).session(session);
-      await this.createCompleteRegistryEntries(transaction, party, adminId, session);
+      const party = await Account.findById(transaction.partyCode).session(
+        session
+      );
+      await this.createCompleteRegistryEntries(
+        transaction,
+        party,
+        adminId,
+        session
+      );
 
       await session.commitTransaction();
       return await this.getMetalTransactionById(transactionId);
@@ -272,14 +661,24 @@ class MetalTransactionService {
     try {
       session.startTransaction();
 
-      const transaction = await MetalTransaction.findById(transactionId).session(session);
+      const transaction = await MetalTransaction.findById(
+        transactionId
+      ).session(session);
       if (!transaction || !transaction.isActive) {
-        throw createAppError("Metal transaction not found", 404, "TRANSACTION_NOT_FOUND");
+        throw createAppError(
+          "Metal transaction not found",
+          404,
+          "TRANSACTION_NOT_FOUND"
+        );
       }
 
       transaction.removeStockItem(stockItemId);
       if (transaction.stockItems.length === 0) {
-        throw createAppError("Transaction must have at least one stock item", 400, "MINIMUM_STOCK_ITEMS_REQUIRED");
+        throw createAppError(
+          "Transaction must have at least one stock item",
+          400,
+          "MINIMUM_STOCK_ITEMS_REQUIRED"
+        );
       }
 
       transaction.calculateSessionTotals();
@@ -297,18 +696,32 @@ class MetalTransactionService {
   }
 
   // Update session totals
-  static async updateSessionTotals(transactionId, totalAmountSession, vatPercentage = 0, adminId) {
+  static async updateSessionTotals(
+    transactionId,
+    totalAmountSession,
+    vatPercentage = 0,
+    adminId
+  ) {
     const session = await mongoose.startSession();
     try {
       session.startTransaction();
 
-      const transaction = await MetalTransaction.findById(transactionId).session(session);
+      const transaction = await MetalTransaction.findById(
+        transactionId
+      ).session(session);
       if (!transaction || !transaction.isActive) {
-        throw createAppError("Metal transaction not found", 404, "TRANSACTION_NOT_FOUND");
+        throw createAppError(
+          "Metal transaction not found",
+          404,
+          "TRANSACTION_NOT_FOUND"
+        );
       }
 
       if (totalAmountSession) {
-        transaction.totalAmountSession = { ...transaction.totalAmountSession, ...totalAmountSession };
+        transaction.totalAmountSession = {
+          ...transaction.totalAmountSession,
+          ...totalAmountSession,
+        };
       }
 
       if (vatPercentage > 0) {
@@ -333,14 +746,24 @@ class MetalTransactionService {
   }
 
   // Calculate and update session totals
-  static async calculateAndUpdateSessionTotals(transactionId, vatPercentage = 0, adminId) {
+  static async calculateAndUpdateSessionTotals(
+    transactionId,
+    vatPercentage = 0,
+    adminId
+  ) {
     const session = await mongoose.startSession();
     try {
       session.startTransaction();
 
-      const transaction = await MetalTransaction.findById(transactionId).session(session);
+      const transaction = await MetalTransaction.findById(
+        transactionId
+      ).session(session);
       if (!transaction || !transaction.isActive) {
-        throw createAppError("Metal transaction not found", 404, "TRANSACTION_NOT_FOUND");
+        throw createAppError(
+          "Metal transaction not found",
+          404,
+          "TRANSACTION_NOT_FOUND"
+        );
       }
 
       transaction.calculateSessionTotals();
@@ -368,8 +791,10 @@ class MetalTransactionService {
   // Get transaction statistics
   static async getTransactionStatistics(filters = {}) {
     const matchStage = { isActive: true };
-    if (filters.transactionType) matchStage.transactionType = filters.transactionType;
-    if (filters.partyCode) matchStage.partyCode = new mongoose.Types.ObjectId(filters.partyCode);
+    if (filters.transactionType)
+      matchStage.transactionType = filters.transactionType;
+    if (filters.partyCode)
+      matchStage.partyCode = new mongoose.Types.ObjectId(filters.partyCode);
     if (filters.startDate && filters.endDate) {
       matchStage.voucherDate = {
         $gte: new Date(filters.startDate),
@@ -386,14 +811,32 @@ class MetalTransactionService {
           totalAmount: { $sum: "$totalAmountSession.totalAmountAED" },
           totalNetAmount: { $sum: "$totalAmountSession.netAmountAED" },
           totalVatAmount: { $sum: "$totalAmountSession.vatAmount" },
-          averageTransactionAmount: { $avg: "$totalAmountSession.totalAmountAED" },
-          purchaseCount: { $sum: { $cond: [{ $eq: ["$transactionType", "purchase"] }, 1, 0] } },
-          saleCount: { $sum: { $cond: [{ $eq: ["$transactionType", "sale"] }, 1, 0] } },
+          averageTransactionAmount: {
+            $avg: "$totalAmountSession.totalAmountAED",
+          },
+          purchaseCount: {
+            $sum: { $cond: [{ $eq: ["$transactionType", "purchase"] }, 1, 0] },
+          },
+          saleCount: {
+            $sum: { $cond: [{ $eq: ["$transactionType", "sale"] }, 1, 0] },
+          },
           purchaseAmount: {
-            $sum: { $cond: [{ $eq: ["$transactionType", "purchase"] }, "$totalAmountSession.totalAmountAED", 0] },
+            $sum: {
+              $cond: [
+                { $eq: ["$transactionType", "purchase"] },
+                "$totalAmountSession.totalAmountAED",
+                0,
+              ],
+            },
           },
           saleAmount: {
-            $sum: { $cond: [{ $eq: ["$transactionType", "sale"] }, "$totalAmountSession.totalAmountAED", 0] },
+            $sum: {
+              $cond: [
+                { $eq: ["$transactionType", "sale"] },
+                "$totalAmountSession.totalAmountAED",
+                0,
+              ],
+            },
           },
         },
       },
@@ -432,8 +875,12 @@ class MetalTransactionService {
   // Get profit/loss analysis
   static async getProfitLossAnalysis(filters = {}) {
     const matchStage = { isActive: true };
-    if (filters.partyCode) matchStage.partyCode = new mongoose.Types.ObjectId(filters.partyCode);
-    if (filters.stockCode) matchStage["stockItems.stockCode"] = new mongoose.Types.ObjectId(filters.stockCode);
+    if (filters.partyCode)
+      matchStage.partyCode = new mongoose.Types.ObjectId(filters.partyCode);
+    if (filters.stockCode)
+      matchStage["stockItems.stockCode"] = new mongoose.Types.ObjectId(
+        filters.stockCode
+      );
     if (filters.startDate && filters.endDate) {
       matchStage.voucherDate = {
         $gte: new Date(filters.startDate),
@@ -450,7 +897,9 @@ class MetalTransactionService {
           totalNetAmount: { $sum: "$totalAmountSession.netAmountAED" },
           transactionCount: { $sum: 1 },
           totalWeight: { $sum: { $sum: "$stockItems.weightInOz" } },
-          averageRate: { $avg: { $avg: "$stockItems.metalRateRequirements.rate" } },
+          averageRate: {
+            $avg: { $avg: "$stockItems.metalRateRequirements.rate" },
+          },
         },
       },
     ]);
@@ -472,7 +921,8 @@ class MetalTransactionService {
     };
 
     const grossProfit = sales.totalNetAmount - purchases.totalNetAmount;
-    const profitMargin = sales.totalNetAmount > 0 ? (grossProfit / sales.totalNetAmount) * 100 : 0;
+    const profitMargin =
+      sales.totalNetAmount > 0 ? (grossProfit / sales.totalNetAmount) * 100 : 0;
 
     return {
       purchases: { ...purchases, _id: undefined },
@@ -488,9 +938,16 @@ class MetalTransactionService {
   }
 
   // Updated Registry helper methods with enhanced logic
-  static async createCompleteRegistryEntries(transaction, party, adminId, session) {
+  static async createCompleteRegistryEntries(
+    transaction,
+    party,
+    adminId,
+    session
+  ) {
     const registryEntries = [];
-    const transactionId = `TXN-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 9000) + 1000)}`;
+    const transactionId = `TXN-${new Date().getFullYear()}-${String(
+      Math.floor(Math.random() * 9000) + 1000
+    )}`;
 
     // Calculate totals for charges
     let totalMakingCharges = 0;
@@ -500,8 +957,8 @@ class MetalTransactionService {
 
     // Process each stock item
     for (const stockItem of transaction.stockItems) {
-      console.log("first")
-      console.log(stockItem)
+      console.log("first");
+      console.log(stockItem);
       const pureWeight = stockItem.pureWeight || 0;
       const itemValue = stockItem.itemTotal?.itemTotalAmount || 0;
       const makingCharges = stockItem.makingCharges || 0;
@@ -517,7 +974,9 @@ class MetalTransactionService {
         new Registry({
           transactionId: transactionId,
           type: "gold",
-          description: `Gold ${transaction.transactionType} - ${stockItem.description || "Metal Item"}`,
+          description: `Gold ${transaction.transactionType} - ${
+            stockItem.description || "Metal Item"
+          }`,
           paryty: transaction.partyCode,
           value: pureWeight,
           debit: transaction.transactionType === "sale" ? pureWeight : 0,
@@ -533,7 +992,9 @@ class MetalTransactionService {
         new Registry({
           transactionId: transactionId,
           type: "stock_balance",
-          description: `Stock Balance ${transaction.transactionType} - ${stockItem.description || "Metal Item"}`,
+          description: `Stock Balance ${transaction.transactionType} - ${
+            stockItem.description || "Metal Item"
+          }`,
           paryty: transaction.partyCode,
           value: pureWeight,
           debit: transaction.transactionType === "sale" ? pureWeight : 0,
@@ -622,9 +1083,16 @@ class MetalTransactionService {
     }
   }
 
-  static async createReversalRegistryEntries(transaction, party, adminId, session) {
+  static async createReversalRegistryEntries(
+    transaction,
+    party,
+    adminId,
+    session
+  ) {
     const registryEntries = [];
-    const transactionId = `TXN-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 9000) + 1000)}`;
+    const transactionId = `TXN-${new Date().getFullYear()}-${String(
+      Math.floor(Math.random() * 9000) + 1000
+    )}`;
 
     // Calculate totals for reversal
     let totalMakingCharges = 0;
@@ -633,8 +1101,8 @@ class MetalTransactionService {
 
     // Process each stock item for reversal
     for (const stockItem of transaction.stockItems) {
-      console.log(stockItem)
-      console.log("first")
+      console.log(stockItem);
+      console.log("first");
       const pureWeight = stockItem.pureWeight || 0;
       const makingCharges = stockItem.makingCharges || 0;
       const premiumAmount = stockItem.premiumAmount || 0;
@@ -648,7 +1116,9 @@ class MetalTransactionService {
         new Registry({
           transactionId: transactionId,
           type: "gold",
-          description: `REVERSAL - Gold ${transaction.transactionType} - ${stockItem.description || "Metal Item"}`,
+          description: `REVERSAL - Gold ${transaction.transactionType} - ${
+            stockItem.description || "Metal Item"
+          }`,
           paryty: transaction.partyCode,
           value: pureWeight,
           debit: transaction.transactionType === "purchase" ? pureWeight : 0,
@@ -664,7 +1134,9 @@ class MetalTransactionService {
         new Registry({
           transactionId: transactionId,
           type: "stock_balance",
-          description: `REVERSAL - Stock Balance ${transaction.transactionType} - ${stockItem.description || "Metal Item"}`,
+          description: `REVERSAL - Stock Balance ${
+            transaction.transactionType
+          } - ${stockItem.description || "Metal Item"}`,
           paryty: transaction.partyCode,
           value: pureWeight,
           debit: transaction.transactionType === "purchase" ? pureWeight : 0,
@@ -721,7 +1193,8 @@ class MetalTransactionService {
         paryty: transaction.partyCode,
         value: totalPureWeight,
         debit: transaction.transactionType === "sale" ? totalPureWeight : 0,
-        credit: transaction.transactionType === "purchase" ? totalPureWeight : 0,
+        credit:
+          transaction.transactionType === "purchase" ? totalPureWeight : 0,
         transactionDate: new Date(),
         reference: `REV-PartyGold-${transaction._id}`,
         createdBy: adminId,
@@ -753,7 +1226,13 @@ class MetalTransactionService {
     }
   }
 
-  static async updateTradeDebtorsBalances(partyId, transaction, session, isUpdate = false, isReversal = false) {
+  static async updateTradeDebtorsBalances(
+    partyId,
+    transaction,
+    session,
+    isUpdate = false,
+    isReversal = false
+  ) {
     const party = await Account.findById(partyId).session(session);
     if (!party) return;
 
@@ -771,8 +1250,14 @@ class MetalTransactionService {
     if (isReversal) {
       // Reverse the transaction
       if (transaction.transactionType === "purchase") {
-        party.balances.goldBalance.totalGrams = Math.max(0, party.balances.goldBalance.totalGrams - totalPureWeightInGrams);
-        party.balances.goldBalance.totalValue = Math.max(0, party.balances.goldBalance.totalValue - totalGoldValue);
+        party.balances.goldBalance.totalGrams = Math.max(
+          0,
+          party.balances.goldBalance.totalGrams - totalPureWeightInGrams
+        );
+        party.balances.goldBalance.totalValue = Math.max(
+          0,
+          party.balances.goldBalance.totalValue - totalGoldValue
+        );
       } else if (transaction.transactionType === "sale") {
         party.balances.goldBalance.totalGrams += totalPureWeightInGrams;
         party.balances.goldBalance.totalValue += totalGoldValue;
@@ -783,21 +1268,34 @@ class MetalTransactionService {
         party.balances.goldBalance.totalGrams += totalPureWeightInGrams;
         party.balances.goldBalance.totalValue += totalGoldValue;
       } else if (transaction.transactionType === "sale") {
-        party.balances.goldBalance.totalGrams = Math.max(0, party.balances.goldBalance.totalGrams - totalPureWeightInGrams);
-        party.balances.goldBalance.totalValue = Math.max(0, party.balances.goldBalance.totalValue - totalGoldValue);
+        party.balances.goldBalance.totalGrams = Math.max(
+          0,
+          party.balances.goldBalance.totalGrams - totalPureWeightInGrams
+        );
+        party.balances.goldBalance.totalValue = Math.max(
+          0,
+          party.balances.goldBalance.totalValue - totalGoldValue
+        );
       }
     }
 
     // Update Cash Balance
     const totalAmountAED = transaction.totalAmountSession?.totalAmountAED || 0;
-    const totalAmountParty = transaction.totalAmountSession?.totalAmountParty || 0;
+    const totalAmountParty =
+      transaction.totalAmountSession?.totalAmountParty || 0;
 
     if (isReversal) {
       // Reverse cash balance changes
       if (transaction.transactionType === "purchase") {
         // Reverse purchase: reduce cash balance (we had increased it)
-        party.balances.cashBalance.totalAmountAED = Math.max(0, party.balances.cashBalance.totalAmountAED - totalAmountAED);
-        party.balances.cashBalance.totalAmountParty = Math.max(0, party.balances.cashBalance.totalAmountParty - totalAmountParty);
+        party.balances.cashBalance.totalAmountAED = Math.max(
+          0,
+          party.balances.cashBalance.totalAmountAED - totalAmountAED
+        );
+        party.balances.cashBalance.totalAmountParty = Math.max(
+          0,
+          party.balances.cashBalance.totalAmountParty - totalAmountParty
+        );
       } else if (transaction.transactionType === "sale") {
         // Reverse sale: increase cash balance (we had decreased it)
         party.balances.cashBalance.totalAmountAED += totalAmountAED;
@@ -811,19 +1309,25 @@ class MetalTransactionService {
         party.balances.cashBalance.totalAmountParty += totalAmountParty;
       } else if (transaction.transactionType === "sale") {
         // Sale: decrease cash balance (money paid by party)
-        party.balances.cashBalance.totalAmountAED = Math.max(0, party.balances.cashBalance.totalAmountAED - totalAmountAED);
-        party.balances.cashBalance.totalAmountParty = Math.max(0, party.balances.cashBalance.totalAmountParty - totalAmountParty);
+        party.balances.cashBalance.totalAmountAED = Math.max(
+          0,
+          party.balances.cashBalance.totalAmountAED - totalAmountAED
+        );
+        party.balances.cashBalance.totalAmountParty = Math.max(
+          0,
+          party.balances.cashBalance.totalAmountParty - totalAmountParty
+        );
       }
     }
 
     // Update last transaction date
     party.balances.lastTransactionDate = new Date();
-    
+
     // Update balance summary
     party.balances.summary = {
       totalOutstanding: party.balances.cashBalance.totalAmountAED,
       goldHoldings: party.balances.goldBalance.totalGrams,
-      lastUpdated: new Date()
+      lastUpdated: new Date(),
     };
 
     await party.save({ session });
@@ -832,11 +1336,15 @@ class MetalTransactionService {
   // Get party balance summary
   static async getPartyBalanceSummary(partyId) {
     const party = await Account.findById(partyId)
-      .populate('balances.goldBalance.currency', 'code symbol')
-      .populate('balances.cashBalance.currency', 'code symbol');
+      .populate("balances.goldBalance.currency", "code symbol")
+      .populate("balances.cashBalance.currency", "code symbol");
 
     if (!party || !party.isActive) {
-      throw createAppError("Party not found or inactive", 404, "PARTY_NOT_FOUND");
+      throw createAppError(
+        "Party not found or inactive",
+        404,
+        "PARTY_NOT_FOUND"
+      );
     }
 
     return {
@@ -845,23 +1353,27 @@ class MetalTransactionService {
         name: party.name,
         code: party.code,
         email: party.email,
-        phone: party.phone
+        phone: party.phone,
       },
       goldBalance: party.balances.goldBalance,
       cashBalance: party.balances.cashBalance,
       summary: party.balances.summary,
-      lastTransactionDate: party.balances.lastTransactionDate
+      lastTransactionDate: party.balances.lastTransactionDate,
     };
   }
 
   // Get transaction summary by date range
-  static async getTransactionSummaryByDateRange(startDate, endDate, transactionType = null) {
+  static async getTransactionSummaryByDateRange(
+    startDate,
+    endDate,
+    transactionType = null
+  ) {
     const matchStage = {
       isActive: true,
       voucherDate: {
         $gte: new Date(startDate),
-        $lte: new Date(endDate)
-      }
+        $lte: new Date(endDate),
+      },
     };
 
     if (transactionType) {
@@ -873,37 +1385,44 @@ class MetalTransactionService {
       {
         $group: {
           _id: {
-            date: { $dateToString: { format: "%Y-%m-%d", date: "$voucherDate" } },
-            transactionType: "$transactionType"
+            date: {
+              $dateToString: { format: "%Y-%m-%d", date: "$voucherDate" },
+            },
+            transactionType: "$transactionType",
           },
           transactionCount: { $sum: 1 },
           totalAmount: { $sum: "$totalAmountSession.totalAmountAED" },
           totalNetAmount: { $sum: "$totalAmountSession.netAmountAED" },
           totalVatAmount: { $sum: "$totalAmountSession.vatAmount" },
           totalWeight: { $sum: { $sum: "$stockItems.weightInOz" } },
-          totalPureWeight: { $sum: { $sum: "$stockItems.pureWeight" } }
-        }
+          totalPureWeight: { $sum: { $sum: "$stockItems.pureWeight" } },
+        },
       },
       {
-        $sort: { "_id.date": 1, "_id.transactionType": 1 }
-      }
+        $sort: { "_id.date": 1, "_id.transactionType": 1 },
+      },
     ]);
 
     return summary;
   }
 
   // Get top parties by transaction volume
-  static async getTopPartiesByVolume(limit = 10, transactionType = null, startDate = null, endDate = null) {
+  static async getTopPartiesByVolume(
+    limit = 10,
+    transactionType = null,
+    startDate = null,
+    endDate = null
+  ) {
     const matchStage = { isActive: true };
-    
+
     if (transactionType) {
       matchStage.transactionType = transactionType;
     }
-    
+
     if (startDate && endDate) {
       matchStage.voucherDate = {
         $gte: new Date(startDate),
-        $lte: new Date(endDate)
+        $lte: new Date(endDate),
       };
     }
 
@@ -916,20 +1435,22 @@ class MetalTransactionService {
           totalAmount: { $sum: "$totalAmountSession.totalAmountAED" },
           totalWeight: { $sum: { $sum: "$stockItems.weightInOz" } },
           totalPureWeight: { $sum: { $sum: "$stockItems.pureWeight" } },
-          averageTransactionAmount: { $avg: "$totalAmountSession.totalAmountAED" },
-          lastTransactionDate: { $max: "$voucherDate" }
-        }
+          averageTransactionAmount: {
+            $avg: "$totalAmountSession.totalAmountAED",
+          },
+          lastTransactionDate: { $max: "$voucherDate" },
+        },
       },
       {
         $lookup: {
           from: "tradedebtors",
           localField: "_id",
           foreignField: "_id",
-          as: "partyInfo"
-        }
+          as: "partyInfo",
+        },
       },
       {
-        $unwind: "$partyInfo"
+        $unwind: "$partyInfo",
       },
       {
         $project: {
@@ -941,15 +1462,15 @@ class MetalTransactionService {
           totalWeight: 1,
           totalPureWeight: 1,
           averageTransactionAmount: 1,
-          lastTransactionDate: 1
-        }
+          lastTransactionDate: 1,
+        },
       },
       {
-        $sort: { totalAmount: -1 }
+        $sort: { totalAmount: -1 },
       },
       {
-        $limit: limit
-      }
+        $limit: limit,
+      },
     ]);
 
     return topParties;
@@ -964,7 +1485,10 @@ class MetalTransactionService {
       errors.push("Party code is required");
     }
 
-    if (!transactionData.transactionType || !["purchase", "sale"].includes(transactionData.transactionType)) {
+    if (
+      !transactionData.transactionType ||
+      !["purchase", "sale"].includes(transactionData.transactionType)
+    ) {
       errors.push("Valid transaction type (purchase/sale) is required");
     }
 
@@ -972,7 +1496,11 @@ class MetalTransactionService {
       errors.push("Voucher date is required");
     }
 
-    if (!transactionData.stockItems || !Array.isArray(transactionData.stockItems) || transactionData.stockItems.length === 0) {
+    if (
+      !transactionData.stockItems ||
+      !Array.isArray(transactionData.stockItems) ||
+      transactionData.stockItems.length === 0
+    ) {
       errors.push("At least one stock item is required");
     }
 
@@ -1000,7 +1528,11 @@ class MetalTransactionService {
     }
 
     if (errors.length > 0) {
-      throw createAppError(`Validation failed: ${errors.join(', ')}`, 400, "VALIDATION_ERROR");
+      throw createAppError(
+        `Validation failed: ${errors.join(", ")}`,
+        400,
+        "VALIDATION_ERROR"
+      );
     }
 
     return true;
@@ -1014,7 +1546,10 @@ class MetalTransactionService {
     for (let i = 0; i < transactionsData.length; i++) {
       try {
         await this.validateTransaction(transactionsData[i]);
-        const transaction = await this.createMetalTransaction(transactionsData[i], adminId);
+        const transaction = await this.createMetalTransaction(
+          transactionsData[i],
+          adminId
+        );
         results.push({ index: i, success: true, transaction });
       } catch (error) {
         errors.push({ index: i, success: false, error: error.message });
@@ -1027,8 +1562,8 @@ class MetalTransactionService {
       summary: {
         total: transactionsData.length,
         successful: results.length,
-        failed: errors.length
-      }
+        failed: errors.length,
+      },
     };
   }
 }

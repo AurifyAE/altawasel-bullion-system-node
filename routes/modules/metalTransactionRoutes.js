@@ -14,6 +14,8 @@ import {
   removeStockItemFromTransaction,
   updateSessionTotals,
   calculateSessionTotals,
+  getUnfixedTransactions,
+  getUnfixedTransactionsWithAccounts,
 } from "../../controllers/modules/MetalTransactionController.js";
 import { authenticateToken } from "../../middleware/authMiddleware.js";
 import {
@@ -36,6 +38,22 @@ router.post("/", createMetalTransaction);
 
 // Get all metal transactions with optional filtering
 router.get("/", validatePagination, validateDateRange, getAllMetalTransactions);
+
+// Get unfixed transactions (both purchase and sale)
+router.get(
+  "/unfixed",
+  validatePagination,
+  validateDateRange,
+  getUnfixedTransactions
+);
+
+// Get unfixed transactions with account details
+router.get(
+  "/unfixed/with-accounts",
+  validatePagination,
+  validateDateRange,
+  getUnfixedTransactionsWithAccounts
+);
 
 // Get transaction statistics
 router.get("/statistics", validateDateRange, getTransactionStatistics);
