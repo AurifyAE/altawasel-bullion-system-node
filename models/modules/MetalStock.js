@@ -6,7 +6,8 @@ const MetalStockSchema = new mongoose.Schema(
     metalType: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "DivisionMaster",
-      required: [true, "Metal type is required"],
+       default: null,
+      // required: [true, "Metal type is required"],
     },
     code: {
       type: String,
@@ -38,7 +39,7 @@ const MetalStockSchema = new mongoose.Schema(
     pcs: {
       type: Boolean,
       default: false, // true for pieces, false for weight-based
-      required: [true, "Pieces tracking option is required"],
+      // required: [true, "Pieces tracking option is required"],
     },
     pcsCount: {
       type: Number,
@@ -71,17 +72,20 @@ const MetalStockSchema = new mongoose.Schema(
     category: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "MainCategory",
-      required: [true, "Category is required"],
+       default: null,
+      // required: [true, "Category is required"],
     },
     subCategory: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "SubCategory",
-      required: [true, "Sub category is required"],
+       default: null,
+      // required: [true, "Sub category is required"],
     },
     type: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Type",
-      required: [true, "Type is required"],
+      // required: [true, "Type is required"],
+       default: null,
     },
     size: {
       type: mongoose.Schema.Types.ObjectId,
