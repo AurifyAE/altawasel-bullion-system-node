@@ -298,3 +298,62 @@ export const getRegistryBalance = async (req, res, next) => {
     next(error);
   }
 };
+
+// getting registry type is stock balance
+export const getRegistryStockBalance = async (req, res, next) => {
+  try {
+    const { page = 1, limit = 10, search = '' } = req.query;
+
+    const { registries, totalItems, totalPages, summary } =
+      await RegistryService.getStockBalanceRegistries({
+        page: Number(page),
+        limit: Number(limit),
+        search,
+      });
+
+    res.status(200).json({
+      success: true,
+      message: `Stock balance retrieved successfully`,
+      data: registries,
+      summary,
+      pagination: {
+        totalItems,
+        totalPages,
+        currentPage: Number(page),
+        itemsPerPage: Number(limit),
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// getting all premium discounts
+
+export const getRegistryPremiumDiscount = async (req, res, next) => {
+  try {
+    const { page = 1, limit = 10, search = '' } = req.query;
+
+    const { registries, totalItems, totalPages, summary } =
+      await RegistryService.getPremiumDiscountRegistries({
+        page: Number(page),
+        limit: Number(limit),
+        search,
+      });
+
+    res.status(200).json({
+      success: true,
+      message: `Premium discount retrieved successfully`,
+      data: registries,
+      summary,
+      pagination: {
+        totalItems,
+        totalPages,
+        currentPage: Number(page),
+        itemsPerPage: Number(limit),
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
