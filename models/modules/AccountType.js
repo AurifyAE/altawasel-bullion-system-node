@@ -12,8 +12,7 @@ const AccountSchema = new mongoose.Schema(
       trim: true,
       default: null, // Set default to null explicitly
       required: [true, "Account type is required"]
-    }
- ,    
+    },    
     title: {
       type: String,
       required: [true, "Title is required"],
@@ -49,7 +48,7 @@ const AccountSchema = new mongoose.Schema(
       maxlength: [500, "Remarks cannot exceed 500 characters"],
     },
 
-    // Balance Information - NEW SECTION
+    // Balance Information - UPDATED SECTION
     balances: {
       goldBalance: {
         totalGrams: {
@@ -72,8 +71,8 @@ const AccountSchema = new mongoose.Schema(
           default: Date.now,
         },
       },
-      cashBalance: [
-        {
+      cashBalance: {
+        type: [{
           currency: {
             type: mongoose.Schema.Types.ObjectId,
             ref: "CurrencyMaster",
@@ -88,8 +87,15 @@ const AccountSchema = new mongoose.Schema(
             type: Date,
             default: Date.now,
           },
-        },
-      ],
+        }],
+        default: function() {
+          return [{
+            currency: null,
+            amount: 0,
+            lastUpdated: new Date()
+          }];
+        }
+      },
       // Overall balance summary
       totalOutstanding: {
         type: Number,
@@ -467,10 +473,19 @@ AccountSchema.index({ "vatGstDetails.vatNumber": 1 });
 AccountSchema.index({ "balances.totalOutstanding": 1 });
 AccountSchema.index({ "balances.goldBalance.totalGrams": 1 });
 
-// Pre-save middleware to ensure uppercase codes
+// UPDATED Pre-save middleware with cash balance handling
 AccountSchema.pre("save", function (next) {
   if (this.accountCode) {
     this.accountCode = this.accountCode.toUpperCase();
+  }
+
+  // Ensure cash balance is initialized if empty or undefined
+  if (!this.balances.cashBalance || this.balances.cashBalance.length === 0) {
+    this.balances.cashBalance = [{
+      currency: null,
+      amount: 0,
+      lastUpdated: new Date()
+    }];
   }
 
   // Update balance timestamps when balances are modified
@@ -522,7 +537,7 @@ AccountSchema.pre("save", function (next) {
   next();
 });
 
-// Static method to check if account code exists
+// UPDATED Static method to check if account code exists
 AccountSchema.statics.isAccountCodeExists = async function (
   accountCode,
   excludeId = null
@@ -531,17 +546,17 @@ AccountSchema.statics.isAccountCodeExists = async function (
   if (excludeId) {
     query._id = { $ne: excludeId };
   }
-  const debtor = await this.findOne(query);
-  return !!debtor;
+  const account = await this.findOne(query);
+  return !!account;
 };
 
-// Static method to get active debtors
-AccountSchema.statics.getActiveDebtors = function () {
+// Static method to get active accounts
+AccountSchema.statics.getActiveAccounts = function () {
   return this.find({ isActive: true, status: "active" });
 };
 
-// Static method to get debtors with outstanding balances
-AccountSchema.statics.getDebtorsWithOutstanding = function (
+// Static method to get accounts with outstanding balances
+AccountSchema.statics.getAccountsWithOutstanding = function (
   minAmount = 0
 ) {
   return this.find({
@@ -551,7 +566,7 @@ AccountSchema.statics.getDebtorsWithOutstanding = function (
   });
 };
 
-// Static method to get total gold balance across all debtors
+// Static method to get total gold balance across all accounts
 AccountSchema.statics.getTotalGoldBalance = async function () {
   const result = await this.aggregate([
     { $match: { isActive: true, status: "active" } },
@@ -564,6 +579,30 @@ AccountSchema.statics.getTotalGoldBalance = async function () {
     },
   ]);
   return result[0] || { totalGrams: 0, totalValue: 0 };
+};
+
+// NEW Static method to get total cash balance across all accounts
+AccountSchema.statics.getTotalCashBalance = async function (currencyId = null) {
+  const matchStage = { isActive: true, status: "active" };
+  
+  if (currencyId) {
+    matchStage["balances.cashBalance.currency"] = currencyId;
+  }
+
+  const result = await this.aggregate([
+    { $match: matchStage },
+    { $unwind: "$balances.cashBalance" },
+    ...(currencyId ? [{ $match: { "balances.cashBalance.currency": currencyId } }] : []),
+    {
+      $group: {
+        _id: currencyId ? currencyId : "$balances.cashBalance.currency",
+        totalAmount: { $sum: "$balances.cashBalance.amount" },
+        count: { $sum: 1 }
+      },
+    },
+  ]);
+  
+  return result;
 };
 
 // Instance method to get primary contact
@@ -597,39 +636,75 @@ AccountSchema.methods.updateGoldBalance = function (
   return this.save();
 };
 
-// Instance method to update cash balance for a specific currency
+// UPDATED Instance method to update cash balance for a specific currency
 AccountSchema.methods.updateCashBalance = function (currencyId, amount) {
-  const existingBalance = this.balances.cashBalance.find(
-    (balance) => balance.currency.toString() === currencyId.toString()
-  );
-
-  if (existingBalance) {
-    existingBalance.amount = amount;
-    existingBalance.lastUpdated = new Date();
-  } else {
-    this.balances.cashBalance.push({
+  // Ensure cashBalance array exists and has at least one entry
+  if (!this.balances.cashBalance || this.balances.cashBalance.length === 0) {
+    this.balances.cashBalance = [{
       currency: currencyId,
       amount: amount,
-      lastUpdated: new Date(),
-    });
+      lastUpdated: new Date()
+    }];
+  } else {
+    const existingBalance = this.balances.cashBalance.find(
+      (balance) => balance.currency && balance.currency.toString() === currencyId.toString()
+    );
+
+    if (existingBalance) {
+      existingBalance.amount = amount;
+      existingBalance.lastUpdated = new Date();
+    } else {
+      this.balances.cashBalance.push({
+        currency: currencyId,
+        amount: amount,
+        lastUpdated: new Date(),
+      });
+    }
   }
 
   this.balances.lastBalanceUpdate = new Date();
   return this.save();
 };
 
-// Instance method to get cash balance for a specific currency
+// UPDATED Instance method to get cash balance for a specific currency
 AccountSchema.methods.getCashBalance = function (currencyId) {
+  // Ensure cashBalance array exists
+  if (!this.balances.cashBalance || this.balances.cashBalance.length === 0) {
+    return 0;
+  }
+
+  if (!currencyId) {
+    // Return the first cash balance if no currency specified
+    return this.balances.cashBalance[0].amount || 0;
+  }
+
   const balance = this.balances.cashBalance.find(
-    (balance) => balance.currency.toString() === currencyId.toString()
+    (balance) => balance.currency && balance.currency.toString() === currencyId.toString()
   );
   return balance ? balance.amount : 0;
 };
 
-// Instance method to calculate total outstanding
+// NEW Instance method to get all cash balances
+AccountSchema.methods.getAllCashBalances = function () {
+  if (!this.balances.cashBalance || this.balances.cashBalance.length === 0) {
+    return [{
+      currency: null,
+      amount: 0,
+      lastUpdated: new Date()
+    }];
+  }
+  return this.balances.cashBalance;
+};
+
+// UPDATED Instance method to calculate total outstanding
 AccountSchema.methods.calculateTotalOutstanding = function () {
-  // This would typically involve complex calculations based on your business logic
-  // For now, just sum up cash balances
+  // Ensure cashBalance exists
+  if (!this.balances.cashBalance || this.balances.cashBalance.length === 0) {
+    this.balances.totalOutstanding = this.balances.goldBalance.totalValue || 0;
+    return this.balances.totalOutstanding;
+  }
+
+  // Sum up cash balances
   const totalCash = this.balances.cashBalance.reduce((sum, balance) => {
     return sum + (balance.amount || 0);
   }, 0);
@@ -637,6 +712,52 @@ AccountSchema.methods.calculateTotalOutstanding = function () {
   this.balances.totalOutstanding =
     totalCash + (this.balances.goldBalance.totalValue || 0);
   return this.balances.totalOutstanding;
+};
+
+// NEW Instance method to add new currency to cash balance
+AccountSchema.methods.addCurrencyBalance = function (currencyId, amount = 0) {
+  if (!this.balances.cashBalance) {
+    this.balances.cashBalance = [];
+  }
+
+  // Check if currency already exists
+  const existingBalance = this.balances.cashBalance.find(
+    (balance) => balance.currency && balance.currency.toString() === currencyId.toString()
+  );
+
+  if (!existingBalance) {
+    this.balances.cashBalance.push({
+      currency: currencyId,
+      amount: amount,
+      lastUpdated: new Date(),
+    });
+    this.balances.lastBalanceUpdate = new Date();
+  }
+
+  return this.save();
+};
+
+// NEW Instance method to remove currency from cash balance
+AccountSchema.methods.removeCurrencyBalance = function (currencyId) {
+  if (!this.balances.cashBalance || this.balances.cashBalance.length === 0) {
+    return this;
+  }
+
+  this.balances.cashBalance = this.balances.cashBalance.filter(
+    (balance) => !balance.currency || balance.currency.toString() !== currencyId.toString()
+  );
+
+  // Ensure at least one cash balance entry exists
+  if (this.balances.cashBalance.length === 0) {
+    this.balances.cashBalance = [{
+      currency: null,
+      amount: 0,
+      lastUpdated: new Date()
+    }];
+  }
+
+  this.balances.lastBalanceUpdate = new Date();
+  return this.save();
 };
 
 const Account = mongoose.model("Account", AccountSchema);

@@ -171,112 +171,48 @@ static async getUnfixedTransactions(page = 1, limit = 50, filters = {}) {
     };
   }
 
+  // Find transactions but only populate specific party fields
   const transactions = await MetalTransaction.find(query)
     .populate({
       path: "partyCode",
-      select: "accountCode customerName email phone balances limitsMargins",
-      populate: [
-        {
-          path: "balances.goldBalance.currency",
-          select: "code symbol",
-        },
-        {
-          path: "balances.cashBalance.currency",
-          select: "code symbol",
-        },
-      ],
+      select: "accountCode customerName balances.goldBalance.totalGrams balances.cashBalance.amount limitsMargins.shortMargin",
     })
-    .populate("partyCurrency", "code symbol")
-    .populate("itemCurrency", "code symbol")
-    .populate("baseCurrency", "code symbol")
-    .populate("stockItems.stockCode", "code description specifications")
-    .populate("stockItems.metalRate", "metalType rate effectiveDate")
-    .populate("createdBy", "name email")
-    .populate("updatedBy", "name email")
     .sort({ voucherDate: -1, createdAt: -1 })
     .skip(skip)
     .limit(limit);
 
   const total = await MetalTransaction.countDocuments(query);
 
-  // Extract unique party data
+  // Extract unique party data with only required fields
   const partyDataMap = new Map();
   transactions.forEach((transaction) => {
     if (transaction.partyCode && transaction.partyCode._id) {
       const partyId = transaction.partyCode._id.toString();
       if (!partyDataMap.has(partyId)) {
-        partyDataMap.set(partyId, transaction.partyCode);
+        const party = transaction.partyCode;
+        
+        // Transform party data to include only required fields
+        const transformedParty = {
+          _id: party._id,
+          accountCode: party.accountCode,
+          customerName: party.customerName,
+          goldBalance: {
+            totalGrams: party.balances?.goldBalance?.totalGrams || 0
+          },
+          cashBalance: party.balances?.cashBalance?.map(cash => ({
+            amount: cash.amount || 0
+          })) || [{ amount: 0 }],
+          shortMargin: party.limitsMargins?.[0]?.shortMargin || 0
+        };
+        
+        partyDataMap.set(partyId, transformedParty);
       }
     }
   });
 
   const uniquePartyData = Array.from(partyDataMap.values());
 
-  // Transform transactions for unfix screen with required fields
-  const transformedTransactions = transactions.map(transaction => ({
-    _id: transaction._id,
-    transactionType: transaction.transactionType,
-    voucherDate: transaction.voucherDate,
-    formattedVoucherDate: transaction.formattedVoucherDate,
-    voucherNumber: transaction.voucherNumber,
-    voucherType: transaction.voucherType,
-    
-    // Party Information
-    partyCode: {
-      _id: transaction.partyCode._id,
-      accountCode: transaction.partyCode.accountCode,
-      customerName: transaction.partyCode.customerName,
-      email: transaction.partyCode.email,
-      phone: transaction.partyCode.phone,
-    },
-    
-    // Currency Information
-    partyCurrency: transaction.partyCurrency,
-    itemCurrency: transaction.itemCurrency,
-    baseCurrency: transaction.baseCurrency,
-    
-    // Status and Flags
-    status: transaction.status,
-    fixed: transaction.fixed,
-    unfix: transaction.unfix,
-    
-    // Stock Items with essential data
-    stockItems: transaction.stockItems.map(item => ({
-      _id: item._id,
-      stockCode: item.stockCode,
-      description: item.description,
-      pieces: item.pieces,
-      grossWeight: item.grossWeight,
-      purity: item.purity,
-      purityWeight: item.purityWeight,
-      pureWeight: item.pureWeight,
-      weightInOz: item.weightInOz,
-      metalRate: item.metalRate,
-      metalRateRequirements: item.metalRateRequirements,
-      makingCharges: item.makingCharges,
-      premium: item.premium,
-      itemTotal: item.itemTotal,
-      itemStatus: item.itemStatus,
-    })),
-    
-    // Session Totals
-    totalAmountSession: transaction.totalAmountSession,
-    
-    // Metadata
-    createdAt: transaction.createdAt,
-    updatedAt: transaction.updatedAt,
-    createdBy: transaction.createdBy,
-    updatedBy: transaction.updatedBy,
-    notes: transaction.notes,
-    
-    // Virtual fields
-    isPurchase: transaction.isPurchase,
-    isSale: transaction.isSale,
-    totalStockItems: transaction.totalStockItems,
-  }));
-
   return {
-    transactions: transformedTransactions,
     parties: uniquePartyData,
     pagination: {
       currentPage: page,
@@ -287,11 +223,9 @@ static async getUnfixedTransactions(page = 1, limit = 50, filters = {}) {
     },
     summary: {
       totalUnfixedTransactions: total,
-      totalPurchases: transformedTransactions.filter(t => t.transactionType === 'purchase').length,
-      totalSales: transformedTransactions.filter(t => t.transactionType === 'sale').length,
-      totalAmount: transformedTransactions.reduce((sum, t) => sum + (t.totalAmountSession?.totalAmountAED || 0), 0),
-      totalNetAmount: transformedTransactions.reduce((sum, t) => sum + (t.totalAmountSession?.netAmountAED || 0), 0),
-      totalVatAmount: transformedTransactions.reduce((sum, t) => sum + (t.totalAmountSession?.vatAmount || 0), 0),
+      totalPurchases: transactions.filter(t => t.transactionType === 'purchase').length,
+      totalSales: transactions.filter(t => t.transactionType === 'sale').length,
+      totalParties: uniquePartyData.length,
     }
   };
 }
