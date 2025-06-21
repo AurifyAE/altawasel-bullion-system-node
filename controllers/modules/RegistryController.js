@@ -357,3 +357,57 @@ export const getRegistryPremiumDiscount = async (req, res, next) => {
     next(error);
   }
 };
+
+
+export const getMakingChargesRegistries = async (req, res, next) => {
+  try {
+    const { page = 1, limit = 10, search = '' } = req.query;
+
+    const { registries, totalItems, totalPages, summary } =
+      await RegistryService.getMakingChargesRegistries({
+        page: Number(page),
+        limit: Number(limit),
+        search,
+      });
+
+    res.status(200).json({
+      success: true,
+      message: `Making charges retrieved successfully`,
+      data: registries,
+      summary,
+      pagination: {
+        totalItems,
+        totalPages,
+        currentPage: Number(page),
+        itemsPerPage: Number(limit),
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// get registry by partyId 
+
+export const getRegistriesByPartyId = async (req, res, next) => {
+  try {
+    const partyId = req.params.partyId;
+    const page = parseInt(req.query.page, 10) || 1;
+    const limit = parseInt(req.query.limit, 10) || 10;
+
+    if (!partyId) {
+      return res.status(400).json({ success: false, message: 'Party ID is required' });
+    }
+
+    const result = await RegistryService.getRegistriesByPartyId(partyId, page, limit);
+
+    res.status(200).json({
+      success: true,
+      message: `Registries for party ID ${partyId} retrieved successfully`,
+      ...result,
+    });
+  } catch (error) {
+    console.error("Error fetching registries by party ID:", error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};   
