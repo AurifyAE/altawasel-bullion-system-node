@@ -626,6 +626,78 @@ static async getPremiumDiscountRegistries({ page = 1, limit = 10, search = '' })
 }
 
 
+// getting all making charges
+
+static async getMakingChargesRegistries({ page = 1, limit = 10, search = '' }) {
+  try {
+    const filter = {
+      type: { $in: ["MAKING CHARGES", "making charges"] },
+      isActive: true,
+    };
+
+    if (search) {
+      filter.$or = [
+        { costCenter: { $regex: search, $options: 'i' } },
+        // Add more fields as needed
+      ];
+    }
+
+    const skip = (page - 1) * limit;
+
+    // Count total items
+    const totalItems = await Registry.countDocuments(filter);
+
+    // Fetch paginated data
+    const registries = await Registry.find(filter)
+      .populate('createdBy', 'name email')
+      .populate('updatedBy', 'name email')
+      // .populate('costCenter', 'code name') // REMOVE this line
+      .sort({ transactionDate: -1 })
+      .skip(skip)
+      .limit(limit);
+
+    // Example summary calculation (customize as needed)
+    const summary = {
+      totalDebit: 0,
+      totalCredit: 0,
+      totalTransactions: totalItems,
+      avgValue: 0,
+    };
+
+    const totalPages = Math.ceil(totalItems / limit);
+
+    return { registries, totalItems, totalPages, summary };
+  } catch (error) {
+    throw error;
+  }
+}
+
+
+// get registry by party id
+
+static async getRegistriesByPartyId(partyId, page = 1, limit = 10) {
+  try {
+    const filter = { party: partyId, isActive: true };
+    const skip = (page - 1) * limit;
+
+    const totalItems = await Registry.countDocuments(filter);
+
+    const registries = await Registry.find(filter)
+      .populate('party', 'name code')
+      .populate('createdBy', 'name email')
+      .populate('updatedBy', 'name email')
+      .sort({ transactionDate: -1 })
+      .skip(skip)
+      .limit(limit);
+
+    const totalPages = Math.ceil(totalItems / limit);
+
+    return { data: registries, totalItems, totalPages, currentPage: page };
+  } catch (error) {
+    throw new Error(`Failed to fetch registries: ${error.message}`);
+  }
+}
+
 }
 
 export default RegistryService;
