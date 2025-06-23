@@ -130,8 +130,11 @@ export const getKarat = async (req, res, next) => {
 // Update karat
 export const updateKarat = async (req, res, next) => {
   try {
+
+    
     const { id } = req.params;
     const updateData = req.body;
+
 
     if (!id) {
       throw createAppError("Karat ID is required", 400, "ID_REQUIRED");
@@ -139,6 +142,8 @@ export const updateKarat = async (req, res, next) => {
 
     // Get existing karat to check current isScrap status
     const existingKarat = await KaratMaster.findById(id);
+
+        console.log("9");
     if (!existingKarat) {
       throw createAppError("Karat not found", 404, "KARAT_NOT_FOUND");
     }
@@ -165,6 +170,7 @@ export const updateKarat = async (req, res, next) => {
       updateData.standardPurity = parseFloat(updateData.standardPurity);
     }
 
+        console.log("9");
     if (updateData.minimum !== undefined) {
       if (isNaN(updateData.minimum)) {
         throw createAppError(
@@ -183,6 +189,7 @@ export const updateKarat = async (req, res, next) => {
       }
       updateData.minimum = parseFloat(updateData.minimum);
     }
+        console.log("9");
 
     if (updateData.maximum !== undefined) {
       if (isNaN(updateData.maximum)) {
@@ -214,6 +221,7 @@ export const updateKarat = async (req, res, next) => {
         "INVALID_MIN_MAX_RANGE"
       );
     }
+        console.log("9");
 
     // Trim string fields if provided
     if (updateData.karatCode) {
@@ -223,11 +231,14 @@ export const updateKarat = async (req, res, next) => {
       updateData.description = updateData.description.trim();
     }
 
+
+        console.log("9");
     const updatedKarat = await KaratMasterService.updateKarat(
       id,
       updateData,
       req.admin.id
     );
+
 
     res.status(200).json({
       success: true,

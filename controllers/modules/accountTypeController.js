@@ -28,8 +28,8 @@ export const createTradeDebtor = async (req, res, next) => {
     if (
       !accountCode ||
       !customerName ||
-      !title 
-     
+      !title
+
     ) {
       throw createAppError(
         "Required fields missing: accountCode, customerName, title,accountType",
@@ -315,8 +315,9 @@ export const getTradeDebtorById = async (req, res, next) => {
 
 // Update trade debtor
 export const updateTradeDebtor = async (req, res, next) => {
+  console.log("Update request received for trade debtor");
   let uploadedFiles = [];
-  
+
   try {
     const { id } = req.params;
     let updateData = { ...req.body };
@@ -481,7 +482,10 @@ export const updateTradeDebtor = async (req, res, next) => {
       "acDefinition",
       "limitsMargins",
       "bankDetails",
+      "kycDetails",
+      "vatGstDetails"
     ];
+
     jsonFields.forEach((field) => {
       if (updateData[field]) {
         updateData[field] = parseJsonField(updateData[field]);
@@ -548,7 +552,6 @@ export const updateTradeDebtor = async (req, res, next) => {
     delete updateData.removeVatDocuments;
     delete updateData.removeKycDocuments;
 
-    console.log("Final update data:", JSON.stringify(updateData, null, 2));
 
     // Call the service to update the trade debtor
     const updatedTradeDebtor = await AccountTypeService.updateTradeDebtor(
