@@ -595,7 +595,7 @@ static async createTradeDebtor(debtorData, adminId) {
           select: "code name symbol",
         },
         { path: "acDefinition.branches.branch", select: "code name" },
-        { path: "limitsMargins.currency", select: "code name symbol" },
+        // { path: "limitsMargins.currency", select: "code name symbol" }, // Dont need to populate limitsMargins here
         { path: "createdBy", select: "name email" },
         { path: "updatedBy", select: "name email" },
       ]);
