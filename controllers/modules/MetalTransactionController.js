@@ -43,18 +43,15 @@ export const createMetalTransaction = async (req, res, next) => {
         "INVALID_TRANSACTION_TYPE"
       );
     }
-    const Boolean = () => {
-      if (fix === true || fix === "true") {
-        return true;
-      } else if (unfix === true || unfix === "true") {
-        return true;
-      }
-      return false;
-    };
+
+    // Fixed Boolean logic for fix and unfix flags
+    const isFixTransaction = fix === true || fix === "true";
+    const isUnfixTransaction = unfix === true || unfix === "true";
+
     const transactionData = {
       transactionType,
-      fix: Boolean(),
-      unfix: Boolean(),
+      fix: isFixTransaction,
+      unfix: isUnfixTransaction,
       voucherType: voucherType?.trim(),
       voucherDate: voucherDate ? new Date(voucherDate) : new Date(),
       voucherNumber: voucherNumber?.trim(),
@@ -104,12 +101,13 @@ export const createMetalTransaction = async (req, res, next) => {
       status: status || "draft",
       notes: notes?.trim(),
     };
-console.log(transactionData)
-    const metalTransaction =
-      await MetalTransactionService.createMetalTransaction(
-        transactionData,
-        req.admin.id
-      );
+
+    console.log('Transaction Data:', transactionData);
+
+    const metalTransaction = await MetalTransactionService.createMetalTransaction(
+      transactionData,
+      req.admin.id
+    );
 
     res.status(201).json({
       success: true,

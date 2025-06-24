@@ -6,320 +6,730 @@ import { createAppError } from "../../utils/errorHandler.js";
 
 class MetalTransactionService {
   // Create a new metal transaction
- static async createMetalTransaction(transactionData, adminId) {
-  const session = await mongoose.startSession();
-  let createdTransaction; // Declare variable in outer scope
-  
-  try {
-    await session.withTransaction(async () => {
-      // Validate party and create transaction in parallel
-      const [party, metalTransaction] = await Promise.all([
-        this.validateParty(transactionData.partyCode, session),
-        this.createTransaction(transactionData, adminId)
-      ]);
+  static async createMetalTransaction(transactionData, adminId) {
+    const session = await mongoose.startSession();
+    let createdTransaction; // Declare variable in outer scope
 
-      // Save transaction and create registry entries
-      await metalTransaction.save({ session });
-      
-      // Store the created transaction in outer scope variable
-      createdTransaction = metalTransaction;
-      
-      // Process registry entries and balance updates in parallel
-      await Promise.all([
-        this.createRegistryEntries(metalTransaction, party, adminId, session),
-        this.updateAccountBalances(party, metalTransaction, session)
-      ]);
+    try {
+      await session.withTransaction(async () => {
+        // Validate party and create transaction in parallel
+        const [party, metalTransaction] = await Promise.all([
+          this.validateParty(transactionData.partyCode, session),
+          this.createTransaction(transactionData, adminId),
+        ]);
 
-      return metalTransaction;
+        // Save transaction and create registry entries
+        await metalTransaction.save({ session });
+
+        // Store the created transaction in outer scope variable
+        createdTransaction = metalTransaction;
+
+        // Process registry entries and balance updates in parallel
+        await Promise.all([
+          this.createRegistryEntries(metalTransaction, party, adminId, session),
+          this.updateAccountBalances(party, metalTransaction, session),
+        ]);
+
+        return metalTransaction;
+      });
+
+      // Return populated transaction using the stored reference
+      return await this.getMetalTransactionById(createdTransaction._id);
+    } catch (error) {
+      throw this.handleError(error);
+    } finally {
+      await session.endSession();
+    }
+  }
+
+  // Optimized party validation
+  static async validateParty(partyCode, session) {
+    const party = await Account.findById(partyCode)
+      .select("_id isActive accountCode customerName balances")
+      .session(session);
+
+    if (!party?.isActive) {
+      throw createAppError("Party not found or inactive", 400, "INVALID_PARTY");
+    }
+    return party;
+  }
+
+  // Optimized transaction creation
+  static createTransaction(transactionData, adminId) {
+    const transaction = new MetalTransaction({
+      ...transactionData,
+      createdBy: adminId,
     });
 
-    // Return populated transaction using the stored reference
-    return await this.getMetalTransactionById(createdTransaction._id);
-    
-  } catch (error) {
-    throw this.handleError(error);
-  } finally {
-    await session.endSession();
-  }
-}
+    // Calculate totals if needed
+    if (!transactionData.totalAmountSession?.totalAmountAED) {
+      transaction.calculateSessionTotals();
+    }
 
-// Optimized party validation
-static async validateParty(partyCode, session) {
-  const party = await Account.findById(partyCode)
-    .select('_id isActive accountCode customerName balances')
-    .session(session);
-    
-  if (!party?.isActive) {
-    throw createAppError("Party not found or inactive", 400, "INVALID_PARTY");
-  }
-  return party;
-}
-
-// Optimized transaction creation
-static createTransaction(transactionData, adminId) {
-  const transaction = new MetalTransaction({
-    ...transactionData,
-    createdBy: adminId,
-  });
-
-  // Calculate totals if needed
-  if (!transactionData.totalAmountSession?.totalAmountAED) {
-    transaction.calculateSessionTotals();
+    return transaction;
   }
 
-  return transaction;
-}
+  // Registry entries creation with proper fix/unfix handling
+  static async createRegistryEntries(
+    metalTransaction,
+    party,
+    adminId,
+    session
+  ) {
+    const entries = this.buildRegistryEntries(metalTransaction, party, adminId);
 
-// Optimized registry entries creation
-static async createRegistryEntries(metalTransaction, party, adminId, session) {
-  const entries = this.buildRegistryEntries(metalTransaction, party, adminId);
-  
-  if (entries.length === 0) return [];
+    if (entries.length === 0) return [];
 
-  // Bulk insert with session
-  return await Registry.insertMany(entries, { session, ordered: false });
-}
-
-// Build registry entries based on transaction type
-static buildRegistryEntries(metalTransaction, party, adminId) {
-  const { transactionType, fix, unfix, stockItems, totalAmountSession, voucherDate, voucherNumber } = metalTransaction;
-  
-  // Pre-calculate totals
-  const totals = this.calculateTotals(stockItems, totalAmountSession);
-  const baseTransactionId = this.generateTransactionId();
-  
-  // Build entries based on transaction type
-  const entries = [];
-  
-  if (transactionType === 'purchase') {
-    entries.push(...this.buildPurchaseEntries(totals, party, baseTransactionId, voucherDate, voucherNumber, adminId, fix, unfix));
-  } else if (transactionType === 'sale') {
-    entries.push(...this.buildSaleEntries(totals, party, baseTransactionId, voucherDate, voucherNumber, adminId, fix, unfix));
+    // Bulk insert with session
+    return await Registry.insertMany(entries, { session, ordered: false });
   }
 
-  return entries.filter(entry => entry.value > 0); // Only include entries with value
-}
+  // Build registry entries based on transaction type and fix/unfix flags
+  static buildRegistryEntries(metalTransaction, party, adminId) {
+    const {
+      transactionType,
+      fix,
+      unfix,
+      stockItems,
+      totalAmountSession,
+      voucherDate,
+      voucherNumber,
+    } = metalTransaction;
 
-// Pre-calculate all totals
-static calculateTotals(stockItems, totalAmountSession) {
-  return stockItems.reduce((acc, item) => ({
-    makingCharges: acc.makingCharges + (item.makingCharges?.amount || 0),
-    premium: acc.premium + (item.premium?.amount || 0),
-    goldValue: acc.goldValue + (item.itemTotal?.baseAmount || 0),
-    pureWeight: acc.pureWeight + (item.pureWeight || 0),
-    totalAmount: totalAmountSession?.totalAmountAED || 0
-  }), { makingCharges: 0, premium: 0, goldValue: 0, pureWeight: 0, totalAmount: 0 });
-}
+    // Pre-calculate totals from stock items
+    const totals = this.calculateTotals(stockItems, totalAmountSession);
+    const baseTransactionId = this.generateTransactionId();
 
-// Build purchase registry entries
-static buildPurchaseEntries(totals, party, baseTransactionId, voucherDate, voucherNumber, adminId, fix, unfix) {
-  const entries = [];
-  const partyName = party.customerName || party.accountCode;
+    // Build entries based on transaction type and fix/unfix flags
+    const entries = [];
 
-  if (unfix || (!fix && !unfix)) {
-    // Unfix Purchase entries
-    entries.push(
-      ...this.createRegistryEntry(baseTransactionId, '001', 'PARTY_GOLD_BALANCE', 
-        `Purchase - Gold balance credited for ${partyName}`, party._id, totals.pureWeight, 
-        totals.pureWeight, 0, voucherDate, voucherNumber, adminId),
-      
-      ...this.createRegistryEntry(baseTransactionId, '002', 'MAKING_CHARGES', 
-        `Purchase - Making charges credited: ${totals.makingCharges}`, party._id, totals.makingCharges, 
-        totals.makingCharges, 0, voucherDate, voucherNumber, adminId),
-      
-      ...this.createRegistryEntry(baseTransactionId, '003', 'PREMIUM_DISCOUNT', 
-        `Purchase - Premium credited: ${totals.premium}`, party._id, totals.premium, 
-        totals.premium, 0, voucherDate, voucherNumber, adminId),
-      
-      ...this.createRegistryEntry(baseTransactionId, '004', 'GOLD', 
-        `Purchase - Gold inventory debited: ${totals.goldValue}`, party._id, totals.goldValue, 
-        0, totals.goldValue, voucherDate, voucherNumber, adminId),
-      
-      ...this.createRegistryEntry(baseTransactionId, '005', 'GOLD_STOCK', 
-        `Purchase - Gold stock debited: ${totals.pureWeight}g`, party._id, totals.pureWeight, 
-        0, totals.pureWeight, voucherDate, voucherNumber, adminId)
+    if (transactionType === "purchase") {
+      if (unfix && !fix) {
+        // Purchase Unfix entries
+        entries.push(
+          ...this.buildPurchaseUnfixEntries(
+            totals,
+            party,
+            baseTransactionId,
+            voucherDate,
+            voucherNumber,
+            adminId
+          )
+        );
+      } else if (fix && !unfix) {
+        // Purchase Fix entries
+        entries.push(
+          ...this.buildPurchaseFixEntries(
+            totals,
+            party,
+            baseTransactionId,
+            voucherDate,
+            voucherNumber,
+            adminId
+          )
+        );
+      } else if (!fix && !unfix) {
+        // Default to unfix when both are false
+        entries.push(
+          ...this.buildPurchaseUnfixEntries(
+            totals,
+            party,
+            baseTransactionId,
+            voucherDate,
+            voucherNumber,
+            adminId
+          )
+        );
+      } else if (fix && unfix) {
+        // Handle case when both flags are true - prioritize fix
+        entries.push(
+          ...this.buildPurchaseFixEntries(
+            totals,
+            party,
+            baseTransactionId,
+            voucherDate,
+            voucherNumber,
+            adminId
+          )
+        );
+      }
+    } else if (transactionType === "sale") {
+      if (unfix && !fix) {
+        // Sale Unfix entries
+        entries.push(
+          ...this.buildSaleUnfixEntries(
+            totals,
+            party,
+            baseTransactionId,
+            voucherDate,
+            voucherNumber,
+            adminId
+          )
+        );
+      } else if (fix && !unfix) {
+        // Sale Fix entries
+        entries.push(
+          ...this.buildSaleFixEntries(
+            totals,
+            party,
+            baseTransactionId,
+            voucherDate,
+            voucherNumber,
+            adminId
+          )
+        );
+      } else if (!fix && !unfix) {
+        // Default to unfix when both are false
+        entries.push(
+          ...this.buildSaleUnfixEntries(
+            totals,
+            party,
+            baseTransactionId,
+            voucherDate,
+            voucherNumber,
+            adminId
+          )
+        );
+      } else if (fix && unfix) {
+        // Handle case when both flags are true - prioritize fix
+        entries.push(
+          ...this.buildSaleFixEntries(
+            totals,
+            party,
+            baseTransactionId,
+            voucherDate,
+            voucherNumber,
+            adminId
+          )
+        );
+      }
+    }
+
+    return entries.filter((entry) => entry && entry.value > 0); // Only include valid entries with value
+  }
+
+  // Pre-calculate all totals from stock items
+  static calculateTotals(stockItems, totalAmountSession) {
+    const totals = stockItems.reduce(
+      (acc, item) => {
+        const makingChargesAmount = item.makingCharges?.amount || 0;
+        const premiumAmount = item.premium?.amount || 0;
+        const goldValue = item.itemTotal?.baseAmount || 0;
+        const pureWeight = item.pureWeight || 0;
+
+        return {
+          makingCharges: acc.makingCharges + makingChargesAmount,
+          premium: acc.premium + premiumAmount,
+          goldValue: acc.goldValue + goldValue,
+          pureWeight: acc.pureWeight + pureWeight,
+        };
+      },
+      { makingCharges: 0, premium: 0, goldValue: 0, pureWeight: 0 }
     );
-  } else if (fix) {
-    // Fix Purchase entries
-    entries.push(
-      ...this.createRegistryEntry(baseTransactionId, '001', 'PARTY_GOLD_BALANCE', 
-        `Purchase Fixed - Gold balance debited for ${partyName}`, party._id, totals.pureWeight, 
-        0, totals.pureWeight, voucherDate, voucherNumber, adminId),
-      
-      ...this.createRegistryEntry(baseTransactionId, '002', 'PARTY_CASH_BALANCE', 
-        `Purchase Fixed - Cash balance credited: ${totals.totalAmount}`, party._id, totals.totalAmount, 
-        totals.totalAmount, 0, voucherDate, voucherNumber, adminId)
-    );
+
+    // Add total amount from session
+    totals.totalAmount = totalAmountSession?.totalAmountAED || 0;
+
+    return totals;
   }
 
-  return entries;
-}
+  // PURCHASE UNFIX - Registry entries
+  static buildPurchaseUnfixEntries(
+    totals,
+    party,
+    baseTransactionId,
+    voucherDate,
+    voucherNumber,
+    adminId
+  ) {
+    const entries = [];
+    const partyName = party.customerName || party.accountCode;
 
-// Build sale registry entries
-static buildSaleEntries(totals, party, baseTransactionId, voucherDate, voucherNumber, adminId, fix, unfix) {
-  const entries = [];
-  const partyName = party.customerName || party.accountCode;
+    // 1. Party Gold Balance - CREDIT (increase party's gold balance)
+    if (totals.pureWeight > 0) {
+      entries.push(
+        this.createRegistryEntry(
+          baseTransactionId,
+          "001",
+          "PARTY_GOLD_BALANCE",
+          `Purchase Unfix - Gold balance credited for ${partyName}: ${totals.pureWeight}g`,
+          party._id,
+          totals.pureWeight,
+          totals.pureWeight,
+          0,
+          voucherDate,
+          voucherNumber,
+          adminId
+        )
+      );
+    }
 
-  if (unfix || (!fix && !unfix)) {
-    // Unfix Sale entries
-    entries.push(
-      ...this.createRegistryEntry(baseTransactionId, '001', 'PARTY_GOLD_BALANCE', 
-        `Sale - Gold balance debited for ${partyName}`, party._id, totals.pureWeight, 
-        0, totals.pureWeight, voucherDate, voucherNumber, adminId),
-      
-      ...this.createRegistryEntry(baseTransactionId, '002', 'MAKING_CHARGES', 
-        `Sale - Making charges debited: ${totals.makingCharges}`, party._id, totals.makingCharges, 
-        0, totals.makingCharges, voucherDate, voucherNumber, adminId),
-      
-      ...this.createRegistryEntry(baseTransactionId, '003', 'PREMIUM_DISCOUNT', 
-        `Sale - Premium debited: ${totals.premium}`, party._id, totals.premium, 
-        0, totals.premium, voucherDate, voucherNumber, adminId),
-      
-      ...this.createRegistryEntry(baseTransactionId, '004', 'GOLD', 
-        `Sale - Gold inventory credited: ${totals.goldValue}`, party._id, totals.goldValue, 
-        totals.goldValue, 0, voucherDate, voucherNumber, adminId),
-      
-      ...this.createRegistryEntry(baseTransactionId, '005', 'GOLD_STOCK', 
-        `Sale - Gold stock credited: ${totals.pureWeight}g`, party._id, totals.pureWeight, 
-        totals.pureWeight, 0, voucherDate, voucherNumber, adminId)
-    );
-  } else if (fix) {
-    // Fix Sale entries
-    entries.push(
-      ...this.createRegistryEntry(baseTransactionId, '001', 'PARTY_GOLD_BALANCE', 
-        `Sale Fixed - Gold balance credited for ${partyName}`, party._id, totals.pureWeight, 
-        totals.pureWeight, 0, voucherDate, voucherNumber, adminId),
-      
-      ...this.createRegistryEntry(baseTransactionId, '002', 'PARTY_CASH_BALANCE', 
-        `Sale Fixed - Cash balance debited: ${totals.totalAmount}`, party._id, totals.totalAmount, 
-        0, totals.totalAmount, voucherDate, voucherNumber, adminId)
-    );
+    // 2. Making Charges - CREDIT (only if there's an amount)
+    if (totals.makingCharges > 0) {
+      entries.push(
+        this.createRegistryEntry(
+          baseTransactionId,
+          "002",
+          "MAKING_CHARGES",
+          `Purchase Unfix - Making charges credited: AED ${totals.makingCharges}`,
+          party._id,
+          totals.makingCharges,
+          totals.makingCharges,
+          0,
+          voucherDate,
+          voucherNumber,
+          adminId
+        )
+      );
+    }
+
+    // 3. Premium Discount - CREDIT (only if there's an amount)
+    if (totals.premium > 0) {
+      entries.push(
+        this.createRegistryEntry(
+          baseTransactionId,
+          "003",
+          "PREMIUM_DISCOUNT",
+          `Purchase Unfix - Premium credited: AED ${totals.premium}`,
+          party._id,
+          totals.premium,
+          totals.premium,
+          0,
+          voucherDate,
+          voucherNumber,
+          adminId
+        )
+      );
+    }
+
+    // 4. Gold Inventory - DEBIT (decrease company's gold inventory value)
+    if (totals.goldValue > 0) {
+      entries.push(
+        this.createRegistryEntry(
+          baseTransactionId,
+          "004",
+          "GOLD",
+          `Purchase Unfix - Gold inventory debited: AED ${totals.goldValue}`,
+          party._id,
+          totals.goldValue,
+          0,
+          totals.goldValue,
+          voucherDate,
+          voucherNumber,
+          adminId
+        )
+      );
+    }
+
+    // 5. Gold Stock - DEBIT (decrease company's physical gold stock)
+    if (totals.pureWeight > 0) {
+      entries.push(
+        this.createRegistryEntry(
+          baseTransactionId,
+          "005",
+          "GOLD_STOCK",
+          `Purchase Unfix - Gold stock debited: ${totals.pureWeight}g`,
+          party._id,
+          totals.pureWeight,
+          0,
+          totals.pureWeight,
+          voucherDate,
+          voucherNumber,
+          adminId
+        )
+      );
+    }
+
+    return entries.filter((entry) => entry); // Remove any null entries
   }
 
-  return entries;
-}
+  // PURCHASE FIX - Registry entries
+  static buildPurchaseFixEntries(
+    totals,
+    party,
+    baseTransactionId,
+    voucherDate,
+    voucherNumber,
+    adminId
+  ) {
+    const entries = [];
+    const partyName = party.customerName || party.accountCode;
 
-// Helper to create registry entry
-static createRegistryEntry(baseId, suffix, type, description, partyId, value, credit, debit, date, reference, adminId) {
-  if (value <= 0) return [];
-  
-  return [{
-    transactionId: `${baseId}-${suffix}`,
+    // 1. Party Gold Balance - DEBIT (decrease party's gold balance)
+    if (totals.pureWeight > 0) {
+      entries.push(
+        this.createRegistryEntry(
+          baseTransactionId,
+          "001",
+          "PARTY_GOLD_BALANCE",
+          `Purchase Fix - Gold balance debited for ${partyName}: ${totals.pureWeight}g`,
+          party._id,
+          totals.pureWeight,
+          0,
+          totals.pureWeight,
+          voucherDate,
+          voucherNumber,
+          adminId
+        )
+      );
+    }
+
+    // 2. Party Cash Balance - CREDIT (increase party's cash balance with total amount)
+    if (totals.totalAmount > 0) {
+      entries.push(
+        this.createRegistryEntry(
+          baseTransactionId,
+          "002",
+          "PARTY_CASH_BALANCE",
+          `Purchase Fix - Cash balance credited: AED ${totals.totalAmount}`,
+          party._id,
+          totals.totalAmount,
+          totals.totalAmount,
+          0,
+          voucherDate,
+          voucherNumber,
+          adminId
+        )
+      );
+    }
+
+    return entries.filter((entry) => entry); // Remove any null entries
+  }
+
+  // SALE UNFIX - Registry entries
+  static buildSaleUnfixEntries(
+    totals,
+    party,
+    baseTransactionId,
+    voucherDate,
+    voucherNumber,
+    adminId
+  ) {
+    const entries = [];
+    const partyName = party.customerName || party.accountCode;
+
+    // 1. Party Gold Balance - DEBIT (decrease party's gold balance)
+    if (totals.pureWeight > 0) {
+      entries.push(
+        this.createRegistryEntry(
+          baseTransactionId,
+          "001",
+          "PARTY_GOLD_BALANCE",
+          `Sale Unfix - Gold balance debited for ${partyName}: ${totals.pureWeight}g`,
+          party._id,
+          totals.pureWeight,
+          0,
+          totals.pureWeight,
+          voucherDate,
+          voucherNumber,
+          adminId
+        )
+      );
+    }
+
+    // 2. Making Charges - DEBIT (only if there's an amount)
+    if (totals.makingCharges > 0) {
+      entries.push(
+        this.createRegistryEntry(
+          baseTransactionId,
+          "002",
+          "MAKING_CHARGES",
+          `Sale Unfix - Making charges debited: AED ${totals.makingCharges}`,
+          party._id,
+          totals.makingCharges,
+          0,
+          totals.makingCharges,
+          voucherDate,
+          voucherNumber,
+          adminId
+        )
+      );
+    }
+
+    // 3. Premium Discount - DEBIT (only if there's an amount)
+    if (totals.premium > 0) {
+      entries.push(
+        this.createRegistryEntry(
+          baseTransactionId,
+          "003",
+          "PREMIUM_DISCOUNT",
+          `Sale Unfix - Premium debited: AED ${totals.premium}`,
+          party._id,
+          totals.premium,
+          0,
+          totals.premium,
+          voucherDate,
+          voucherNumber,
+          adminId
+        )
+      );
+    }
+
+    // 4. Gold Inventory - CREDIT (increase company's gold inventory value)
+    if (totals.goldValue > 0) {
+      entries.push(
+        this.createRegistryEntry(
+          baseTransactionId,
+          "004",
+          "GOLD",
+          `Sale Unfix - Gold inventory credited: AED ${totals.goldValue}`,
+          party._id,
+          totals.goldValue,
+          totals.goldValue,
+          0,
+          voucherDate,
+          voucherNumber,
+          adminId
+        )
+      );
+    }
+
+    // 5. Gold Stock - CREDIT (increase company's physical gold stock)
+    if (totals.pureWeight > 0) {
+      entries.push(
+        this.createRegistryEntry(
+          baseTransactionId,
+          "005",
+          "GOLD_STOCK",
+          `Sale Unfix - Gold stock credited: ${totals.pureWeight}g`,
+          party._id,
+          totals.pureWeight,
+          totals.pureWeight,
+          0,
+          voucherDate,
+          voucherNumber,
+          adminId
+        )
+      );
+    }
+
+    return entries.filter((entry) => entry); // Remove any null entries
+  }
+
+  // SALE FIX - Registry entries
+  static buildSaleFixEntries(
+    totals,
+    party,
+    baseTransactionId,
+    voucherDate,
+    voucherNumber,
+    adminId
+  ) {
+    const entries = [];
+    const partyName = party.customerName || party.accountCode;
+
+    // 1. Party Gold Balance - CREDIT (increase party's gold balance)
+    if (totals.pureWeight > 0) {
+      entries.push(
+        this.createRegistryEntry(
+          baseTransactionId,
+          "001",
+          "PARTY_GOLD_BALANCE",
+          `Sale Fix - Gold balance credited for ${partyName}: ${totals.pureWeight}g`,
+          party._id,
+          totals.pureWeight,
+          totals.pureWeight,
+          0,
+          voucherDate,
+          voucherNumber,
+          adminId
+        )
+      );
+    }
+
+    // 2. Party Cash Balance - DEBIT (decrease party's cash balance with total amount)
+    if (totals.totalAmount > 0) {
+      entries.push(
+        this.createRegistryEntry(
+          baseTransactionId,
+          "002",
+          "PARTY_CASH_BALANCE",
+          `Sale Fix - Cash balance debited: AED ${totals.totalAmount}`,
+          party._id,
+          totals.totalAmount,
+          0,
+          totals.totalAmount,
+          voucherDate,
+          voucherNumber,
+          adminId
+        )
+      );
+    }
+
+    return entries.filter((entry) => entry); // Remove any null entries
+  }
+
+  // Helper to create registry entry
+  static createRegistryEntry(
+    baseId,
+    suffix,
     type,
     description,
-    party: partyId,
+    partyId,
     value,
     credit,
     debit,
-    transactionDate: date,
+    date,
     reference,
-    createdBy: adminId
-  }];
-}
+    adminId
+  ) {
+    if (value <= 0) return null;
 
-// FIXED: Optimized account balance updates - separated $inc and $set operations
-static async updateAccountBalances(party, metalTransaction, session) {
-  const { transactionType, fix, unfix, stockItems, totalAmountSession } = metalTransaction;
-  
-  const totals = this.calculateTotals(stockItems, totalAmountSession);
-  const balanceChanges = this.calculateBalanceChanges(transactionType, fix, unfix, totals);
-
-  // Separate numeric increments and date updates
-  const incObj = {};
-  const setObj = {};
-  
-  if (balanceChanges.goldBalance !== 0) {
-    // Use current values or 0 as fallback, then add the change
-    const currentGoldGrams = party.balances?.goldBalance?.totalGrams || 0;
-    const currentGoldValue = party.balances?.goldBalance?.totalValue || 0;
-    
-    incObj['balances.goldBalance.totalGrams'] = balanceChanges.goldBalance;
-    incObj['balances.goldBalance.totalValue'] = balanceChanges.goldValue;
-    setObj['balances.goldBalance.lastUpdated'] = new Date();
+    return {
+      transactionId: `${baseId}-${suffix}`,
+      type,
+      description,
+      party: partyId,
+      value,
+      credit,
+      debit,
+      transactionDate: date,
+      reference,
+      createdBy: adminId,
+    };
   }
 
-  if (balanceChanges.cashBalance !== 0) {
-    // Use current value or 0 as fallback, then add the change
-    const currentCashAmount = party.balances?.cashBalance?.amount || 0;
-    
-    incObj['balances.cashBalance.amount'] = balanceChanges.cashBalance;
-    setObj['balances.cashBalance.lastUpdated'] = new Date();
-  }
+  // Account balance updates with proper fix/unfix handling
+  static async updateAccountBalances(party, metalTransaction, session) {
+    const { transactionType, fix, unfix, stockItems, totalAmountSession } =
+      metalTransaction;
 
-  // Always update the last balance update timestamp
-  setObj['balances.lastBalanceUpdate'] = new Date();
-
-  // Perform the updates
-  if (Object.keys(incObj).length > 0 || Object.keys(setObj).length > 0) {
-    const updateOperation = {};
-    
-    if (Object.keys(incObj).length > 0) {
-      updateOperation.$inc = incObj;
-    }
-    
-    if (Object.keys(setObj).length > 0) {
-      updateOperation.$set = setObj;
-    }
-    
-    await Account.findByIdAndUpdate(
-      party._id,
-      updateOperation,
-      { session, new: true }
+    const totals = this.calculateTotals(stockItems, totalAmountSession);
+    const balanceChanges = this.calculateBalanceChanges(
+      transactionType,
+      fix,
+      unfix,
+      totals
     );
-  }
-}
 
-// Calculate balance changes
-static calculateBalanceChanges(transactionType, fix, unfix, totals) {
-  let goldBalance = 0, goldValue = 0, cashBalance = 0;
+    // Separate numeric increments and date updates
+    const incObj = {};
+    const setObj = {};
 
-  if (transactionType === 'purchase') {
-    if (unfix || (!fix && !unfix)) {
-      goldBalance = totals.pureWeight;
-      goldValue = totals.goldValue;
-    } else if (fix) {
-      goldBalance = -totals.pureWeight;
-      goldValue = -totals.goldValue;
-      cashBalance = totals.totalAmount;
+    if (balanceChanges.goldBalance !== 0) {
+      incObj["balances.goldBalance.totalGrams"] = balanceChanges.goldBalance;
+      incObj["balances.goldBalance.totalValue"] = balanceChanges.goldValue;
+      setObj["balances.goldBalance.lastUpdated"] = new Date();
     }
-  } else if (transactionType === 'sale') {
-    if (unfix || (!fix && !unfix)) {
-      goldBalance = -totals.pureWeight;
-      goldValue = -totals.goldValue;
-    } else if (fix) {
-      goldBalance = totals.pureWeight;
-      goldValue = totals.goldValue;
-      cashBalance = -totals.totalAmount;
+
+    if (balanceChanges.cashBalance !== 0) {
+      incObj["balances.cashBalance.amount"] = balanceChanges.cashBalance;
+      setObj["balances.cashBalance.lastUpdated"] = new Date();
+    }
+
+    // Always update the last balance update timestamp
+    setObj["balances.lastBalanceUpdate"] = new Date();
+
+    // Perform the updates
+    if (Object.keys(incObj).length > 0 || Object.keys(setObj).length > 0) {
+      const updateOperation = {};
+
+      if (Object.keys(incObj).length > 0) {
+        updateOperation.$inc = incObj;
+      }
+
+      if (Object.keys(setObj).length > 0) {
+        updateOperation.$set = setObj;
+      }
+
+      await Account.findByIdAndUpdate(party._id, updateOperation, {
+        session,
+        new: true,
+      });
     }
   }
 
-  return { goldBalance, goldValue, cashBalance };
-}
+  // Calculate balance changes based on transaction type and fix/unfix flags
+  static calculateBalanceChanges(transactionType, fix, unfix, totals) {
+    let goldBalance = 0,
+      goldValue = 0,
+      cashBalance = 0;
 
-// Generate unique transaction ID
-static generateTransactionId() {
-  const year = new Date().getFullYear();
-  const randomNum = Math.floor(Math.random() * 900) + 100;
-  return `TXN-${year}-${randomNum}-${Date.now()}`;
-}
+    if (transactionType === "purchase") {
+      if (unfix && !fix) {
+        // Purchase Unfix: Increase party's gold balance
+        goldBalance = totals.pureWeight;
+        goldValue = totals.goldValue;
+      } else if (fix && !unfix) {
+        // Purchase Fix: Decrease party's gold balance, increase cash balance
+        goldBalance = -totals.pureWeight;
+        goldValue = -totals.goldValue;
+        cashBalance = totals.totalAmount;
+      } else if (!fix && !unfix) {
+        // Default to unfix
+        goldBalance = totals.pureWeight;
+        goldValue = totals.goldValue;
+      } else if (fix && unfix) {
+        // Both flags true - prioritize fix
+        goldBalance = -totals.pureWeight;
+        goldValue = -totals.goldValue;
+        cashBalance = totals.totalAmount;
+      }
+    } else if (transactionType === "sale") {
+      if (unfix && !fix) {
+        // Sale Unfix: Decrease party's gold balance
+        goldBalance = -totals.pureWeight;
+        goldValue = -totals.goldValue;
+      } else if (fix && !unfix) {
+        // Sale Fix: Increase party's gold balance, decrease cash balance
+        goldBalance = totals.pureWeight;
+        goldValue = totals.goldValue;
+        cashBalance = -totals.totalAmount;
+      } else if (!fix && !unfix) {
+        // Default to unfix
+        goldBalance = -totals.pureWeight;
+        goldValue = -totals.goldValue;
+      } else if (fix && unfix) {
+        // Both flags true - prioritize fix
+        goldBalance = totals.pureWeight;
+        goldValue = totals.goldValue;
+        cashBalance = -totals.totalAmount;
+      }
+    }
 
-// Centralized error handling
-static handleError(error) {
-  console.error('Metal Transaction Service Error:', error);
-  
-  if (error.name === 'ValidationError') {
-    throw createAppError(`Validation failed: ${error.message}`, 400, "VALIDATION_ERROR");
+    return { goldBalance, goldValue, cashBalance };
   }
-  
-  if (error.code === 11000) {
-    throw createAppError("Duplicate transaction detected", 409, "DUPLICATE_TRANSACTION");
+
+  // Generate unique transaction ID
+  static generateTransactionId() {
+    const year = new Date().getFullYear();
+    const randomNum = Math.floor(Math.random() * 900) + 100;
+    return `TXN-${year}-${randomNum}-${Date.now()}`;
   }
-  
-  throw error;
-}
 
+  // Get transaction by ID with populated data
+  static async getMetalTransactionById(transactionId) {
+    return await MetalTransaction.findById(transactionId)
+      .populate("partyCode", "accountCode customerName")
+      .populate("stockItems.stockCode", "stockName stockCode")
+      .populate("createdBy", "username")
+      .exec();
+  }
 
-//////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  // Centralized error handling
+  static handleError(error) {
+    console.error("Metal Transaction Service Error:", error);
+
+    if (error.name === "ValidationError") {
+      throw createAppError(
+        `Validation failed: ${error.message}`,
+        400,
+        "VALIDATION_ERROR"
+      );
+    }
+
+    if (error.code === 11000) {
+      throw createAppError(
+        "Duplicate transaction detected",
+        409,
+        "DUPLICATE_TRANSACTION"
+      );
+    }
+
+    throw error;
+  }
+
+  //////////////////////////////////////////////////////////////////////////////////////////////////////////////
   // Get all metal transactions with pagination and filters
   static async getAllMetalTransactions(page = 1, limit = 50, filters = {}) {
     const skip = (page - 1) * limit;
@@ -406,88 +816,92 @@ static handleError(error) {
       .sort({ voucherDate: -1, createdAt: -1 })
       .limit(limit);
   }
-static async getUnfixedTransactions(page = 1, limit = 50, filters = {}) {
-  const skip = (page - 1) * limit;
-  const query = {
-    isActive: true,
-    unfix: true, // Show only transactions where unfix is true
-  };
+  static async getUnfixedTransactions(page = 1, limit = 50, filters = {}) {
+    const skip = (page - 1) * limit;
+    const query = {
+      isActive: true,
+      unfix: true, // Show only transactions where unfix is true
+    };
 
-  // Apply filters
-  if (filters.transactionType) {
-    query.transactionType = filters.transactionType;
-  }
-  if (filters.partyCode) {
-    query.partyCode = filters.partyCode;
-  }
-  if (filters.status) {
-    query.status = filters.status;
-  }
-  if (filters.startDate && filters.endDate) {
-    query.voucherDate = {
-      $gte: new Date(filters.startDate),
-      $lte: new Date(filters.endDate),
+    // Apply filters
+    if (filters.transactionType) {
+      query.transactionType = filters.transactionType;
+    }
+    if (filters.partyCode) {
+      query.partyCode = filters.partyCode;
+    }
+    if (filters.status) {
+      query.status = filters.status;
+    }
+    if (filters.startDate && filters.endDate) {
+      query.voucherDate = {
+        $gte: new Date(filters.startDate),
+        $lte: new Date(filters.endDate),
+      };
+    }
+
+    // Find transactions but only populate specific party fields
+    const transactions = await MetalTransaction.find(query)
+      .populate({
+        path: "partyCode",
+        select:
+          "accountCode customerName balances.goldBalance.totalGrams balances.cashBalance.amount limitsMargins.shortMargin",
+      })
+      .sort({ voucherDate: -1, createdAt: -1 })
+      .skip(skip)
+      .limit(limit);
+
+    const total = await MetalTransaction.countDocuments(query);
+
+    // Extract unique party data with only required fields
+    const partyDataMap = new Map();
+    transactions.forEach((transaction) => {
+      if (transaction.partyCode && transaction.partyCode._id) {
+        const partyId = transaction.partyCode._id.toString();
+        if (!partyDataMap.has(partyId)) {
+          const party = transaction.partyCode;
+
+          // Transform party data to include only required fields
+          const transformedParty = {
+            _id: party._id,
+            accountCode: party.accountCode,
+            customerName: party.customerName,
+            goldBalance: {
+              totalGrams: party.balances?.goldBalance?.totalGrams || 0,
+            },
+            cashBalance: party.balances?.cashBalance?.map((cash) => ({
+              amount: cash.amount || 0,
+            })) || [{ amount: 0 }],
+            shortMargin: party.limitsMargins?.[0]?.shortMargin || 0,
+          };
+
+          partyDataMap.set(partyId, transformedParty);
+        }
+      }
+    });
+
+    const uniquePartyData = Array.from(partyDataMap.values());
+
+    return {
+      parties: uniquePartyData,
+      pagination: {
+        currentPage: page,
+        totalPages: Math.ceil(total / limit),
+        totalItems: total,
+        hasNext: page < Math.ceil(total / limit),
+        hasPrev: page > 1,
+      },
+      summary: {
+        totalUnfixedTransactions: total,
+        totalPurchases: transactions.filter(
+          (t) => t.transactionType === "purchase"
+        ).length,
+        totalSales: transactions.filter((t) => t.transactionType === "sale")
+          .length,
+        totalParties: uniquePartyData.length,
+      },
     };
   }
-
-  // Find transactions but only populate specific party fields
-  const transactions = await MetalTransaction.find(query)
-    .populate({
-      path: "partyCode",
-      select: "accountCode customerName balances.goldBalance.totalGrams balances.cashBalance.amount limitsMargins.shortMargin",
-    })
-    .sort({ voucherDate: -1, createdAt: -1 })
-    .skip(skip)
-    .limit(limit);
-
-  const total = await MetalTransaction.countDocuments(query);
-
-  // Extract unique party data with only required fields
-  const partyDataMap = new Map();
-  transactions.forEach((transaction) => {
-    if (transaction.partyCode && transaction.partyCode._id) {
-      const partyId = transaction.partyCode._id.toString();
-      if (!partyDataMap.has(partyId)) {
-        const party = transaction.partyCode;
-        
-        // Transform party data to include only required fields
-        const transformedParty = {
-          _id: party._id,
-          accountCode: party.accountCode,
-          customerName: party.customerName,
-          goldBalance: {
-            totalGrams: party.balances?.goldBalance?.totalGrams || 0
-          },
-          cashBalance: party.balances?.cashBalance?.map(cash => ({
-            amount: cash.amount || 0
-          })) || [{ amount: 0 }],
-          shortMargin: party.limitsMargins?.[0]?.shortMargin || 0
-        };
-        
-        partyDataMap.set(partyId, transformedParty);
-      }
-    }
-  });
-
-  const uniquePartyData = Array.from(partyDataMap.values());
-
-  return {
-    parties: uniquePartyData,
-    pagination: {
-      currentPage: page,
-      totalPages: Math.ceil(total / limit),
-      totalItems: total,
-      hasNext: page < Math.ceil(total / limit),
-      hasPrev: page > 1,
-    },
-    summary: {
-      totalUnfixedTransactions: total,
-      totalPurchases: transactions.filter(t => t.transactionType === 'purchase').length,
-      totalSales: transactions.filter(t => t.transactionType === 'sale').length,
-      totalParties: uniquePartyData.length,
-    }
-  };
-}
 
   // Get unfixed transactions with detailed account information
   static async getUnfixedTransactionsWithAccounts(
