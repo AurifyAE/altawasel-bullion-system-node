@@ -104,7 +104,7 @@ export const createMetalTransaction = async (req, res, next) => {
       status: status || "draft",
       notes: notes?.trim(),
     };
-
+console.log(transactionData)
     const metalTransaction =
       await MetalTransactionService.createMetalTransaction(
         transactionData,
