@@ -18,6 +18,11 @@ const TransactionFixingSchema = new mongoose.Schema(
       required: [true, "Quantity in grams is required"],
       min: [0, "Quantity cannot be negative"],
     },
+    price: {
+      type: Number,
+      required: [true, "price is required"],
+      min: [0, "price cannot be negative"],
+    },
     type: {
       type: String,
       required: [true, "Transaction type is required"],
@@ -28,11 +33,9 @@ const TransactionFixingSchema = new mongoose.Schema(
       lowercase: true,
     },
     metalType: {
-      type: String,
-      required: [true, "Metal type is required"],
-      trim: true,
-      uppercase: true,
-      maxlength: [50, "Metal type cannot exceed 50 characters"],
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "MetalRateMaster", // Assuming you have a PartyMaster model
+      required: [true, "MetalRateMaster ID is required"],
     },
     transactionDate: {
       type: Date,
@@ -99,10 +102,7 @@ TransactionFixingSchema.pre("save", async function (next) {
     this.transactionId = await generateTransactionId(this.type);
   }
 
-  // Ensure uppercase for metalType and referenceNumber
-  if (this.metalType) {
-    this.metalType = this.metalType.toUpperCase();
-  }
+
   if (this.referenceNumber) {
     this.referenceNumber = this.referenceNumber.toUpperCase();
   }
@@ -150,46 +150,8 @@ TransactionFixingSchema.statics.getTransactionsByParty = async function (
   return await this.find(query).sort({ transactionDate: -1 });
 };
 
-// Static method to get transactions by metal type
-TransactionFixingSchema.statics.getTransactionsByMetal = async function (
-  metalType,
-  startDate = null,
-  endDate = null
-) {
-  const query = { metalType: metalType.toUpperCase(), status: "active" };
 
-  if (startDate || endDate) {
-    query.transactionDate = {};
-    if (startDate) query.transactionDate.$gte = new Date(startDate);
-    if (endDate) query.transactionDate.$lte = new Date(endDate);
-  }
 
-  return await this.find(query).sort({ transactionDate: -1 });
-};
-
-// Static method to calculate total quantity by party and metal
-TransactionFixingSchema.statics.getPartyMetalSummary = async function (
-  partyId,
-  metalType
-) {
-  return await this.aggregate([
-    {
-      $match: {
-        partyId: new mongoose.Types.ObjectId(partyId),
-        metalType: metalType.toUpperCase(),
-        status: "active",
-      },
-    },
-    {
-      $group: {
-        _id: "$type",
-        totalQuantity: { $sum: "$quantityGm" },
-        totalValue: { $sum: "$value" },
-        transactionCount: { $sum: 1 },
-      },
-    },
-  ]);
-};
 
 const TransactionFixing = mongoose.model(
   "TransactionFixing",

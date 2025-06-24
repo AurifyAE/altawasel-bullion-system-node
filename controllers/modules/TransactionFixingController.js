@@ -4,10 +4,9 @@ import { createAppError } from "../../utils/errorHandler.js";
 // Create Transaction
 export const createTransaction = async (req, res, next) => {
   try {
-    console.log(req.body);
-    const { partyId, quantityGm, type, metalType, notes } = req.body;
+    const { partyId, price, quantityGm, type, metalType, notes } = req.body;
     // Validation
-    if (!partyId  || !quantityGm || !type || !metalType) {
+    if (!partyId || !quantityGm || !type || !metalType) {
       throw createAppError(
         "All required fields must be provided: partyId, value, quantityGm, type, metalType",
         400,
@@ -16,12 +15,20 @@ export const createTransaction = async (req, res, next) => {
     }
 
     if (isNaN(quantityGm) || quantityGm <= 0) {
-      throw createAppError("Quantity must be a positive number", 400, "INVALID_QUANTITY");
+      throw createAppError(
+        "Quantity must be a positive number",
+        400,
+        "INVALID_QUANTITY"
+      );
     }
 
     // Validate transaction type
-    if (!['purchase', 'sell'].includes(type.toLowerCase())) {
-      throw createAppError("Type must be either 'purchase' or 'sell'", 400, "INVALID_TYPE");
+    if (!["purchase", "sell"].includes(type.toLowerCase())) {
+      throw createAppError(
+        "Type must be either 'purchase' or 'sell'",
+        400,
+        "INVALID_TYPE"
+      );
     }
 
     const transactionData = {
@@ -29,6 +36,7 @@ export const createTransaction = async (req, res, next) => {
       quantityGm: parseFloat(quantityGm),
       type: type.toLowerCase(),
       metalType: metalType.trim(),
+      price: parseFloat(price),
     };
 
     // Add optional fields if provided
@@ -55,11 +63,11 @@ export const getAllTransactions = async (req, res, next) => {
     const {
       page = 1,
       limit = 10,
-      search = '',
-      status = '',
-      type = '',
-      metalType = '',
-      partyId = ''
+      search = "",
+      status = "",
+      type = "",
+      metalType = "",
+      partyId = "",
     } = req.query;
 
     const result = await TransactionFixingService.getAllTransactions(
@@ -115,7 +123,7 @@ export const updateTransaction = async (req, res, next) => {
     }
 
     // Validation - at least one field should be provided
-    if (!partyId  && !quantityGm && !type && !metalType && !notes && !status) {
+    if (!partyId && !quantityGm && !type && !metalType && !notes && !status) {
       throw createAppError(
         "At least one field is required to update",
         400,
@@ -127,19 +135,31 @@ export const updateTransaction = async (req, res, next) => {
     if (partyId) updateData.partyId = partyId.trim();
     if (value !== undefined) {
       if (isNaN(value) || value <= 0) {
-        throw createAppError("Value must be a positive number", 400, "INVALID_VALUE");
+        throw createAppError(
+          "Value must be a positive number",
+          400,
+          "INVALID_VALUE"
+        );
       }
       updateData.value = parseFloat(value);
     }
     if (quantityGm !== undefined) {
       if (isNaN(quantityGm) || quantityGm <= 0) {
-        throw createAppError("Quantity must be a positive number", 400, "INVALID_QUANTITY");
+        throw createAppError(
+          "Quantity must be a positive number",
+          400,
+          "INVALID_QUANTITY"
+        );
       }
       updateData.quantityGm = parseFloat(quantityGm);
     }
     if (type) {
-      if (!['purchase', 'sell'].includes(type.toLowerCase())) {
-        throw createAppError("Type must be either 'purchase' or 'sell'", 400, "INVALID_TYPE");
+      if (!["purchase", "sell"].includes(type.toLowerCase())) {
+        throw createAppError(
+          "Type must be either 'purchase' or 'sell'",
+          400,
+          "INVALID_TYPE"
+        );
       }
       updateData.type = type.toLowerCase();
     }
@@ -220,7 +240,9 @@ export const permanentDeleteTransaction = async (req, res, next) => {
       throw createAppError("Transaction ID is required", 400, "MISSING_ID");
     }
 
-    const result = await TransactionFixingService.permanentDeleteTransaction(id);
+    const result = await TransactionFixingService.permanentDeleteTransaction(
+      id
+    );
 
     res.status(200).json({
       success: true,
@@ -313,7 +335,11 @@ export const getPartyMetalSummary = async (req, res, next) => {
     const { partyId, metalType } = req.params;
 
     if (!partyId || !metalType) {
-      throw createAppError("Party ID and Metal type are required", 400, "MISSING_PARAMETERS");
+      throw createAppError(
+        "Party ID and Metal type are required",
+        400,
+        "MISSING_PARAMETERS"
+      );
     }
 
     const summary = await TransactionFixingService.getPartyMetalSummary(

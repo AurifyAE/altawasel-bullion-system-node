@@ -6,7 +6,7 @@ import mongoose from "mongoose";
 
 export const TransactionFixingService = {
   // Create Transaction with Registry Integration
-  createTransaction: async (transactionData, adminId) => {
+ createTransaction: async (transactionData, adminId) => {
     const session = await mongoose.startSession();
     session.startTransaction();
 
@@ -43,8 +43,17 @@ export const TransactionFixingService = {
         );
       }
 
-      // Calculate total value
-      const totalValue = transactionData.quantityGm;
+      // Validate price
+      if (!transactionData.price || transactionData.price <= 0) {
+        throw createAppError(
+          "Price is required and must be positive",
+          400,
+          "INVALID_PRICE"
+        );
+      }
+
+      // Calculate total value (price * quantity)
+      const totalValue = transactionData.price;
 
       // Function to generate unique transaction ID
       const generateTransactionId = async function (type) {
@@ -94,50 +103,36 @@ export const TransactionFixingService = {
 
       // Create registry entries based on transaction type
       if (transactionData.type === "purchase") {
-        // For PURCHASE:
-        // 1. STOCK_BALANCE - Debit (increase stock)
-        const stockBalanceEntry = new Registry({
-          transactionId: `${registryTransactionId}-STOCK`,
-          type: "STOCK_BALANCE",
-          description: `Stock purchase from ${
-            account.customerName || account.accountCode
-          } - ${transactionData.metalType}`,
-          party: transactionData.partyId,
-          value: totalValue,
-          debit: transactionData.quantityGm, // Quantity in grams as debit
-          credit: 0,
-          transactionDate: transactionData.transactionDate || new Date(),
-          reference: transaction._id.toString(),
-          createdBy: adminId,
-        });
+        // For PURCHASE: Company buys gold from party
+        // Party gives gold to company, company pays cash to party
 
-        // 2. GOLD type - Debit (gold inventory increase)
-        const goldEntry = new Registry({
-          transactionId: `${registryTransactionId}-GOLD`,
-          type: "GOLD",
-          description: `Gold inventory increase - Purchase from ${
-            account.customerName || account.accountCode
-          }`,
-          party: transactionData.partyId,
-          value: totalValue,
-          debit: transactionData.quantityGm,
-          credit: 0,
-          transactionDate: transactionData.transactionDate || new Date(),
-          reference: transaction._id.toString(),
-          createdBy: adminId,
-        });
-
-        // 3. PARTY_GOLD_BALANCE - Credit (party owes us gold)
+        // 3. PARTY_GOLD_BALANCE - Debit (party gives gold to us)
         const partyGoldBalanceEntry = new Registry({
-          transactionId: `${registryTransactionId}-PARTY`,
+          transactionId: `${registryTransactionId}-PARTY-GOLD`,
           type: "PARTY_GOLD_BALANCE",
           description: `Party gold balance - Purchase from ${
             account.customerName || account.accountCode
           }`,
           party: transactionData.partyId,
+          value: transactionData.quantityGm,
+          debit: transactionData.quantityGm, // Party gives gold (debit from party perspective)
+          credit: 0,
+          transactionDate: transactionData.transactionDate || new Date(),
+          reference: transaction._id.toString(),
+          createdBy: adminId,
+        });
+
+        // 4. PARTY_CASH_BALANCE - Credit (we pay cash to party)
+        const partyCashBalanceEntry = new Registry({
+          transactionId: `${registryTransactionId}-PARTY-CASH`,
+          type: "PARTY_CASH_BALANCE",
+          description: `Party cash balance - Payment for gold purchase from ${
+            account.customerName || account.accountCode
+          }`,
+          party: transactionData.partyId,
           value: totalValue,
           debit: 0,
-          credit: transactionData.quantityGm,
+          credit: totalValue, // We pay cash to party (credit to party)
           transactionDate: transactionData.transactionDate || new Date(),
           reference: transaction._id.toString(),
           createdBy: adminId,
@@ -145,65 +140,63 @@ export const TransactionFixingService = {
 
         // Save all registry entries
         await Promise.all([
-          stockBalanceEntry.save({ session }),
-          goldEntry.save({ session }),
           partyGoldBalanceEntry.save({ session }),
+          partyCashBalanceEntry.save({ session }),
         ]);
+
+        // Update account balances - FIXED
         const currentGoldGrams = account.balances.goldBalance.totalGrams || 0;
         const currentGoldValue = account.balances.goldBalance.totalValue || 0;
+        const currentCashBalance = account.balances.cashBalance.amount || 0;
 
-        // Remove Math.max(0, ...) to allow negative values
+        // For purchase: party gives gold (decrease party's gold balance)
+        // and receives cash (increase party's cash balance)
         const newGoldGrams = currentGoldGrams - transactionData.quantityGm;
-        const newGoldValue = currentGoldValue - totalValue;
+        const newGoldValue = 0;
+        const newCashBalance = currentCashBalance + totalValue;
 
+        // Update gold balance
         account.balances.goldBalance.totalGrams = newGoldGrams;
         account.balances.goldBalance.totalValue = newGoldValue;
         account.balances.goldBalance.lastUpdated = new Date();
+
+        // Update cash balance - FIXED: Update the amount property, not the entire object
+        account.balances.cashBalance.amount = newCashBalance;
+        account.balances.cashBalance.lastUpdated = new Date();
+        
+        // Update overall balance tracking
         account.balances.lastBalanceUpdate = new Date();
+
       } else if (transactionData.type === "sell") {
-        // For SELL (reverse logic):
-        // 1. STOCK_BALANCE - Credit (decrease stock)
-        const stockBalanceEntry = new Registry({
-          transactionId: `${registryTransactionId}-STOCK`,
-          type: "STOCK_BALANCE",
-          description: `Stock sale to ${
-            account.customerName || account.accountCode
-          } - ${transactionData.metalType}`,
-          party: transactionData.partyId,
-          value: totalValue,
-          debit: 0,
-          credit: transactionData.quantityGm, // Quantity in grams as credit
-          transactionDate: transactionData.transactionDate || new Date(),
-          reference: transaction._id.toString(),
-          createdBy: adminId,
-        });
+        // For SELL: Company sells gold to party
+        // Company gives gold to party, party pays cash to company
 
-        // 2. GOLD type - Credit (gold inventory decrease)
-        const goldEntry = new Registry({
-          transactionId: `${registryTransactionId}-GOLD`,
-          type: "GOLD",
-          description: `Gold inventory decrease - Sale to ${
-            account.customerName || account.accountCode
-          }`,
-          party: transactionData.partyId,
-          value: totalValue,
-          debit: 0,
-          credit: transactionData.quantityGm,
-          transactionDate: transactionData.transactionDate || new Date(),
-          reference: transaction._id.toString(),
-          createdBy: adminId,
-        });
-
-        // 3. PARTY_GOLD_BALANCE - Debit (party gives us gold)
+        // 3. PARTY_GOLD_BALANCE - Credit (party receives gold from us)
         const partyGoldBalanceEntry = new Registry({
-          transactionId: `${registryTransactionId}-PARTY`,
+          transactionId: `${registryTransactionId}-PARTY-GOLD`,
           type: "PARTY_GOLD_BALANCE",
           description: `Party gold balance - Sale to ${
             account.customerName || account.accountCode
           }`,
           party: transactionData.partyId,
+          value: transactionData.quantityGm,
+          debit: 0,
+          credit: transactionData.quantityGm, // Party receives gold (credit to party)
+          transactionDate: transactionData.transactionDate || new Date(),
+          reference: transaction._id.toString(),
+          createdBy: adminId,
+        });
+
+        // 4. PARTY_CASH_BALANCE - Debit (party pays cash to us)
+        const partyCashBalanceEntry = new Registry({
+          transactionId: `${registryTransactionId}-PARTY-CASH`,
+          type: "PARTY_CASH_BALANCE",
+          description: `Party cash balance - Payment for gold sale to ${
+            account.customerName || account.accountCode
+          }`,
+          party: transactionData.partyId,
           value: totalValue,
-          debit: transactionData.quantityGm,
+          debit: totalValue, // Party pays cash (debit from party)
           credit: 0,
           transactionDate: transactionData.transactionDate || new Date(),
           reference: transaction._id.toString(),
@@ -212,21 +205,31 @@ export const TransactionFixingService = {
 
         // Save all registry entries
         await Promise.all([
-          stockBalanceEntry.save({ session }),
-          goldEntry.save({ session }),
           partyGoldBalanceEntry.save({ session }),
+          partyCashBalanceEntry.save({ session }),
         ]);
-        // FIXED: Allow negative to positive transition for sell
+
+        // Update account balances - FIXED
         const currentGoldGrams = account.balances.goldBalance.totalGrams || 0;
         const currentGoldValue = account.balances.goldBalance.totalValue || 0;
+        const currentCashBalance = account.balances.cashBalance.amount || 0;
 
-        // Remove Math.max(0, ...) to allow full calculation
+        // For sell: party receives gold (increase party's gold balance)
+        // and pays cash (decrease party's cash balance)
         const newGoldGrams = currentGoldGrams + transactionData.quantityGm;
-        const newGoldValue = currentGoldValue + totalValue;
+        const newGoldValue = 0;
+        const newCashBalance = currentCashBalance - totalValue;
 
+        // Update gold balance
         account.balances.goldBalance.totalGrams = newGoldGrams;
         account.balances.goldBalance.totalValue = newGoldValue;
         account.balances.goldBalance.lastUpdated = new Date();
+
+        // Update cash balance - FIXED: Update the amount property, not the entire object
+        account.balances.cashBalance.amount = newCashBalance;
+        account.balances.cashBalance.lastUpdated = new Date();
+        
+        // Update overall balance tracking
         account.balances.lastBalanceUpdate = new Date();
       }
 
@@ -287,6 +290,7 @@ export const TransactionFixingService = {
 
       const transactions = await TransactionFixing.find(filter)
         .populate("partyId", "name code customerName accountCode")
+        .populate("metalType", "rateType")
         .populate("createdBy", "name email")
         .populate("updatedBy", "name email")
         .sort({ createdAt: -1 })
