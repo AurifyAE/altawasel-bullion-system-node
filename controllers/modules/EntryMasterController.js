@@ -5,6 +5,7 @@ import AccountMaster from '../../models/modules/accountMaster.js';
 
 
 const createEntry = async (req, res) => {
+  
   try {
     const { type } = req.body;
 
