@@ -142,7 +142,12 @@ const handleCashReceipt = async (entry) => {
 
     // Find the currency in cashBalance array
     const currencyBalance = accountType.balances.cashBalance.find(
-      balance => balance.currency.toString() === cashItem.currency.toString()
+      balance => {
+        // Handle null or undefined currency values safely
+        const balCurrency = balance.currency ? balance.currency.toString() : null;
+        const itemCurrency = cashItem.currency ? cashItem.currency.toString() : null;
+        return balCurrency === itemCurrency;
+      }
     );
     console.log("currencyBalance:", currencyBalance);
 

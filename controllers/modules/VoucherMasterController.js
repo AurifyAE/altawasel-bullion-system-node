@@ -201,6 +201,10 @@ export const generateVoucherNumber = async (req, res, next) => {
     const { module } = req.params;
     const { transactionType, entryType } = req.query;
 
+    console.log("Generating voucher number for module:", module);
+    console.log("Transaction Type:", transactionType);
+    console.log("Entry Type:", entryType);
+
     if (!module) {
       throw createAppError("Module is required", 400, "MISSING_MODULE");
     }
