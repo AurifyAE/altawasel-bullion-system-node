@@ -4,73 +4,233 @@ import { deleteMultipleS3Files } from "../../utils/s3Utils.js";
 
 class AccountTypeService {
   // Create new trade debtor
-  static async createTradeDebtor(debtorData, adminId) {
-    try {
-      // Check if account code already exists
-      const isCodeExists = await AccountType.isAccountCodeExists(
-        debtorData.accountCode
+static async createTradeDebtor(debtorData, adminId) {
+  try {
+    // Check if account code already exists
+    const isCodeExists = await AccountType.isAccountCodeExists(
+      debtorData.accountCode
+    );
+    if (isCodeExists) {
+      throw createAppError(
+        "Account code already exists",
+        400,
+        "DUPLICATE_ACCOUNT_CODE"
       );
-      if (isCodeExists) {
-        throw createAppError(
-          "Account code already exists",
-          400,
-          "DUPLICATE_ACCOUNT_CODE"
-        );
-      }
-
-      // Validate required nested data
-      if (!debtorData.addresses || debtorData.addresses.length === 0) {
-        throw createAppError(
-          "At least one address is required",
-          400,
-          "MISSING_ADDRESS"
-        );
-      }
-
-      if (!debtorData.employees || debtorData.employees.length === 0) {
-        throw createAppError(
-          "At least one employee contact is required",
-          400,
-          "MISSING_EMPLOYEE"
-        );
-      }
-
-      // Set created by
-      debtorData.createdBy = adminId;
-
-      // Create trade debtor
-      const tradeDebtor = new AccountType(debtorData);
-      await tradeDebtor.save();
-
-      // Populate references
-      await tradeDebtor.populate([
-        {
-          path: "acDefinition.currencies.currency",
-          select: "currencyCode description",
-        },
-        {
-          path: "acDefinition.branches.branch",
-          select: "code name",
-        },
-        {
-          path: "createdBy",
-          select: "name email",
-        },
-      ]);
-      
-      return tradeDebtor;
-    } catch (error) {
-      if (error.name === "ValidationError") {
-        const messages = Object.values(error.errors).map((err) => err.message);
-        throw createAppError(
-          `Validation failed: ${messages.join(", ")}`,
-          400,
-          "VALIDATION_ERROR"
-        );
-      }
-      throw error;
     }
+
+    // Validate required nested data
+    if (!debtorData.addresses || debtorData.addresses.length === 0) {
+      throw createAppError(
+        "At least one address is required",
+        400,
+        "MISSING_ADDRESS"
+      );
+    }
+
+    if (!debtorData.employees || debtorData.employees.length === 0) {
+      throw createAppError(
+        "At least one employee contact is required",
+        400,
+        "MISSING_EMPLOYEE"
+      );
+    }
+
+
+    // Set created by
+    debtorData.createdBy = adminId;
+
+    // Initialize balances with default values if not provided
+    if (!debtorData.balances) {
+      debtorData.balances = {
+        goldBalance: {
+          totalGrams: 0,
+          totalValue: 0,
+          lastUpdated: new Date()
+        },
+        cashBalance: {
+          currency: null, // Will be set from acDefinition default currency
+          amount: 0,
+          lastUpdated: new Date()
+        },
+        totalOutstanding: 0,
+        lastBalanceUpdate: new Date()
+      };
+    }
+
+    // Ensure only one primary address
+    if (debtorData.addresses && debtorData.addresses.length > 0) {
+      let primaryFound = false;
+      debtorData.addresses.forEach((address, index) => {
+        if (address.isPrimary && !primaryFound) {
+          primaryFound = true;
+        } else if (address.isPrimary && primaryFound) {
+          address.isPrimary = false;
+        } else if (index === 0 && !primaryFound) {
+          // Make first address primary if none specified
+          address.isPrimary = true;
+          primaryFound = true;
+        }
+      });
+    }
+
+    // Ensure only one primary employee
+    if (debtorData.employees && debtorData.employees.length > 0) {
+      let primaryFound = false;
+      debtorData.employees.forEach((employee, index) => {
+        if (employee.isPrimary && !primaryFound) {
+          primaryFound = true;
+        } else if (employee.isPrimary && primaryFound) {
+          employee.isPrimary = false;
+        } else if (index === 0 && !primaryFound) {
+          // Make first employee primary if none specified
+          employee.isPrimary = true;
+          primaryFound = true;
+        }
+      });
+    }
+
+    // Ensure only one primary bank (if bank details provided)
+    if (debtorData.bankDetails && debtorData.bankDetails.length > 0) {
+      let primaryFound = false;
+      debtorData.bankDetails.forEach((bank, index) => {
+        if (bank.isPrimary && !primaryFound) {
+          primaryFound = true;
+        } else if (bank.isPrimary && primaryFound) {
+          bank.isPrimary = false;
+        } else if (index === 0 && !primaryFound) {
+          // Make first bank primary if none specified
+          bank.isPrimary = true;
+          primaryFound = true;
+        }
+      });
+    }
+
+    // Ensure only one default currency in acDefinition
+    if (debtorData.acDefinition && debtorData.acDefinition.currencies && debtorData.acDefinition.currencies.length > 0) {
+      let defaultFound = false;
+      debtorData.acDefinition.currencies.forEach((currency, index) => {
+        if (currency.isDefault && !defaultFound) {
+          defaultFound = true;
+        } else if (currency.isDefault && defaultFound) {
+          currency.isDefault = false;
+        } else if (index === 0 && !defaultFound) {
+          // Make first currency default if none specified
+          currency.isDefault = true;
+          defaultFound = true;
+        }
+      });
+    }
+
+    // Ensure only one default branch in acDefinition (if branches provided)
+    if (debtorData.acDefinition && debtorData.acDefinition.branches && debtorData.acDefinition.branches.length > 0) {
+      let defaultFound = false;
+      debtorData.acDefinition.branches.forEach((branch, index) => {
+        if (branch.isDefault && !defaultFound) {
+          defaultFound = true;
+        } else if (branch.isDefault && defaultFound) {
+          branch.isDefault = false;
+        } else if (index === 0 && !defaultFound) {
+          // Make first branch default if none specified
+          branch.isDefault = true;
+          defaultFound = true;
+        }
+      });
+    }
+
+    // Initialize limitsMargins array if not provided or empty
+    if (!debtorData.limitsMargins || debtorData.limitsMargins.length === 0) {
+      debtorData.limitsMargins = [{
+        creditDaysAmt: 0,
+        creditDaysMtl: 0,
+        shortMargin: 0,
+        longMargin: 0
+      }];
+    }
+
+    // Validate and set default VAT status if not provided
+    if (!debtorData.vatGstDetails) {
+      debtorData.vatGstDetails = {
+        vatStatus: 'UNREGISTERED',
+        documents: []
+      };
+    } else if (!debtorData.vatGstDetails.vatStatus) {
+      debtorData.vatGstDetails.vatStatus = 'UNREGISTERED';
+    }
+
+    // Ensure documents arrays are properly initialized
+    if (debtorData.vatGstDetails && !debtorData.vatGstDetails.documents) {
+      debtorData.vatGstDetails.documents = [];
+    }
+
+    if (debtorData.kycDetails && Array.isArray(debtorData.kycDetails)) {
+      debtorData.kycDetails.forEach(kyc => {
+        if (!kyc.documents) {
+          kyc.documents = [];
+        }
+        // Ensure isVerified is set
+        if (kyc.isVerified === undefined) {
+          kyc.isVerified = false;
+        }
+      });
+    }
+
+    // Create trade debtor
+    const tradeDebtor = new AccountType(debtorData);
+    await tradeDebtor.save();
+
+    // Populate references for response
+    await tradeDebtor.populate([
+      {
+        path: "acDefinition.currencies.currency",
+        select: "currencyCode currencyName symbol description",
+      },
+      {
+        path: "acDefinition.branches.branch",
+        select: "branchCode branchName address",
+      },
+      {
+        path: "balances.cashBalance.currency",
+        select: "currencyCode currencyName symbol",
+      },
+      {
+        path: "createdBy",
+        select: "name email role",
+      },
+    ]);
+    
+    return tradeDebtor;
+  } catch (error) {
+    if (error.name === "ValidationError") {
+      const messages = Object.values(error.errors).map((err) => err.message);
+      throw createAppError(
+        `Validation failed: ${messages.join(", ")}`,
+        400,
+        "VALIDATION_ERROR"
+      );
+    }
+    
+    // Handle duplicate key errors
+    if (error.code === 11000) {
+      const field = Object.keys(error.keyPattern)[0];
+      throw createAppError(
+        `Duplicate value for field: ${field}`,
+        400,
+        "DUPLICATE_FIELD_VALUE"
+      );
+    }
+    
+    // Handle cast errors
+    if (error.name === "CastError") {
+      throw createAppError(
+        `Invalid value for field: ${error.path}`,
+        400,
+        "INVALID_FIELD_VALUE"
+      );
+    }
+    
+    throw error;
   }
+}
 
   // Get all trade debtors with pagination and filters
   static async getAllTradeDebtors(options = {}) {
