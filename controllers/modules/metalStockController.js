@@ -27,7 +27,7 @@ export const createMetalStock = async (req, res, next) => {
     } = req.body;
 
     // Validate required fields
-    if (!metalType || !code || !description || !karat || !category || !subCategory || !type) {
+    if (!metalType || !code || !description || !karat) {
       throw createAppError("Required fields missing", 400, "REQUIRED_FIELDS_MISSING");
     }
 
@@ -44,7 +44,7 @@ export const createMetalStock = async (req, res, next) => {
         throw createAppError("Total value is required and must be a non-negative number for piece-based stock", 400, "INVALID_TOTAL_VALUE");
       }
     }
-
+    // Validate charges and makingCharge
     const metalStockData = {
       metalType: metalType.trim(),
       code: code.trim(),
@@ -57,9 +57,9 @@ export const createMetalStock = async (req, res, next) => {
       charges: charges || null,
       makingCharge: makingCharge || null,
       costCenter: costCenter || null,
-      category: category.trim(),
-      subCategory: subCategory.trim(),
-      type: type.trim(),
+      category: category ? category.trim() : null,
+      subCategory: subCategory ? subCategory.trim() : null,
+      type: type ? type.trim() : null,
       size: size || null,
       color: color || null,
       brand: brand || null,
