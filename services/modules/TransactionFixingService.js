@@ -26,160 +26,201 @@ export const TransactionFixingService = {
       }
 
       // Validate transaction type
-      if (!['purchase', 'sell'].includes(transactionData.type)) {
-        throw createAppError("Transaction type must be 'purchase' or 'sell'", 400, "INVALID_TYPE");
+      if (!["purchase", "sell"].includes(transactionData.type.toLowerCase())) {
+        throw createAppError(
+          "Transaction type must be 'purchase' or 'sell'",
+          400,
+          "INVALID_TYPE"
+        );
       }
 
       // Validate required fields for registry
       if (!transactionData.quantityGm || transactionData.quantityGm <= 0) {
-        throw createAppError("Quantity in grams is required and must be positive", 400, "INVALID_QUANTITY");
-      }
-
-      if (!transactionData.ratePerGm || transactionData.ratePerGm <= 0) {
-        throw createAppError("Rate per gram is required and must be positive", 400, "INVALID_RATE");
+        throw createAppError(
+          "Quantity in grams is required and must be positive",
+          400,
+          "INVALID_QUANTITY"
+        );
       }
 
       // Calculate total value
-      const totalValue = transactionData.quantityGm * transactionData.ratePerGm;
+      const totalValue = transactionData.quantityGm;
+
+      // Function to generate unique transaction ID
+      const generateTransactionId = async function (type) {
+        const prefix = type === "purchase" ? "PUR" : "SELL";
+        let isUnique = false;
+        let transactionId;
+
+        // Keep generating until we get a unique ID
+        while (!isUnique) {
+          const randomNum = Math.floor(Math.random() * 90000) + 10000; // 5-digit random number
+          transactionId = `${prefix}${randomNum}`;
+
+          // Check if this ID already exists
+          const existingTransaction = await mongoose
+            .model("TransactionFixing")
+            .findOne({ transactionId });
+          if (!existingTransaction) {
+            isUnique = true;
+          }
+        }
+
+        return transactionId;
+      };
+
+      // Generate the transaction ID
+      const transactionId = await generateTransactionId(transactionData.type);
 
       // Get the account to update balances
-      const account = await Account.findById(transactionData.partyId).session(session);
+      const account = await Account.findById(transactionData.partyId).session(
+        session
+      );
       if (!account) {
         throw createAppError("Account not found", 404, "ACCOUNT_NOT_FOUND");
       }
 
       // Create the main transaction
       const transaction = new TransactionFixing({
+        transactionId: transactionId, // Use the generated ID
         ...transactionData,
-        createdBy: adminId
+        createdBy: adminId,
       });
 
       await transaction.save({ session });
 
       // Generate transaction ID for registry entries
-      const transactionId = await Registry.generateTransactionId();
+      const registryTransactionId = await Registry.generateTransactionId();
 
       // Create registry entries based on transaction type
-      if (transactionData.type === 'purchase') {
+      if (transactionData.type === "purchase") {
         // For PURCHASE:
         // 1. STOCK_BALANCE - Debit (increase stock)
         const stockBalanceEntry = new Registry({
-          transactionId: `${transactionId}-STOCK`,
+          transactionId: `${registryTransactionId}-STOCK`,
           type: "STOCK_BALANCE",
-          description: `Stock purchase from ${account.customerName || account.accountCode} - ${transactionData.metalType}`,
+          description: `Stock purchase from ${
+            account.customerName || account.accountCode
+          } - ${transactionData.metalType}`,
           party: transactionData.partyId,
           value: totalValue,
           debit: transactionData.quantityGm, // Quantity in grams as debit
           credit: 0,
           transactionDate: transactionData.transactionDate || new Date(),
           reference: transaction._id.toString(),
-          createdBy: adminId
+          createdBy: adminId,
         });
 
         // 2. GOLD type - Debit (gold inventory increase)
         const goldEntry = new Registry({
-          transactionId: `${transactionId}-GOLD`,
+          transactionId: `${registryTransactionId}-GOLD`,
           type: "GOLD",
-          description: `Gold inventory increase - Purchase from ${account.customerName || account.accountCode}`,
+          description: `Gold inventory increase - Purchase from ${
+            account.customerName || account.accountCode
+          }`,
           party: transactionData.partyId,
           value: totalValue,
           debit: transactionData.quantityGm,
           credit: 0,
           transactionDate: transactionData.transactionDate || new Date(),
           reference: transaction._id.toString(),
-          createdBy: adminId
+          createdBy: adminId,
         });
 
         // 3. PARTY_GOLD_BALANCE - Credit (party owes us gold)
         const partyGoldBalanceEntry = new Registry({
-          transactionId: `${transactionId}-PARTY`,
+          transactionId: `${registryTransactionId}-PARTY`,
           type: "PARTY_GOLD_BALANCE",
-          description: `Party gold balance - Purchase from ${account.customerName || account.accountCode}`,
+          description: `Party gold balance - Purchase from ${
+            account.customerName || account.accountCode
+          }`,
           party: transactionData.partyId,
           value: totalValue,
           debit: 0,
           credit: transactionData.quantityGm,
           transactionDate: transactionData.transactionDate || new Date(),
           reference: transaction._id.toString(),
-          createdBy: adminId
+          createdBy: adminId,
         });
 
         // Save all registry entries
         await Promise.all([
           stockBalanceEntry.save({ session }),
           goldEntry.save({ session }),
-          partyGoldBalanceEntry.save({ session })
+          partyGoldBalanceEntry.save({ session }),
         ]);
-
-        // Update account gold balance (subtract for purchase - we gave gold to party)
         const currentGoldGrams = account.balances.goldBalance.totalGrams || 0;
         const currentGoldValue = account.balances.goldBalance.totalValue || 0;
-        
-        // For purchase, we reduce our gold balance as we're giving gold to the party
-        const newGoldGrams = Math.max(0, currentGoldGrams - transactionData.quantityGm);
-        const newGoldValue = Math.max(0, currentGoldValue - totalValue);
+
+        // Remove Math.max(0, ...) to allow negative values
+        const newGoldGrams = currentGoldGrams - transactionData.quantityGm;
+        const newGoldValue = currentGoldValue - totalValue;
 
         account.balances.goldBalance.totalGrams = newGoldGrams;
         account.balances.goldBalance.totalValue = newGoldValue;
         account.balances.goldBalance.lastUpdated = new Date();
         account.balances.lastBalanceUpdate = new Date();
-
-      } else if (transactionData.type === 'sell') {
+      } else if (transactionData.type === "sell") {
         // For SELL (reverse logic):
         // 1. STOCK_BALANCE - Credit (decrease stock)
         const stockBalanceEntry = new Registry({
-          transactionId: `${transactionId}-STOCK`,
+          transactionId: `${registryTransactionId}-STOCK`,
           type: "STOCK_BALANCE",
-          description: `Stock sale to ${account.customerName || account.accountCode} - ${transactionData.metalType}`,
+          description: `Stock sale to ${
+            account.customerName || account.accountCode
+          } - ${transactionData.metalType}`,
           party: transactionData.partyId,
           value: totalValue,
           debit: 0,
           credit: transactionData.quantityGm, // Quantity in grams as credit
           transactionDate: transactionData.transactionDate || new Date(),
           reference: transaction._id.toString(),
-          createdBy: adminId
+          createdBy: adminId,
         });
 
         // 2. GOLD type - Credit (gold inventory decrease)
         const goldEntry = new Registry({
-          transactionId: `${transactionId}-GOLD`,
+          transactionId: `${registryTransactionId}-GOLD`,
           type: "GOLD",
-          description: `Gold inventory decrease - Sale to ${account.customerName || account.accountCode}`,
+          description: `Gold inventory decrease - Sale to ${
+            account.customerName || account.accountCode
+          }`,
           party: transactionData.partyId,
           value: totalValue,
           debit: 0,
           credit: transactionData.quantityGm,
           transactionDate: transactionData.transactionDate || new Date(),
           reference: transaction._id.toString(),
-          createdBy: adminId
+          createdBy: adminId,
         });
 
         // 3. PARTY_GOLD_BALANCE - Debit (party gives us gold)
         const partyGoldBalanceEntry = new Registry({
-          transactionId: `${transactionId}-PARTY`,
+          transactionId: `${registryTransactionId}-PARTY`,
           type: "PARTY_GOLD_BALANCE",
-          description: `Party gold balance - Sale to ${account.customerName || account.accountCode}`,
+          description: `Party gold balance - Sale to ${
+            account.customerName || account.accountCode
+          }`,
           party: transactionData.partyId,
           value: totalValue,
           debit: transactionData.quantityGm,
           credit: 0,
           transactionDate: transactionData.transactionDate || new Date(),
           reference: transaction._id.toString(),
-          createdBy: adminId
+          createdBy: adminId,
         });
 
         // Save all registry entries
         await Promise.all([
           stockBalanceEntry.save({ session }),
           goldEntry.save({ session }),
-          partyGoldBalanceEntry.save({ session })
+          partyGoldBalanceEntry.save({ session }),
         ]);
-
-        // Update account gold balance (add for sell - we receive gold from party)
+        // FIXED: Allow negative to positive transition for sell
         const currentGoldGrams = account.balances.goldBalance.totalGrams || 0;
         const currentGoldValue = account.balances.goldBalance.totalValue || 0;
-        
-        // For sell, we increase our gold balance as we're receiving gold from the party
+
+        // Remove Math.max(0, ...) to allow full calculation
         const newGoldGrams = currentGoldGrams + transactionData.quantityGm;
         const newGoldValue = currentGoldValue + totalValue;
 
@@ -197,9 +238,8 @@ export const TransactionFixingService = {
 
       // Return the populated transaction
       return await TransactionFixing.findById(transaction._id)
-        .populate('partyId', 'name code customerName accountCode')
-        .populate('createdBy', 'name email');
-
+        .populate("partyId", "name code customerName accountCode")
+        .populate("createdBy", "name email");
     } catch (error) {
       // Rollback the transaction
       await session.abortTransaction();
@@ -210,18 +250,26 @@ export const TransactionFixingService = {
   },
 
   // Get all Transactions with pagination and filtering
-  getAllTransactions: async (page = 1, limit = 10, search = '', status = '', type = '', metalType = '', partyId = '') => {
+  getAllTransactions: async (
+    page = 1,
+    limit = 10,
+    search = "",
+    status = "",
+    type = "",
+    metalType = "",
+    partyId = ""
+  ) => {
     try {
       const skip = (page - 1) * limit;
-      
+
       // Build filter query
       const filter = {};
       if (search) {
         filter.$or = [
-          { transactionId: { $regex: search, $options: 'i' } },
-          { metalType: { $regex: search, $options: 'i' } },
-          { referenceNumber: { $regex: search, $options: 'i' } },
-          { notes: { $regex: search, $options: 'i' } }
+          { transactionId: { $regex: search, $options: "i" } },
+          { metalType: { $regex: search, $options: "i" } },
+          { referenceNumber: { $regex: search, $options: "i" } },
+          { notes: { $regex: search, $options: "i" } },
         ];
       }
       if (status) {
@@ -238,9 +286,9 @@ export const TransactionFixingService = {
       }
 
       const transactions = await TransactionFixing.find(filter)
-        .populate('partyId', 'name code customerName accountCode')
-        .populate('createdBy', 'name email')
-        .populate('updatedBy', 'name email')
+        .populate("partyId", "name code customerName accountCode")
+        .populate("createdBy", "name email")
+        .populate("updatedBy", "name email")
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(parseInt(limit));
@@ -253,8 +301,8 @@ export const TransactionFixingService = {
           currentPage: parseInt(page),
           totalPages: Math.ceil(total / limit),
           totalItems: total,
-          itemsPerPage: parseInt(limit)
-        }
+          itemsPerPage: parseInt(limit),
+        },
       };
     } catch (error) {
       throw error;
@@ -265,9 +313,9 @@ export const TransactionFixingService = {
   getTransactionById: async (id) => {
     try {
       const transaction = await TransactionFixing.findById(id)
-        .populate('partyId', 'name code customerName accountCode')
-        .populate('createdBy', 'name email')
-        .populate('updatedBy', 'name email');
+        .populate("partyId", "name code customerName accountCode")
+        .populate("createdBy", "name email")
+        .populate("updatedBy", "name email");
 
       if (!transaction) {
         throw createAppError("Transaction not found", 404, "NOT_FOUND");
@@ -275,7 +323,7 @@ export const TransactionFixingService = {
 
       return transaction;
     } catch (error) {
-      if (error.name === 'CastError') {
+      if (error.name === "CastError") {
         throw createAppError("Invalid Transaction ID", 400, "INVALID_ID");
       }
       throw error;
@@ -291,7 +339,10 @@ export const TransactionFixingService = {
       }
 
       // Validate party ID if being updated
-      if (updateData.partyId && !mongoose.Types.ObjectId.isValid(updateData.partyId)) {
+      if (
+        updateData.partyId &&
+        !mongoose.Types.ObjectId.isValid(updateData.partyId)
+      ) {
         throw createAppError("Invalid Party ID", 400, "INVALID_PARTY_ID");
       }
 
@@ -305,25 +356,29 @@ export const TransactionFixingService = {
       }
 
       // Validate transaction type if being updated
-      if (updateData.type && !['purchase', 'sell'].includes(updateData.type)) {
-        throw createAppError("Transaction type must be 'purchase' or 'sell'", 400, "INVALID_TYPE");
+      if (updateData.type && !["purchase", "sell"].includes(updateData.type)) {
+        throw createAppError(
+          "Transaction type must be 'purchase' or 'sell'",
+          400,
+          "INVALID_TYPE"
+        );
       }
 
       const updatedTransaction = await TransactionFixing.findByIdAndUpdate(
         id,
         {
           ...updateData,
-          updatedBy: adminId
+          updatedBy: adminId,
         },
         { new: true, runValidators: true }
       )
-        .populate('partyId', 'name code customerName accountCode')
-        .populate('createdBy', 'name email')
-        .populate('updatedBy', 'name email');
+        .populate("partyId", "name code customerName accountCode")
+        .populate("createdBy", "name email")
+        .populate("updatedBy", "name email");
 
       return updatedTransaction;
     } catch (error) {
-      if (error.name === 'CastError') {
+      if (error.name === "CastError") {
         throw createAppError("Invalid Transaction ID", 400, "INVALID_ID");
       }
       throw error;
@@ -343,17 +398,17 @@ export const TransactionFixingService = {
         {
           status: "inactive",
           isActive: false,
-          updatedBy: adminId
+          updatedBy: adminId,
         },
         { new: true }
       )
-        .populate('partyId', 'name code customerName accountCode')
-        .populate('createdBy', 'name email')
-        .populate('updatedBy', 'name email');
+        .populate("partyId", "name code customerName accountCode")
+        .populate("createdBy", "name email")
+        .populate("updatedBy", "name email");
 
       return deletedTransaction;
     } catch (error) {
-      if (error.name === 'CastError') {
+      if (error.name === "CastError") {
         throw createAppError("Invalid Transaction ID", 400, "INVALID_ID");
       }
       throw error;
@@ -372,17 +427,17 @@ export const TransactionFixingService = {
         id,
         {
           status: "cancelled",
-          updatedBy: adminId
+          updatedBy: adminId,
         },
         { new: true }
       )
-        .populate('partyId', 'name code customerName accountCode')
-        .populate('createdBy', 'name email')
-        .populate('updatedBy', 'name email');
+        .populate("partyId", "name code customerName accountCode")
+        .populate("createdBy", "name email")
+        .populate("updatedBy", "name email");
 
       return cancelledTransaction;
     } catch (error) {
-      if (error.name === 'CastError') {
+      if (error.name === "CastError") {
         throw createAppError("Invalid Transaction ID", 400, "INVALID_ID");
       }
       throw error;
@@ -400,7 +455,7 @@ export const TransactionFixingService = {
       await TransactionFixing.findByIdAndDelete(id);
       return { message: "Transaction permanently deleted" };
     } catch (error) {
-      if (error.name === 'CastError') {
+      if (error.name === "CastError") {
         throw createAppError("Invalid Transaction ID", 400, "INVALID_ID");
       }
       throw error;
@@ -420,17 +475,17 @@ export const TransactionFixingService = {
         {
           status: "active",
           isActive: true,
-          updatedBy: adminId
+          updatedBy: adminId,
         },
         { new: true }
       )
-        .populate('partyId', 'name code customerName accountCode')
-        .populate('createdBy', 'name email')
-        .populate('updatedBy', 'name email');
+        .populate("partyId", "name code customerName accountCode")
+        .populate("createdBy", "name email")
+        .populate("updatedBy", "name email");
 
       return restoredTransaction;
     } catch (error) {
-      if (error.name === 'CastError') {
+      if (error.name === "CastError") {
         throw createAppError("Invalid Transaction ID", 400, "INVALID_ID");
       }
       throw error;
@@ -444,16 +499,28 @@ export const TransactionFixingService = {
         throw createAppError("Invalid Party ID", 400, "INVALID_PARTY_ID");
       }
 
-      return await TransactionFixing.getTransactionsByParty(partyId, startDate, endDate);
+      return await TransactionFixing.getTransactionsByParty(
+        partyId,
+        startDate,
+        endDate
+      );
     } catch (error) {
       throw error;
     }
   },
 
   // Get transactions by metal type
-  getTransactionsByMetal: async (metalType, startDate = null, endDate = null) => {
+  getTransactionsByMetal: async (
+    metalType,
+    startDate = null,
+    endDate = null
+  ) => {
     try {
-      return await TransactionFixing.getTransactionsByMetal(metalType, startDate, endDate);
+      return await TransactionFixing.getTransactionsByMetal(
+        metalType,
+        startDate,
+        endDate
+      );
     } catch (error) {
       throw error;
     }
@@ -470,5 +537,5 @@ export const TransactionFixingService = {
     } catch (error) {
       throw error;
     }
-  }
+  },
 };

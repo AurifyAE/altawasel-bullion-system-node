@@ -54,12 +54,12 @@ const AccountSchema = new mongoose.Schema(
         totalGrams: {
           type: Number,
           default: 0,
-          min: [0, "Gold balance cannot be negative"],
+          // Removed min validation to allow negative values
         },
         totalValue: {
           type: Number,
           default: 0,
-          min: [0, "Gold value cannot be negative"],
+          // Removed min validation to allow negative values
         },
         lastUpdated: {
           type: Date,
@@ -475,19 +475,6 @@ AccountSchema.pre("save", function (next) {
     }
   }
 
-  // Update balance timestamps when balances are modified
-  if (this.isModified("balances")) {
-    this.balances.lastBalanceUpdate = new Date();
-
-    // Update individual balance timestamps
-    if (this.balances.goldBalance && this.isModified("balances.goldBalance")) {
-      this.balances.goldBalance.lastUpdated = new Date();
-    }
-
-    if (this.balances.cashBalance && this.isModified("balances.cashBalance")) {
-      this.balances.cashBalance.lastUpdated = new Date();
-    }
-  }
 
   // Ensure only one primary address
   if (this.addresses && this.addresses.length > 0) {
@@ -548,54 +535,6 @@ AccountSchema.statics.isAccountCodeExists = async function (
 // Static method to get active accounts
 AccountSchema.statics.getActiveAccounts = function () {
   return this.find({ isActive: true, status: "active" });
-};
-
-// Static method to get accounts with outstanding balances
-AccountSchema.statics.getAccountsWithOutstanding = function (
-  minAmount = 0
-) {
-  return this.find({
-    isActive: true,
-    status: "active",
-    "balances.totalOutstanding": { $gt: minAmount },
-  });
-};
-
-// Static method to get total gold balance across all accounts
-AccountSchema.statics.getTotalGoldBalance = async function () {
-  const result = await this.aggregate([
-    { $match: { isActive: true, status: "active" } },
-    {
-      $group: {
-        _id: null,
-        totalGrams: { $sum: "$balances.goldBalance.totalGrams" },
-        totalValue: { $sum: "$balances.goldBalance.totalValue" },
-      },
-    },
-  ]);
-  return result[0] || { totalGrams: 0, totalValue: 0 };
-};
-
-// UPDATED Static method to get total cash balance across all accounts
-AccountSchema.statics.getTotalCashBalance = async function (currencyId = null) {
-  const matchStage = { isActive: true, status: "active" };
-  
-  if (currencyId) {
-    matchStage["balances.cashBalance.currency"] = currencyId;
-  }
-
-  const result = await this.aggregate([
-    { $match: matchStage },
-    {
-      $group: {
-        _id: currencyId ? currencyId : "$balances.cashBalance.currency",
-        totalAmount: { $sum: "$balances.cashBalance.amount" },
-        count: { $sum: 1 }
-      },
-    },
-  ]);
-  
-  return result;
 };
 
 // Instance method to get primary contact
