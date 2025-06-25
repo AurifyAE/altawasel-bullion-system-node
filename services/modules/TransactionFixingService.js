@@ -211,7 +211,7 @@ export const TransactionFixingService = {
 
         // Update account balances - FIXED
         const currentGoldGrams = account.balances.goldBalance.totalGrams || 0;
-        const currentGoldValue = account.balances.goldBalance.totalValue || 0;
+        const currentGoldValue = 0
         const currentCashBalance = account.balances.cashBalance.amount || 0;
 
         // For sell: party receives gold (increase party's gold balance)

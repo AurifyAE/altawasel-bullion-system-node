@@ -104,6 +104,39 @@ export const createMetalTransaction = async (req, res, next) => {
 
     console.log('Transaction Data:', transactionData);
 
+    // Log specific data for debugging
+    console.log('\n=== DEBUGGING STOCK ITEMS DATA ===');
+    transactionData.stockItems.forEach((item, index) => {
+      console.log(`\n--- Stock Item ${index + 1} (${item.stockCode}) ---`);
+      
+      console.log('Making Charges:');
+      console.log('  Amount:', item.makingCharges.amount);
+      console.log('  Rate:', item.makingCharges.rate);
+      
+      console.log('Premium:');
+      console.log('  Amount:', item.premium.amount);
+      console.log('  Rate:', item.premium.rate);
+      
+      console.log('Item Total:');
+      console.log('  Base Amount:', item.itemTotal.baseAmount);
+      console.log('  Making Charges Total:', item.itemTotal.makingChargesTotal);
+      console.log('  Premium Total:', item.itemTotal.premiumTotal);
+      console.log('  Sub Total:', item.itemTotal.subTotal);
+      console.log('  VAT Amount:', item.itemTotal.vatAmount);
+      console.log('  Item Total Amount:', item.itemTotal.itemTotalAmount);
+    });
+
+    // Also log the original raw data for comparison
+    console.log('\n=== ORIGINAL RAW STOCK ITEMS DATA ===');
+    stockItems.forEach((item, index) => {
+      console.log(`\n--- Raw Stock Item ${index + 1} ---`);
+      console.log('Making Charges (Raw):', item.makingCharges);
+      console.log('Premium (Raw):', item.premium);
+      console.log('Item Total (Raw):', item.itemTotal);
+    });
+
+    console.log('\n=== END DEBUGGING ===\n');
+
     const metalTransaction = await MetalTransactionService.createMetalTransaction(
       transactionData,
       req.admin.id

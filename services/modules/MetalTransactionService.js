@@ -209,29 +209,43 @@ class MetalTransactionService {
   }
 
   // Pre-calculate all totals from stock items
-  static calculateTotals(stockItems, totalAmountSession) {
-    const totals = stockItems.reduce(
-      (acc, item) => {
-        const makingChargesAmount = item.makingCharges?.amount || 0;
-        const premiumAmount = item.premium?.amount || 0;
-        const goldValue = item.itemTotal?.baseAmount || 0;
-        const pureWeight = item.pureWeight || 0;
+ // Fixed calculateTotals method - replace the existing one in your service
+static calculateTotals(stockItems, totalAmountSession) {
+  const totals = stockItems.reduce(
+    (acc, item) => {
+      // Get making charges from itemTotal.makingChargesTotal instead of makingCharges.amount
+      const makingChargesAmount = item.itemTotal?.makingChargesTotal || item.makingCharges?.amount || 0;
+      
+      // Get premium from itemTotal.premiumTotal instead of premium.amount
+      const premiumAmount = item.itemTotal?.premiumTotal || item.premium?.amount || 0;
+      
+      const goldValue = item.itemTotal?.baseAmount || 0;
+      const pureWeight = item.pureWeight || 0;
 
-        return {
-          makingCharges: acc.makingCharges + makingChargesAmount,
-          premium: acc.premium + premiumAmount,
-          goldValue: acc.goldValue + goldValue,
-          pureWeight: acc.pureWeight + pureWeight,
-        };
-      },
-      { makingCharges: 0, premium: 0, goldValue: 0, pureWeight: 0 }
-    );
+      return {
+        makingCharges: acc.makingCharges + makingChargesAmount,
+        premium: acc.premium + premiumAmount,
+        goldValue: acc.goldValue + goldValue,
+        pureWeight: acc.pureWeight + pureWeight,
+      };
+    },
+    { makingCharges: 0, premium: 0, goldValue: 0, pureWeight: 0 }
+  );
 
-    // Add total amount from session
-    totals.totalAmount = totalAmountSession?.totalAmountAED || 0;
+  // Add total amount from session
+  totals.totalAmount = totalAmountSession?.totalAmountAED || 0;
 
-    return totals;
-  }
+  // Log the calculated totals for debugging
+  console.log('\n=== CALCULATED TOTALS ===');
+  console.log('Making Charges Total:', totals.makingCharges);
+  console.log('Premium Total:', totals.premium);
+  console.log('Gold Value Total:', totals.goldValue);
+  console.log('Pure Weight Total:', totals.pureWeight);
+  console.log('Total Amount:', totals.totalAmount);
+  console.log('=== END CALCULATED TOTALS ===\n');
+
+  return totals;
+}
 
   // PURCHASE UNFIX - Registry entries
   static buildPurchaseUnfixEntries(
