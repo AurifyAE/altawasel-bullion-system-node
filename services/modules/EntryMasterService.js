@@ -1,13 +1,11 @@
-const Entry = require('../../models/modules/EntryModel');
-const Registry = require('../../models/modules/Registry.js');
-const AccountType = require ('../../models/modules/AccountType.js');
-const AccountMaster = require ('../../models/modules/accountMaster.js');
+const Entry = require("../../models/modules/EntryModel");
+const Registry = require("../../models/modules/Registry.js");
+const AccountType = require("../../models/modules/AccountType.js");
+const AccountMaster = require("../../models/modules/accountMaster.js");
 
 exports.createEntry = async (data) => {
-    try {
-        
- 
-   // Prepare entry data based on type
+  try {
+    // Prepare entry data based on type
     let entryData = {
       voucherId: data.voucherId,
       type: data.type,
@@ -15,7 +13,7 @@ exports.createEntry = async (data) => {
       voucherDate: data.voucherDate,
       party: data.party,
       enteredBy: data.enteredBy,
-      remarks: data.remarks
+      remarks: data.remarks,
     };
 
     // Add type-specific fields
@@ -53,7 +51,7 @@ exports.createEntry = async (data) => {
     return {
       success: true,
       data: entry,
-      message: `${data.type} entry created successfully`
+      message: `${data.type} entry created successfully`,
     };
   } catch (error) {
     console.error("Error creating entry:", error);
@@ -61,15 +59,15 @@ exports.createEntry = async (data) => {
   }
 };
 
-
 // Helper function for metal receipt
 const handleMetalReceipt = async (entry) => {
   for (const stock of entry.stocks) {
     const transactionId = await Registry.generateTransactionId();
 
-     const description = stock.remarks && stock.remarks.trim() !== "" 
-      ? stock.remarks 
-      : "No description";
+    const description =
+      stock.remarks && stock.remarks.trim() !== ""
+        ? stock.remarks
+        : "No description";
     // Registry entry for "stock balance"
     await Registry.create({
       transactionId,
@@ -129,19 +127,24 @@ const handleCashReceipt = async (entry) => {
 
     // Find the currency in cashBalance array
     const currencyBalance = accountType.balances.cashBalance.find(
-      balance => balance.currency.toString() === cashItem.currency.toString()
+      (balance) => balance.currency.toString() === cashItem.currency.toString()
     );
     console.log("currencyBalance:", currencyBalance);
 
     if (!currencyBalance) {
       throw new Error(`User doesn't have the selected currency`);
-      res.status(400).json({ success: false, error: `User doesn't have the selected currency` });
+      res
+        .status(400)
+        .json({
+          success: false,
+          error: `User doesn't have the selected currency`,
+        });
     }
 
     const requestedAmount = cashItem.amount || 0;
 
     // Deduct amount from account cash balance
-    currencyBalance.amount -= requestedAmount;
+    currencyBalance.amount += requestedAmount;
     currencyBalance.lastUpdated = new Date();
 
     // Add amount to cash type opening balance
@@ -185,7 +188,7 @@ const handleCashReceipt = async (entry) => {
 
 // Helper function for cash payment
 const handleCashPayment = async (entry) => {
-  console.log('Processing cash payment:', entry);
+  console.log("Processing cash payment:", entry);
 
   // Rename variable to avoid shadowing
   const accountType = await AccountType.findOne({ _id: entry.party });
@@ -203,7 +206,9 @@ const handleCashPayment = async (entry) => {
     console.log(cashItem.cashType, "this is cash type");
     const cashType = await AccountMaster.findOne({ _id: cashItem.cashType });
     if (!cashType) {
-      throw new Error(`Cash type account not found for ID: ${cashItem.cashType}`);
+      throw new Error(
+        `Cash type account not found for ID: ${cashItem.cashType}`
+      );
     }
 
     console.log(`CashType found: ${cashType.name || cashType._id}`);
@@ -222,7 +227,7 @@ const handleCashPayment = async (entry) => {
 
     // Find the currency in cashBalance array
     let currencyBalance = accountType.balances.cashBalance.find(
-      balance => balance.currency.toString() === cashItem.currency.toString()
+      (balance) => balance.currency.toString() === cashItem.currency.toString()
     );
 
     // If currency doesn't exist, create it
@@ -230,17 +235,16 @@ const handleCashPayment = async (entry) => {
       currencyBalance = {
         currency: cashItem.currency,
         amount: 0,
-        lastUpdated: new Date()
+        lastUpdated: new Date(),
       };
       accountType.balances.cashBalance.push(currencyBalance);
     }
 
-    // Add amount to account's cash balance
-    currencyBalance.amount += requestedAmount;
+    const absRequestedAmount = Math.abs(requestedAmount);
+    // Always subtract for deductions
+    currencyBalance.amount -= absRequestedAmount;
     currencyBalance.lastUpdated = new Date();
-
-    // Deduct amount from cash type opening balance
-    cashType.openingBalance = (cashType.openingBalance || 0) - requestedAmount;
+    cashType.openingBalance = (cashType.openingBalance || 0) - absRequestedAmount;
     await cashType.save();
 
     // Registry entry for "cash balance" (debit for payment)
@@ -314,5 +318,3 @@ const handleMetalPayment = async (entry) => {
     console.log(`Created gold entry for stock: ${stock.stock}`);
   }
 };
-
-

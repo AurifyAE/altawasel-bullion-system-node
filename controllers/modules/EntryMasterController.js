@@ -159,12 +159,24 @@ const handleCashReceipt = async (entry) => {
     const requestedAmount = cashItem.amount || 0;
 
     // Add amount to account cash balance (RECEIPT)
-    accountType.balances.cashBalance.amount -= requestedAmount;
+    console.log("Before:", {
+      amount: accountType.balances.cashBalance.amount,
+      requestedAmount,
+      typeofRequestedAmount: typeof requestedAmount,
+    });
+
+    accountType.balances.cashBalance.amount += requestedAmount;
+
+    console.log("After:", {
+      amount: accountType.balances.cashBalance.amount,
+    });
+
     accountType.balances.cashBalance.lastUpdated = new Date();
 
     // Deduct amount from cash type opening balance
     cashType.openingBalance = (cashType.openingBalance || 0) + requestedAmount;
     await cashType.save();
+     await accountType.save();
 
     // Registry entry for "cash balance"
     await Registry.create({
@@ -204,8 +216,6 @@ const handleCashReceipt = async (entry) => {
     console.log(`Created cash entry for cashType: ${cashType._id}`);
   }
 
-  // Save account after all updates
-  await accountType.save();
 };
 
 // Helper function for cash payment
@@ -256,7 +266,7 @@ const handleCashPayment = async (entry) => {
     }
 
     // Update the cash balance object directly
-    accountType.balances.cashBalance.amount += requestedAmount;
+    accountType.balances.cashBalance.amount -= requestedAmount;
     accountType.balances.cashBalance.lastUpdated = new Date();
 
     // Debug: Log cashBalance array after update
