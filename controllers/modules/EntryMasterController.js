@@ -1,20 +1,23 @@
-import Entry from '../../models/modules/EntryModel.js';
-import Registry from '../../models/modules/Registry.js';
-import AccountType from '../../models/modules/AccountType.js'; // Make sure this is at the top
-import AccountMaster from '../../models/modules/accountMaster.js';
-
+import Entry from "../../models/modules/EntryModel.js";
+import Registry from "../../models/modules/Registry.js";
+import AccountType from "../../models/modules/AccountType.js"; // Make sure this is at the top
+import AccountMaster from "../../models/modules/accountMaster.js";
 
 const createEntry = async (req, res) => {
-  
   try {
     const { type } = req.body;
 
     // Validate entry type
-    const validTypes = ["metal receipt", "metal payment", "cash receipt", "cash payment"];
+    const validTypes = [
+      "metal receipt",
+      "metal payment",
+      "cash receipt",
+      "cash payment",
+    ];
     if (!validTypes.includes(type)) {
       return res.status(400).json({
         success: false,
-        message: "Invalid entry type"
+        message: "Invalid entry type",
       });
     }
 
@@ -26,7 +29,7 @@ const createEntry = async (req, res) => {
       voucherDate: req.body.voucherDate,
       party: req.body.party,
       enteredBy: req.body.enteredBy,
-      remarks: req.body.remarks
+      remarks: req.body.remarks,
     };
 
     // Add type-specific fields
@@ -64,13 +67,13 @@ const createEntry = async (req, res) => {
     res.status(201).json({
       success: true,
       data: entry,
-      message: `${type} entry created successfully`
+      message: `${type} entry created successfully`,
     });
   } catch (err) {
-    console.error('Error creating entry:', err);
-    res.status(400).json({ 
+    console.error("Error creating entry:", err);
+    res.status(400).json({
       success: false,
-      error: err.message 
+      error: err.message,
     });
   }
 };
@@ -80,9 +83,10 @@ const handleMetalReceipt = async (entry) => {
   for (const stock of entry.stocks) {
     const transactionId = await Registry.generateTransactionId();
 
-     const description = stock.remarks && stock.remarks.trim() !== "" 
-      ? stock.remarks 
-      : "No description";
+    const description =
+      stock.remarks && stock.remarks.trim() !== ""
+        ? stock.remarks
+        : "No description";
     // Registry entry for "stock balance"
     await Registry.create({
       transactionId,
@@ -94,7 +98,8 @@ const handleMetalReceipt = async (entry) => {
       credit: stock.purityWeight,
       reference: stock.stock ? stock.stock.toString() : "",
       createdBy: entry.enteredBy,
-      party: entry.party ? entry.party.toString() : null,
+      party: null,
+      isBullion: true,
     });
     console.log(`Created stock balance entry for stock: ${stock.stock}`);
 
@@ -109,7 +114,8 @@ const handleMetalReceipt = async (entry) => {
       debit: stock.purityWeight,
       reference: stock.stock ? stock.stock.toString() : "",
       createdBy: entry.enteredBy,
-      party: entry.party ? entry.party.toString() : null,
+      party: null,
+      isBullion: true,
     });
     console.log(`Created gold entry for stock: ${stock.stock}`);
   }
@@ -138,11 +144,14 @@ const handleCashReceipt = async (entry) => {
     if (!accountType.balances) {
       accountType.balances = {};
     }
-    if (!accountType.balances.cashBalance || typeof accountType.balances.cashBalance !== 'object') {
+    if (
+      !accountType.balances.cashBalance ||
+      typeof accountType.balances.cashBalance !== "object"
+    ) {
       accountType.balances.cashBalance = {
         currency: cashItem.currency || null,
         amount: 0,
-        lastUpdated: new Date()
+        lastUpdated: new Date(),
       };
       console.log("Initialized accountType.balances.cashBalance as object");
     }
@@ -161,9 +170,12 @@ const handleCashReceipt = async (entry) => {
     await Registry.create({
       transactionId,
       type: "PARTY_CASH_BALANCE",
-      description: cashItem.remarks && cashItem.remarks.trim() !== ""
-        ? cashItem.remarks
-        : (entry.remarks && entry.remarks.trim() !== "" ? entry.remarks : "No description"),
+      description:
+        cashItem.remarks && cashItem.remarks.trim() !== ""
+          ? cashItem.remarks
+          : entry.remarks && entry.remarks.trim() !== ""
+          ? entry.remarks
+          : "No description",
       value: requestedAmount,
       runningBalance: 0,
       previousBalance: 0,
@@ -171,6 +183,7 @@ const handleCashReceipt = async (entry) => {
       reference: entry._id.toString(),
       createdBy: entry.enteredBy,
       party: entry.party ? entry.party.toString() : null,
+      isBullion: false,
     });
     console.log(`Created cash balance entry for cashType: ${cashType._id}`);
 
@@ -185,7 +198,8 @@ const handleCashReceipt = async (entry) => {
       debit: requestedAmount,
       reference: entry._id.toString(),
       createdBy: entry.enteredBy,
-      party: entry.party ? entry.party.toString() : null,
+      party: null,
+      isBullion: true,
     });
     console.log(`Created cash entry for cashType: ${cashType._id}`);
   }
@@ -196,14 +210,17 @@ const handleCashReceipt = async (entry) => {
 
 // Helper function for cash payment
 const handleCashPayment = async (entry) => {
-  console.log('Processing cash payment:', JSON.stringify(entry, null, 2));
+  console.log("Processing cash payment:", JSON.stringify(entry, null, 2));
 
   const accountType = await AccountType.findOne({ _id: entry.party });
   if (!accountType) {
     throw new Error("Account not found");
   }
 
-  console.log("Fetched accountType.balances:", JSON.stringify(accountType.balances, null, 2));
+  console.log(
+    "Fetched accountType.balances:",
+    JSON.stringify(accountType.balances, null, 2)
+  );
 
   for (const cashItem of entry.cash) {
     const transactionId = await Registry.generateTransactionId();
@@ -211,7 +228,9 @@ const handleCashPayment = async (entry) => {
     console.log("Processing cashItem:", JSON.stringify(cashItem, null, 2));
     const cashType = await AccountMaster.findOne({ _id: cashItem.cashType });
     if (!cashType) {
-      throw new Error(`Cash type account not found in admin for ID: ${cashItem.cashType}`);
+      throw new Error(
+        `Cash type account not found in admin for ID: ${cashItem.cashType}`
+      );
     }
 
     console.log(`CashType found: ${cashType.name || cashType._id}`);
@@ -224,21 +243,27 @@ const handleCashPayment = async (entry) => {
       accountType.balances = { cashBalance: [] };
       console.log("Initialized accountType.balances");
     }
-    if (!accountType.balances.cashBalance || typeof accountType.balances.cashBalance !== 'object') {
-  accountType.balances.cashBalance = {
-    currency: cashItem.currency || null,
-    amount: 0,
-    lastUpdated: new Date()
-  };
-  console.log("Initialized accountType.balances.cashBalance as object");
-}
+    if (
+      !accountType.balances.cashBalance ||
+      typeof accountType.balances.cashBalance !== "object"
+    ) {
+      accountType.balances.cashBalance = {
+        currency: cashItem.currency || null,
+        amount: 0,
+        lastUpdated: new Date(),
+      };
+      console.log("Initialized accountType.balances.cashBalance as object");
+    }
 
-// Update the cash balance object directly
-accountType.balances.cashBalance.amount += requestedAmount;
-accountType.balances.cashBalance.lastUpdated = new Date();
+    // Update the cash balance object directly
+    accountType.balances.cashBalance.amount += requestedAmount;
+    accountType.balances.cashBalance.lastUpdated = new Date();
 
     // Debug: Log cashBalance array after update
-    console.log("After update, cashBalance:", JSON.stringify(accountType.balances.cashBalance, null, 2));
+    console.log(
+      "After update, cashBalance:",
+      JSON.stringify(accountType.balances.cashBalance, null, 2)
+    );
 
     cashType.openingBalance = (cashType.openingBalance || 0) - requestedAmount;
     await cashType.save();
@@ -254,6 +279,7 @@ accountType.balances.cashBalance.lastUpdated = new Date();
       reference: entry._id.toString(),
       createdBy: entry.enteredBy,
       party: entry.party ? entry.party.toString() : null,
+      isBullion: false,
     });
     console.log(`Created cash balance entry for cashType: ${cashType._id}`);
 
@@ -267,7 +293,8 @@ accountType.balances.cashBalance.lastUpdated = new Date();
       credit: requestedAmount,
       reference: entry._id.toString(),
       createdBy: entry.enteredBy,
-      party: entry.party ? entry.party.toString() : null,
+      party: null,
+      isBullion: true,
     });
     console.log(`Created cash entry for cashType: ${cashType._id}`);
   }
@@ -292,7 +319,8 @@ const handleMetalPayment = async (entry) => {
       debit: stock.purityWeight,
       reference: stock.stock ? stock.stock.toString() : "",
       createdBy: entry.enteredBy,
-      party: entry.party ? entry.party.toString() : null,
+      party: null,
+      isBullion: true,
     });
     console.log(`Created stock balance entry for stock: ${stock.stock}`);
 
@@ -307,20 +335,20 @@ const handleMetalPayment = async (entry) => {
       credit: stock.purityWeight,
       reference: stock.stock ? stock.stock.toString() : "",
       createdBy: entry.enteredBy,
-      party: entry.party ? entry.party.toString() : null,
+      party: null,
+      isBullion: true,
     });
     console.log(`Created gold entry for stock: ${stock.stock}`);
   }
 };
 
-
 const getCashPayments = async (req, res) => {
   try {
     const entries = await Entry.find({ type: "cash payment" })
-      .populate('voucherId')
-      .populate('party')
-      .populate('enteredBy')
-      .populate('stocks.stock')
+      .populate("voucherId")
+      .populate("party")
+      .populate("enteredBy")
+      .populate("stocks.stock")
       .sort({ createdAt: -1 });
     res.json(entries);
   } catch (err) {
@@ -331,10 +359,10 @@ const getCashPayments = async (req, res) => {
 const getCashReceipts = async (req, res) => {
   try {
     const entries = await Entry.find({ type: "cash receipt" })
-      .populate('voucherId')
-      .populate('party')
-      .populate('enteredBy')
-      .populate('stocks.stock')
+      .populate("voucherId")
+      .populate("party")
+      .populate("enteredBy")
+      .populate("stocks.stock")
       .sort({ createdAt: -1 });
     res.json(entries);
   } catch (err) {
@@ -346,10 +374,10 @@ const getCashReceipts = async (req, res) => {
 const getMetalPayments = async (req, res) => {
   try {
     const entries = await Entry.find({ type: "metal payment" })
-      .populate('voucherId')
-      .populate('party')
-      .populate('enteredBy')
-      .populate('stocks.stock')
+      .populate("voucherId")
+      .populate("party")
+      .populate("enteredBy")
+      .populate("stocks.stock")
       .sort({ createdAt: -1 });
     res.json(entries);
   } catch (err) {
@@ -360,10 +388,10 @@ const getMetalPayments = async (req, res) => {
 const getMetalReceipts = async (req, res) => {
   try {
     const entries = await Entry.find({ type: "metal receipt" })
-      .populate('voucherId')
-      .populate('party')
-      .populate('enteredBy')
-      .populate('stocks.stock')
+      .populate("voucherId")
+      .populate("party")
+      .populate("enteredBy")
+      .populate("stocks.stock")
       .sort({ createdAt: -1 });
     res.json(entries);
   } catch (err) {
@@ -374,11 +402,11 @@ const getMetalReceipts = async (req, res) => {
 const getEntryById = async (req, res) => {
   try {
     const entry = await Entry.findById(req.params.id)
-      .populate('voucherId')
-      .populate('party')
-      .populate('enteredBy')
-      .populate('stocks.stock');
-    if (!entry) return res.status(404).json({ error: 'Entry not found' });
+      .populate("voucherId")
+      .populate("party")
+      .populate("enteredBy")
+      .populate("stocks.stock");
+    if (!entry) return res.status(404).json({ error: "Entry not found" });
     res.json(entry);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -391,5 +419,5 @@ export default {
   getCashReceipts,
   getMetalPayments,
   getMetalReceipts,
-  getEntryById
+  getEntryById,
 };

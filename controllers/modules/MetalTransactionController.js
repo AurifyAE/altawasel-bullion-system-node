@@ -522,11 +522,13 @@ export const getUnfixedTransactions = async (req, res, next) => {
     res.status(200).json({
       success: true,
       message: "Unfixed transaction parties retrieved successfully",
-      data: {
+     data: {
         parties: result.parties.map((party) => ({
           _id: party._id,
           accountCode: party.accountCode,
           customerName: party.customerName,
+          email: party.email,
+          phone: party.phone,
           goldBalance: {
             totalGrams: party.goldBalance.totalGrams,
           },

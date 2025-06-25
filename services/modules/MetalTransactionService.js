@@ -237,6 +237,13 @@ class MetalTransactionService {
     // Add total amount from session
     totals.totalAmount = totalAmountSession?.totalAmountAED || 0;
 
+    console.log("\n=== CALCULATED TOTALS ===");
+    console.log("Making Charges Total:", totals.makingCharges);
+    console.log("Premium Total:", totals.premium);
+    console.log("Gold Value Total:", totals.goldValue);
+    console.log("Pure Weight Total:", totals.pureWeight);
+    console.log("Total Amount:", totals.totalAmount);
+    console.log("=== END CALCULATED TOTALS ===\n");
     return totals;
   }
 
@@ -868,7 +875,7 @@ class MetalTransactionService {
       .populate({
         path: "partyCode",
         select:
-          "accountCode customerName balances.goldBalance.totalGrams balances.cashBalance.amount limitsMargins.shortMargin",
+          "accountCode customerName addresses balances.goldBalance.totalGrams balances.cashBalance.amount limitsMargins.shortMargin",
       })
       .sort({ voucherDate: -1, createdAt: -1 })
       .skip(skip)
@@ -884,17 +891,22 @@ class MetalTransactionService {
         if (!partyDataMap.has(partyId)) {
           const party = transaction.partyCode;
 
+          // Find primary address or fallback to first address
+          const primaryAddress =
+            party.addresses?.find((addr) => addr.isPrimary === true) ||
+            party.addresses?.[0];
+
           // Transform party data to include only required fields
           const transformedParty = {
             _id: party._id,
             accountCode: party.accountCode,
             customerName: party.customerName,
+            email: primaryAddress?.email || null,
+            phone: primaryAddress?.phoneNumber1 || null,
             goldBalance: {
               totalGrams: party.balances?.goldBalance?.totalGrams || 0,
             },
-            cashBalance: party.balances?.cashBalance?.map((cash) => ({
-              amount: cash.amount || 0,
-            })) || [{ amount: 0 }],
+            cashBalance: party.balances?.cashBalance?.amount || 0,
             shortMargin: party.limitsMargins?.[0]?.shortMargin || 0,
           };
 
