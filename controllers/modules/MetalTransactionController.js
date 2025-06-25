@@ -44,14 +44,14 @@ console.log(req.body)
       );
     }
 
-    // Fixed Boolean logic for fix and unfix flags
+    // Boolean logic for fix and unfix flags - ensure mutual exclusivity
     const isFixTransaction = fix === true || fix === "true";
     const isUnfixTransaction = unfix === true || unfix === "true";
 
     const transactionData = {
       transactionType,
-      fix: isFixTransaction,
-      unfix: isUnfixTransaction,
+      fixed: isFixTransaction ? true : false,
+      unfix: isUnfixTransaction ? true : false,
       voucherType: voucherType?.trim(),
       voucherDate: voucherDate ? new Date(voucherDate) : new Date(),
       voucherNumber: voucherNumber?.trim(),
