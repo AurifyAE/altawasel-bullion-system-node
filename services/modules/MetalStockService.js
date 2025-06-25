@@ -165,7 +165,7 @@ class MetalStockService {
       await metalStock.save();
 
       // Create Registry entries for stock creation
-      await this.createRegistryEntries(metalStock, "CREATE", adminId);
+      // await this.createRegistryEntries(metalStock, "CREATE", adminId);
 
       // Populate the referenced fields
       await metalStock.populate([
