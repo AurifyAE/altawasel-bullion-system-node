@@ -31,6 +31,10 @@ const RegistrySchema = new mongoose.Schema(
       ref: "Account",
       default: null,
     },
+     isBullion: {
+      type: Boolean,
+      default: null,
+    },
     value: {
       type: Number,
       required: [true, "Transaction value is required"],

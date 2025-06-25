@@ -209,43 +209,36 @@ class MetalTransactionService {
   }
 
   // Pre-calculate all totals from stock items
- // Fixed calculateTotals method - replace the existing one in your service
-static calculateTotals(stockItems, totalAmountSession) {
-  const totals = stockItems.reduce(
-    (acc, item) => {
-      // Get making charges from itemTotal.makingChargesTotal instead of makingCharges.amount
-      const makingChargesAmount = item.itemTotal?.makingChargesTotal || item.makingCharges?.amount || 0;
-      
-      // Get premium from itemTotal.premiumTotal instead of premium.amount
-      const premiumAmount = item.itemTotal?.premiumTotal || item.premium?.amount || 0;
-      
-      const goldValue = item.itemTotal?.baseAmount || 0;
-      const pureWeight = item.pureWeight || 0;
+  // Fixed calculateTotals method - replace the existing one in your service
+  static calculateTotals(stockItems, totalAmountSession) {
+    const totals = stockItems.reduce(
+      (acc, item) => {
+        // Get making charges from itemTotal.makingChargesTotal instead of makingCharges.amount
+        const makingChargesAmount =
+          item.itemTotal?.makingChargesTotal || item.makingCharges?.amount || 0;
 
-      return {
-        makingCharges: acc.makingCharges + makingChargesAmount,
-        premium: acc.premium + premiumAmount,
-        goldValue: acc.goldValue + goldValue,
-        pureWeight: acc.pureWeight + pureWeight,
-      };
-    },
-    { makingCharges: 0, premium: 0, goldValue: 0, pureWeight: 0 }
-  );
+        // Get premium from itemTotal.premiumTotal instead of premium.amount
+        const premiumAmount =
+          item.itemTotal?.premiumTotal || item.premium?.amount || 0;
 
-  // Add total amount from session
-  totals.totalAmount = totalAmountSession?.totalAmountAED || 0;
+        const goldValue = item.itemTotal?.baseAmount || 0;
+        const pureWeight = item.pureWeight || 0;
 
-  // Log the calculated totals for debugging
-  console.log('\n=== CALCULATED TOTALS ===');
-  console.log('Making Charges Total:', totals.makingCharges);
-  console.log('Premium Total:', totals.premium);
-  console.log('Gold Value Total:', totals.goldValue);
-  console.log('Pure Weight Total:', totals.pureWeight);
-  console.log('Total Amount:', totals.totalAmount);
-  console.log('=== END CALCULATED TOTALS ===\n');
+        return {
+          makingCharges: acc.makingCharges + makingChargesAmount,
+          premium: acc.premium + premiumAmount,
+          goldValue: acc.goldValue + goldValue,
+          pureWeight: acc.pureWeight + pureWeight,
+        };
+      },
+      { makingCharges: 0, premium: 0, goldValue: 0, pureWeight: 0 }
+    );
 
-  return totals;
-}
+    // Add total amount from session
+    totals.totalAmount = totalAmountSession?.totalAmountAED || 0;
+
+    return totals;
+  }
 
   // PURCHASE UNFIX - Registry entries
   static buildPurchaseUnfixEntries(
@@ -268,6 +261,7 @@ static calculateTotals(stockItems, totalAmountSession) {
           "PARTY_GOLD_BALANCE",
           `Purchase Unfix - Gold balance credited for ${partyName}: ${totals.pureWeight}g`,
           party._id,
+          false,
           totals.pureWeight,
           totals.pureWeight,
           0,
@@ -287,6 +281,7 @@ static calculateTotals(stockItems, totalAmountSession) {
           "MAKING_CHARGES",
           `Purchase Unfix - Making charges credited: AED ${totals.makingCharges}`,
           party._id,
+          false,
           totals.makingCharges,
           totals.makingCharges,
           0,
@@ -306,6 +301,7 @@ static calculateTotals(stockItems, totalAmountSession) {
           "PREMIUM_DISCOUNT",
           `Purchase Unfix - Premium credited: AED ${totals.premium}`,
           party._id,
+          false,
           totals.premium,
           totals.premium,
           0,
@@ -317,17 +313,18 @@ static calculateTotals(stockItems, totalAmountSession) {
     }
 
     // 4. Gold Inventory - DEBIT (decrease company's gold inventory value)
-    if (totals.goldValue > 0) {
+    if (totals.pureWeight > 0) {
       entries.push(
         this.createRegistryEntry(
           baseTransactionId,
           "004",
           "GOLD",
           `Purchase Unfix - Gold inventory debited: AED ${totals.goldValue}`,
-          party._id,
-          totals.goldValue,
+          null,
+          true,
+          totals.pureWeight,
           0,
-          totals.goldValue,
+          totals.pureWeight,
           voucherDate,
           voucherNumber,
           adminId
@@ -343,7 +340,8 @@ static calculateTotals(stockItems, totalAmountSession) {
           "005",
           "GOLD_STOCK",
           `Purchase Unfix - Gold stock debited: ${totals.pureWeight}g`,
-          party._id,
+          null,
+          true,
           totals.pureWeight,
           0,
           totals.pureWeight,
@@ -378,6 +376,7 @@ static calculateTotals(stockItems, totalAmountSession) {
           "PARTY_GOLD_BALANCE",
           `Purchase Fix - Gold balance debited for ${partyName}: ${totals.pureWeight}g`,
           party._id,
+          false,
           totals.pureWeight,
           0,
           totals.pureWeight,
@@ -397,6 +396,7 @@ static calculateTotals(stockItems, totalAmountSession) {
           "PARTY_CASH_BALANCE",
           `Purchase Fix - Cash balance credited: AED ${totals.totalAmount}`,
           party._id,
+          false,
           totals.totalAmount,
           totals.totalAmount,
           0,
@@ -431,6 +431,7 @@ static calculateTotals(stockItems, totalAmountSession) {
           "PARTY_GOLD_BALANCE",
           `Sale Unfix - Gold balance debited for ${partyName}: ${totals.pureWeight}g`,
           party._id,
+          false,
           totals.pureWeight,
           0,
           totals.pureWeight,
@@ -450,6 +451,7 @@ static calculateTotals(stockItems, totalAmountSession) {
           "MAKING_CHARGES",
           `Sale Unfix - Making charges debited: AED ${totals.makingCharges}`,
           party._id,
+          false,
           totals.makingCharges,
           0,
           totals.makingCharges,
@@ -469,6 +471,7 @@ static calculateTotals(stockItems, totalAmountSession) {
           "PREMIUM_DISCOUNT",
           `Sale Unfix - Premium debited: AED ${totals.premium}`,
           party._id,
+          false,
           totals.premium,
           0,
           totals.premium,
@@ -480,16 +483,17 @@ static calculateTotals(stockItems, totalAmountSession) {
     }
 
     // 4. Gold Inventory - CREDIT (increase company's gold inventory value)
-    if (totals.goldValue > 0) {
+    if (totals.pureWeight > 0) {
       entries.push(
         this.createRegistryEntry(
           baseTransactionId,
           "004",
           "GOLD",
           `Sale Unfix - Gold inventory credited: AED ${totals.goldValue}`,
-          party._id,
-          totals.goldValue,
-          totals.goldValue,
+          null,
+          true,
+          totals.pureWeight,
+          totals.pureWeight,
           0,
           voucherDate,
           voucherNumber,
@@ -506,7 +510,8 @@ static calculateTotals(stockItems, totalAmountSession) {
           "005",
           "GOLD_STOCK",
           `Sale Unfix - Gold stock credited: ${totals.pureWeight}g`,
-          party._id,
+          null,
+          true,
           totals.pureWeight,
           totals.pureWeight,
           0,
@@ -541,6 +546,7 @@ static calculateTotals(stockItems, totalAmountSession) {
           "PARTY_GOLD_BALANCE",
           `Sale Fix - Gold balance credited for ${partyName}: ${totals.pureWeight}g`,
           party._id,
+          false,
           totals.pureWeight,
           totals.pureWeight,
           0,
@@ -560,6 +566,7 @@ static calculateTotals(stockItems, totalAmountSession) {
           "PARTY_CASH_BALANCE",
           `Sale Fix - Cash balance debited: AED ${totals.totalAmount}`,
           party._id,
+          false,
           totals.totalAmount,
           0,
           totals.totalAmount,
@@ -580,6 +587,7 @@ static calculateTotals(stockItems, totalAmountSession) {
     type,
     description,
     partyId,
+    isBullion,
     value,
     credit,
     debit,
@@ -594,6 +602,7 @@ static calculateTotals(stockItems, totalAmountSession) {
       type,
       description,
       party: partyId,
+      isBullion,
       value,
       credit,
       debit,
