@@ -65,15 +65,14 @@ static async getTransactionCount(module, transactionType) {
     const entryModules = [
       "metal-payment",
       "metal-receipt",
-      "cash-payment",
-      "cash-receipt",
+      "currency-payment",
+      "currency-receipt",
       "entry"
     ];
-
     try {
       if (entryModules.includes(moduleLC)) {
         console.log(`[getTransactionCount] Using model: Entry`);
-        const validEntryTypes = ["metal-receipt", "metal-payment", "cash-receipt", "cash-payment"];
+        const validEntryTypes = ["metal-receipt", "metal-payment", "currency-receipt", "currency-payment"];
         console.log(`[getTransactionCount] validEntryTypes:`, validEntryTypes);
 
         if (transactionType && validEntryTypes.includes(transactionType.toLowerCase())) {
