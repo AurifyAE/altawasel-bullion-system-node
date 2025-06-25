@@ -74,7 +74,7 @@ class RegistryService {
         Registry.find(query)
           .populate('createdBy', 'name email')
           .populate('updatedBy', 'name email')
-          .populate('costCenter', 'code name')
+          // .populate('costCenter', 'code name')
           .sort(sortConfig)
           .skip(skip)
           .limit(limit),

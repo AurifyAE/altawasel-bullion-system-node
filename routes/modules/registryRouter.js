@@ -35,7 +35,7 @@ router.use(authenticateToken);
 router.post("/", validateRegistryCreate, createRegistry);
 
 // Get all registries with filters and search
-router.get("/", validatePagination, validateDateRange, getAllRegistries);
+router.get("/",  getAllRegistries);
 
 // Get registry statistics
 router.get("/statistics", validateDateRange, getRegistryStatistics);
