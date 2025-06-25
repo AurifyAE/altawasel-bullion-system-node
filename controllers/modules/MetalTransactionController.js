@@ -19,7 +19,7 @@ export const createMetalTransaction = async (req, res, next) => {
       status,
       notes,
     } = req.body;
-
+console.log(req.body)
     // Validation (already handled by middleware, but ensuring critical fields)
     if (
       !transactionType ||
@@ -102,18 +102,18 @@ export const createMetalTransaction = async (req, res, next) => {
       notes: notes?.trim(),
     };
 
-   
+  //  console.log(transactionData)
 
-    const metalTransaction = await MetalTransactionService.createMetalTransaction(
-      transactionData,
-      req.admin.id
-    );
+      const metalTransaction = await MetalTransactionService.createMetalTransaction(
+        transactionData,
+        req.admin.id
+      );
 
-    res.status(201).json({
-      success: true,
-      message: `Metal ${transactionType} created successfully`,
-      data: metalTransaction,
-    });
+      res.status(201).json({
+        success: true,
+        message: `Metal ${transactionType} created successfully`,
+        data: metalTransaction,
+      });
   } catch (error) {
     next(error);
   }

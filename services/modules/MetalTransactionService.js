@@ -99,6 +99,8 @@ class MetalTransactionService {
     // Pre-calculate totals from stock items
     const totals = this.calculateTotals(stockItems, totalAmountSession);
     const baseTransactionId = this.generateTransactionId();
+    console.log(fix,"this is fix")
+    console.log(unfix,"this is unfix")
 
     // Build entries based on transaction type and fix/unfix flags
     const entries = [];
@@ -118,6 +120,7 @@ class MetalTransactionService {
         );
       } else if (fix && !unfix) {
         // Purchase Fix entries
+        console.log("entry 1 52352")
         entries.push(
           ...this.buildPurchaseFixEntries(
             totals,
@@ -373,7 +376,7 @@ class MetalTransactionService {
   ) {
     const entries = [];
     const partyName = party.customerName || party.accountCode;
-
+console.log('entry 2')
     // 1. Party Gold Balance - DEBIT (decrease party's gold balance)
     if (totals.pureWeight > 0) {
       entries.push(
