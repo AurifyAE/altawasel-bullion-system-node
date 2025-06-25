@@ -114,6 +114,7 @@ export const TransactionFixingService = {
             account.customerName || account.accountCode
           }`,
           party: transactionData.partyId,
+          isBullion:false,
           value: transactionData.quantityGm,
           debit: transactionData.quantityGm, // Party gives gold (debit from party perspective)
           credit: 0,
@@ -130,6 +131,7 @@ export const TransactionFixingService = {
             account.customerName || account.accountCode
           }`,
           party: transactionData.partyId,
+          isBullion:false,
           value: totalValue,
           debit: 0,
           credit: totalValue, // We pay cash to party (credit to party)

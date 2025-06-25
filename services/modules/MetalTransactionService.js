@@ -275,26 +275,7 @@ class MetalTransactionService {
       );
     }
 
-    // Party Cash Balance - CREDIT (making charges + premium)
-    const cashAmount = totals.makingCharges + totals.premium;
-    if (cashAmount > 0) {
-      entries.push(
-        this.createRegistryEntry(
-          baseTransactionId,
-          "002",
-          "PARTY_CASH_BALANCE",
-          `Purchase Unfix - Cash balance credited (Making Charges + Premium): AED ${cashAmount}`,
-          party._id,
-          false,
-          cashAmount,
-          cashAmount,
-          0,
-          voucherDate,
-          voucherNumber,
-          adminId
-        )
-      );
-    }
+    
 
     // Making Charges - CREDIT
     if (totals.makingCharges > 0) {
@@ -337,18 +318,18 @@ class MetalTransactionService {
     }
 
     // Gold Inventory - DEBIT
-    if (totals.goldValue > 0) {
+    if (totals.pureWeight > 0) {
       entries.push(
         this.createRegistryEntry(
           baseTransactionId,
           "005",
           "GOLD",
-          `Purchase Unfix - Gold inventory debited: AED ${totals.goldValue}`,
+          `Purchase Unfix - Gold inventory  ${totals.pureWeight}`,
           null,
           true,
-          totals.goldValue,
+          totals.pureWeight,
           0,
-          totals.goldValue,
+          totals.pureWeight,
           voucherDate,
           voucherNumber,
           adminId
@@ -452,18 +433,18 @@ class MetalTransactionService {
     }
 
     // Gold Inventory - DEBIT (company gold debited)
-    if (totals.goldValue > 0) {
+    if (totals.pureWeight > 0) {
       entries.push(
         this.createRegistryEntry(
           baseTransactionId,
           "004",
           "GOLD",
-          `Purchase Fix - Gold inventory debited: AED ${totals.goldValue}`,
+          `Purchase Fix - Gold inventory debited: AED ${totals.pureWeight}`,
           null,
           true,
-          totals.goldValue,
+          totals.pureWeight,
           0,
-          totals.goldValue,
+          totals.pureWeight,
           voucherDate,
           voucherNumber,
           adminId
@@ -526,26 +507,7 @@ class MetalTransactionService {
       );
     }
 
-    // Party Cash Balance - DEBIT (making charges + premium)
-    const cashAmount = totals.makingCharges + totals.premium;
-    if (cashAmount > 0) {
-      entries.push(
-        this.createRegistryEntry(
-          baseTransactionId,
-          "002",
-          "PARTY_CASH_BALANCE",
-          `Sale Unfix - Cash balance debited (Making Charges + Premium): AED ${cashAmount}`,
-          party._id,
-          false,
-          cashAmount,
-          0,
-          cashAmount,
-          voucherDate,
-          voucherNumber,
-          adminId
-        )
-      );
-    }
+
 
     // Making Charges - DEBIT
     if (totals.makingCharges > 0) {
@@ -588,17 +550,17 @@ class MetalTransactionService {
     }
 
     // Gold Inventory - CREDIT
-    if (totals.goldValue > 0) {
+    if (totals.pureWeight > 0) {
       entries.push(
         this.createRegistryEntry(
           baseTransactionId,
           "005",
           "GOLD",
-          `Sale Unfix - Gold inventory credited: AED ${totals.goldValue}`,
+          `Sale Unfix - Gold inventory credited: AED ${totals.pureWeight}`,
           null,
           true,
-          totals.goldValue,
-          totals.goldValue,
+          totals.pureWeight,
+          totals.pureWeight,
           0,
           voucherDate,
           voucherNumber,
@@ -703,17 +665,17 @@ class MetalTransactionService {
     }
 
     // Gold Inventory - CREDIT (company gold credited - reverse of purchase fix)
-    if (totals.goldValue > 0) {
+    if (totals.pureWeight > 0) {
       entries.push(
         this.createRegistryEntry(
           baseTransactionId,
           "004",
           "GOLD",
-          `Sale Fix - Gold inventory credited: AED ${totals.goldValue}`,
+          `Sale Fix - Gold inventory credited: AED ${totals.pureWeight}`,
           null,
           true,
-          totals.goldValue,
-          totals.goldValue,
+          totals.pureWeight,
+          totals.pureWeight,
           0,
           voucherDate,
           voucherNumber,
