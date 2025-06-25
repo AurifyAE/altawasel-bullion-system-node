@@ -20,7 +20,7 @@ const createEntry = async (req, res) => {
 
     // Prepare entry data based on type
     let entryData = {
-      voucherId: req.body.voucherId,
+      // voucherId: req.body.voucherId,
       type: req.body.type,
       voucherCode: req.body.voucherCode,
       voucherDate: req.body.voucherDate,
@@ -134,35 +134,26 @@ const handleCashReceipt = async (entry) => {
       // throw new Error(`Cash type account not found for ID: ${cashItem.cashType}`);
     }
 
-    // Check if balances field exists
-    console.log("accountType.balances:", accountType.balances);
-    if (!accountType.balances || !accountType.balances.cashBalance) {
-      throw new Error("Cash balance not found for this account");
+    // Ensure balances and cashBalance object exist
+    if (!accountType.balances) {
+      accountType.balances = {};
     }
-
-    // Find the currency in cashBalance array
-    const currencyBalance = accountType.balances.cashBalance.find(
-      balance => {
-        // Handle null or undefined currency values safely
-        const balCurrency = balance.currency ? balance.currency.toString() : null;
-        const itemCurrency = cashItem.currency ? cashItem.currency.toString() : null;
-        return balCurrency === itemCurrency;
-      }
-    );
-    console.log("currencyBalance:", currencyBalance);
-
-    if (!currencyBalance) {
-      throw new Error(`User doesn't have the selected currency`);
-      res.status(400).json({ success: false, error: `User doesn't have the selected currency` });
+    if (!accountType.balances.cashBalance || typeof accountType.balances.cashBalance !== 'object') {
+      accountType.balances.cashBalance = {
+        currency: cashItem.currency || null,
+        amount: 0,
+        lastUpdated: new Date()
+      };
+      console.log("Initialized accountType.balances.cashBalance as object");
     }
 
     const requestedAmount = cashItem.amount || 0;
 
-    // Deduct amount from account cash balance
-    currencyBalance.amount -= requestedAmount;
-    currencyBalance.lastUpdated = new Date();
+    // Add amount to account cash balance (RECEIPT)
+    accountType.balances.cashBalance.amount -= requestedAmount;
+    accountType.balances.cashBalance.lastUpdated = new Date();
 
-    // Add amount to cash type opening balance
+    // Deduct amount from cash type opening balance
     cashType.openingBalance = (cashType.openingBalance || 0) + requestedAmount;
     await cashType.save();
 
@@ -205,65 +196,53 @@ const handleCashReceipt = async (entry) => {
 
 // Helper function for cash payment
 const handleCashPayment = async (entry) => {
-  console.log('Processing cash payment:', entry);
+  console.log('Processing cash payment:', JSON.stringify(entry, null, 2));
 
-  // Rename variable to avoid shadowing
   const accountType = await AccountType.findOne({ _id: entry.party });
   if (!accountType) {
     throw new Error("Account not found");
   }
 
-  console.log(`AccountType found: ${accountType._id}`);
+  console.log("Fetched accountType.balances:", JSON.stringify(accountType.balances, null, 2));
 
-  // Process each cash item
   for (const cashItem of entry.cash) {
     const transactionId = await Registry.generateTransactionId();
 
-    // Find and validate cash type account
-    console.log(cashItem.cashType, "this is cash type");
+    console.log("Processing cashItem:", JSON.stringify(cashItem, null, 2));
     const cashType = await AccountMaster.findOne({ _id: cashItem.cashType });
     if (!cashType) {
-      throw new Error(`Cash type account not found for ID: ${cashItem.cashType}`);
+      throw new Error(`Cash type account not found in admin for ID: ${cashItem.cashType}`);
     }
 
     console.log(`CashType found: ${cashType.name || cashType._id}`);
 
     const requestedAmount = cashItem.amount || 0;
+    console.log(`Requested amount: ${requestedAmount}`);
 
-    // Allow negative balances - no balance check needed
-
-    // Check if balances field exists, if not create it
+    // Ensure balances and cashBalance array exist
     if (!accountType.balances) {
       accountType.balances = { cashBalance: [] };
+      console.log("Initialized accountType.balances");
     }
-    if (!accountType.balances.cashBalance) {
-      accountType.balances.cashBalance = [];
-    }
+    if (!accountType.balances.cashBalance || typeof accountType.balances.cashBalance !== 'object') {
+  accountType.balances.cashBalance = {
+    currency: cashItem.currency || null,
+    amount: 0,
+    lastUpdated: new Date()
+  };
+  console.log("Initialized accountType.balances.cashBalance as object");
+}
 
-    // Find the currency in cashBalance array
-    let currencyBalance = accountType.balances.cashBalance.find(
-      balance => balance.currency.toString() === cashItem.currency.toString()
-    );
+// Update the cash balance object directly
+accountType.balances.cashBalance.amount += requestedAmount;
+accountType.balances.cashBalance.lastUpdated = new Date();
 
-    // If currency doesn't exist, create it
-    if (!currencyBalance) {
-      currencyBalance = {
-        currency: cashItem.currency,
-        amount: 0,
-        lastUpdated: new Date()
-      };
-      accountType.balances.cashBalance.push(currencyBalance);
-    }
+    // Debug: Log cashBalance array after update
+    console.log("After update, cashBalance:", JSON.stringify(accountType.balances.cashBalance, null, 2));
 
-    // Add amount to account's cash balance
-    currencyBalance.amount += requestedAmount;
-    currencyBalance.lastUpdated = new Date();
-
-    // Deduct amount from cash type opening balance
     cashType.openingBalance = (cashType.openingBalance || 0) - requestedAmount;
     await cashType.save();
 
-    // Registry entry for "cash balance" (debit for payment)
     await Registry.create({
       transactionId,
       type: "PARTY_CASH_BALANCE",
@@ -278,7 +257,6 @@ const handleCashPayment = async (entry) => {
     });
     console.log(`Created cash balance entry for cashType: ${cashType._id}`);
 
-    // Registry entry for "cash" (credit for payment)
     await Registry.create({
       transactionId: await Registry.generateTransactionId(),
       type: "CASH",
