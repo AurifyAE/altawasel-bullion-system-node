@@ -7,7 +7,6 @@ import { createAppError } from "../../utils/errorHandler.js";
 class MetalTransactionService {
   // Create a new metal transaction
 
-  // Main transaction creation method
   static async createMetalTransaction(transactionData, adminId) {
     const session = await mongoose.startSession();
     let createdTransaction;
@@ -142,9 +141,9 @@ class MetalTransactionService {
 
   // Determine transaction mode based on fix/unfix flags
   static getTransactionMode(fixed, unfix) {
-    console.log('============================')
-    console.log(fixed)
-    console.log(unfix)
+    console.log("============================");
+    console.log(fixed);
+    console.log(unfix);
     if (fixed && !unfix) return "fix";
     if (unfix && !fixed) return "unfix";
     if (!fixed && !unfix) return "unfix"; // Default to unfix
@@ -209,25 +208,35 @@ class MetalTransactionService {
         );
   }
 
-  // Calculate totals from stock items (optimized)
+  // Calculate totals from stock items (FIXED - Premium/Discount handling)
   static calculateTotals(stockItems, totalAmountSession) {
     const totals = stockItems.reduce(
       (acc, item) => {
         const makingChargesAmount =
           item.itemTotal?.makingChargesTotal || item.makingCharges?.amount || 0;
-        const premiumAmount =
+
+        // Handle premium/discount - positive = premium, negative = discount
+        const premiumDiscountAmount =
           item.itemTotal?.premiumTotal || item.premium?.amount || 0;
+
         const goldValue = item.itemTotal?.baseAmount || 0;
         const pureWeight = item.pureWeight || 0;
+        const grossWeight = item.grossWeight || 0;
+        // Separate premium and discount
+        const premium = premiumDiscountAmount > 0 ? premiumDiscountAmount : 0;
+        const discount =
+          premiumDiscountAmount < 0 ? Math.abs(premiumDiscountAmount) : 0;
 
         return {
           makingCharges: acc.makingCharges + makingChargesAmount,
-          premium: acc.premium + premiumAmount,
+          premium: acc.premium + premium,
+          discount: acc.discount + discount,
           goldValue: acc.goldValue + goldValue,
           pureWeight: acc.pureWeight + pureWeight,
+          grossWeight: acc.grossWeight + grossWeight,
         };
       },
-      { makingCharges: 0, premium: 0, goldValue: 0, pureWeight: 0 }
+      { makingCharges: 0, premium: 0, discount: 0, goldValue: 0, pureWeight: 0 ,grossWeight:0}
     );
 
     totals.totalAmount = totalAmountSession?.totalAmountAED || 0;
@@ -235,15 +244,17 @@ class MetalTransactionService {
     console.log("=== CALCULATED TOTALS ===", {
       makingCharges: totals.makingCharges,
       premium: totals.premium,
+      discount: totals.discount,
       goldValue: totals.goldValue,
       pureWeight: totals.pureWeight,
       totalAmount: totals.totalAmount,
+      grossWeight:totals.grossWeight
     });
 
     return totals;
   }
 
-  // PURCHASE UNFIX - Registry entries
+  // PURCHASE UNFIX - Registry entries (FIXED)
   static buildPurchaseUnfixEntries(
     totals,
     party,
@@ -275,8 +286,6 @@ class MetalTransactionService {
       );
     }
 
-    
-
     // Making Charges - CREDIT
     if (totals.makingCharges > 0) {
       entries.push(
@@ -284,7 +293,7 @@ class MetalTransactionService {
           baseTransactionId,
           "003",
           "MAKING_CHARGES",
-          `Purchase Unfix - Making charges credited: AED ${totals.makingCharges}`,
+          `Purchase Unfix - Making charges credited:  ${totals.makingCharges}`,
           party._id,
           false,
           totals.makingCharges,
@@ -297,19 +306,39 @@ class MetalTransactionService {
       );
     }
 
-    // Premium Discount - CREDIT
+    // Premium - CREDIT (if positive)
     if (totals.premium > 0) {
       entries.push(
         this.createRegistryEntry(
           baseTransactionId,
           "004",
-          "PREMIUM_DISCOUNT",
-          `Purchase Unfix - Premium credited: AED ${totals.premium}`,
+          "PREMIUM",
+          `Purchase Unfix - Premium credited:  ${totals.premium}`,
           party._id,
           false,
           totals.premium,
           totals.premium,
           0,
+          voucherDate,
+          voucherNumber,
+          adminId
+        )
+      );
+    }
+
+    // Discount - DEBIT (if exists)
+    if (totals.discount > 0) {
+      entries.push(
+        this.createRegistryEntry(
+          baseTransactionId,
+          "007",
+          "DISCOUNT",
+          `Purchase Unfix - Discount debited:  ${totals.discount}`,
+          party._id,
+          false,
+          totals.discount,
+          0,
+          totals.discount,
           voucherDate,
           voucherNumber,
           adminId
@@ -324,7 +353,7 @@ class MetalTransactionService {
           baseTransactionId,
           "005",
           "GOLD",
-          `Purchase Unfix - Gold inventory  ${totals.pureWeight}`,
+          `Purchase Unfix - Gold inventory debited: ${totals.pureWeight}g`,
           null,
           true,
           totals.pureWeight,
@@ -347,9 +376,9 @@ class MetalTransactionService {
           `Purchase Unfix - Gold stock debited: ${totals.pureWeight}g`,
           null,
           true,
-          totals.pureWeight,
+          totals.grossWeight,
           0,
-          totals.pureWeight,
+          totals.grossWeight,
           voucherDate,
           voucherNumber,
           adminId
@@ -360,7 +389,7 @@ class MetalTransactionService {
     return entries;
   }
 
-  // PURCHASE FIX - Registry entries (CORRECTED)
+  // PURCHASE FIX - Registry entries (FIXED)
   static buildPurchaseFixEntries(
     totals,
     party,
@@ -399,7 +428,7 @@ class MetalTransactionService {
           baseTransactionId,
           "002",
           "MAKING_CHARGES",
-          `Purchase Fix - Making charges credited: AED ${totals.makingCharges}`,
+          `Purchase Fix - Making charges credited:  ${totals.makingCharges}`,
           party._id,
           false,
           totals.makingCharges,
@@ -412,19 +441,39 @@ class MetalTransactionService {
       );
     }
 
-    // Premium Discount - CREDIT
+    // Premium - CREDIT (if positive)
     if (totals.premium > 0) {
       entries.push(
         this.createRegistryEntry(
           baseTransactionId,
           "003",
-          "PREMIUM_DISCOUNT",
-          `Purchase Fix - Premium credited: AED ${totals.premium}`,
+          "PREMIUM",
+          `Purchase Fix - Premium credited:  ${totals.premium}`,
           party._id,
           false,
           totals.premium,
           totals.premium,
           0,
+          voucherDate,
+          voucherNumber,
+          adminId
+        )
+      );
+    }
+
+    // Discount - DEBIT (if exists)
+    if (totals.discount > 0) {
+      entries.push(
+        this.createRegistryEntry(
+          baseTransactionId,
+          "007",
+          "DISCOUNT",
+          `Purchase Fix - Discount debited:  ${totals.discount}`,
+          party._id,
+          false,
+          totals.discount,
+          0,
+          totals.discount,
           voucherDate,
           voucherNumber,
           adminId
@@ -439,7 +488,7 @@ class MetalTransactionService {
           baseTransactionId,
           "004",
           "GOLD",
-          `Purchase Fix - Gold inventory debited: AED ${totals.pureWeight}`,
+          `Purchase Fix - Gold inventory debited: ${totals.pureWeight}g`,
           null,
           true,
           totals.pureWeight,
@@ -459,12 +508,12 @@ class MetalTransactionService {
           baseTransactionId,
           "005",
           "GOLD_STOCK",
-          `Purchase Fix - Gold stock debited: ${totals.pureWeight}g`,
+          `Purchase Fix - Gold stock debited: ${totals.grossWeight}g`,
           null,
           true,
-          totals.pureWeight,
+          totals.grossWeight,
           0,
-          totals.pureWeight,
+          totals.grossWeight,
           voucherDate,
           voucherNumber,
           adminId
@@ -475,7 +524,7 @@ class MetalTransactionService {
     return entries;
   }
 
-  // SALE UNFIX - Registry entries
+  // SALE UNFIX - Registry entries (FIXED)
   static buildSaleUnfixEntries(
     totals,
     party,
@@ -507,8 +556,6 @@ class MetalTransactionService {
       );
     }
 
-
-
     // Making Charges - DEBIT
     if (totals.makingCharges > 0) {
       entries.push(
@@ -516,7 +563,7 @@ class MetalTransactionService {
           baseTransactionId,
           "003",
           "MAKING_CHARGES",
-          `Sale Unfix - Making charges debited: AED ${totals.makingCharges}`,
+          `Sale Unfix - Making charges debited:  ${totals.makingCharges}`,
           party._id,
           false,
           totals.makingCharges,
@@ -529,19 +576,39 @@ class MetalTransactionService {
       );
     }
 
-    // Premium Discount - DEBIT
+    // Premium - DEBIT (if positive)
     if (totals.premium > 0) {
       entries.push(
         this.createRegistryEntry(
           baseTransactionId,
           "004",
-          "PREMIUM_DISCOUNT",
-          `Sale Unfix - Premium debited: AED ${totals.premium}`,
+          "PREMIUM",
+          `Sale Unfix - Premium debited:  ${totals.premium}`,
           party._id,
           false,
           totals.premium,
           0,
           totals.premium,
+          voucherDate,
+          voucherNumber,
+          adminId
+        )
+      );
+    }
+
+    // Discount - CREDIT (if exists)
+    if (totals.discount > 0) {
+      entries.push(
+        this.createRegistryEntry(
+          baseTransactionId,
+          "007",
+          "DISCOUNT",
+          `Sale Unfix - Discount credited:  ${totals.discount}`,
+          party._id,
+          false,
+          totals.discount,
+          totals.discount,
+          0,
           voucherDate,
           voucherNumber,
           adminId
@@ -556,7 +623,7 @@ class MetalTransactionService {
           baseTransactionId,
           "005",
           "GOLD",
-          `Sale Unfix - Gold inventory credited: AED ${totals.pureWeight}`,
+          `Sale Unfix - Gold inventory credited: ${totals.pureWeight}g`,
           null,
           true,
           totals.pureWeight,
@@ -576,11 +643,11 @@ class MetalTransactionService {
           baseTransactionId,
           "006",
           "GOLD_STOCK",
-          `Sale Unfix - Gold stock credited: ${totals.pureWeight}g`,
+          `Sale Unfix - Gold stock credited: ${totals.grossWeight}g`,
           null,
           true,
-          totals.pureWeight,
-          totals.pureWeight,
+          totals.grossWeight,
+          totals.grossWeight,
           0,
           voucherDate,
           voucherNumber,
@@ -592,7 +659,7 @@ class MetalTransactionService {
     return entries;
   }
 
-  // SALE FIX - Registry entries (CORRECTED - Reverse of Purchase Fix)
+  // SALE FIX - Registry entries (FIXED)
   static buildSaleFixEntries(
     totals,
     party,
@@ -631,7 +698,7 @@ class MetalTransactionService {
           baseTransactionId,
           "002",
           "MAKING_CHARGES",
-          `Sale Fix - Making charges debited: AED ${totals.makingCharges}`,
+          `Sale Fix - Making charges debited:  ${totals.makingCharges}`,
           party._id,
           false,
           totals.makingCharges,
@@ -644,19 +711,39 @@ class MetalTransactionService {
       );
     }
 
-    // Premium Discount - DEBIT
+    // Premium - DEBIT (if positive)
     if (totals.premium > 0) {
       entries.push(
         this.createRegistryEntry(
           baseTransactionId,
           "003",
-          "PREMIUM_DISCOUNT",
-          `Sale Fix - Premium debited: AED ${totals.premium}`,
+          "PREMIUM",
+          `Sale Fix - Premium debited:  ${totals.premium}`,
           party._id,
           false,
           totals.premium,
           0,
           totals.premium,
+          voucherDate,
+          voucherNumber,
+          adminId
+        )
+      );
+    }
+
+    // Discount - CREDIT (if exists)
+    if (totals.discount > 0) {
+      entries.push(
+        this.createRegistryEntry(
+          baseTransactionId,
+          "007",
+          "DISCOUNT",
+          `Sale Fix - Discount credited:  ${totals.discount}`,
+          party._id,
+          false,
+          totals.discount,
+          totals.discount,
+          0,
           voucherDate,
           voucherNumber,
           adminId
@@ -671,7 +758,7 @@ class MetalTransactionService {
           baseTransactionId,
           "004",
           "GOLD",
-          `Sale Fix - Gold inventory credited: AED ${totals.pureWeight}`,
+          `Sale Fix - Gold inventory credited: ${totals.pureWeight}g`,
           null,
           true,
           totals.pureWeight,
@@ -691,11 +778,11 @@ class MetalTransactionService {
           baseTransactionId,
           "005",
           "GOLD_STOCK",
-          `Sale Fix - Gold stock credited: ${totals.pureWeight}g`,
+          `Sale Fix - Gold stock credited: ${totals.grossWeight}g`,
           null,
           true,
-          totals.pureWeight,
-          totals.pureWeight,
+          totals.grossWeight,
+          totals.grossWeight,
           0,
           voucherDate,
           voucherNumber,
@@ -740,7 +827,7 @@ class MetalTransactionService {
     };
   }
 
-  // Account balance updates (optimized)
+  // Account balance updates (FIXED - Premium/Discount handling)
   static async updateAccountBalances(party, metalTransaction, session) {
     const { transactionType, fixed, unfix, stockItems, totalAmountSession } =
       metalTransaction;
@@ -763,7 +850,7 @@ class MetalTransactionService {
     }
   }
 
-  // Build update operations for account balance
+  // Build update operations for account balance (FIXED - Added premium/discount)
   static buildUpdateOperations(balanceChanges) {
     const incObj = {};
     const setObj = {};
@@ -781,6 +868,22 @@ class MetalTransactionService {
       setObj["balances.cashBalance.lastUpdated"] = new Date();
     }
 
+    // Add premium balance update
+    if (balanceChanges.premiumBalance !== 0) {
+      incObj["balances.premiumBalance.amount"] = parseFloat(
+        balanceChanges.premiumBalance.toFixed(2)
+      );
+      setObj["balances.premiumBalance.lastUpdated"] = new Date();
+    }
+
+    // Add discount balance update
+    if (balanceChanges.discountBalance !== 0) {
+      incObj["balances.discountBalance.amount"] = parseFloat(
+        balanceChanges.discountBalance.toFixed(2)
+      );
+      setObj["balances.discountBalance.lastUpdated"] = new Date();
+    }
+
     setObj["balances.lastBalanceUpdate"] = new Date();
 
     const updateOps = {};
@@ -790,35 +893,45 @@ class MetalTransactionService {
     return updateOps;
   }
 
-  // Calculate balance changes (optimized and corrected)
+  // Calculate balance changes (FIXED - Premium/Discount handling)
   static calculateBalanceChanges(transactionType, mode, totals) {
     let goldBalance = 0,
       goldValue = 0,
-      cashBalance = 0;
+      cashBalance = 0,
+      premiumBalance = 0,
+      discountBalance = 0;
 
     const balanceMatrix = {
       purchase: {
         unfix: {
           goldBalance: totals.pureWeight,
           goldValue: totals.goldValue,
-          cashBalance: totals.makingCharges + totals.premium,
+          cashBalance: totals.makingCharges,
+          premiumBalance: totals.premium, // Premium added
+          discountBalance: -totals.discount, // Discount subtracted
         },
         fix: {
           goldBalance: 0, // No gold balance change for fix
           goldValue: 0,
           cashBalance: totals.totalAmount, // Only total amount
+          premiumBalance: 0, // Premium included in total amount
+          discountBalance: 0, // Discount included in total amount
         },
       },
       sale: {
         unfix: {
           goldBalance: -totals.pureWeight,
           goldValue: -totals.goldValue,
-          cashBalance: -(totals.makingCharges + totals.premium),
+          cashBalance: -totals.makingCharges,
+          premiumBalance: -totals.premium, // Premium subtracted
+          discountBalance: totals.discount, // Discount added back
         },
         fix: {
           goldBalance: 0, // No gold balance change for fix
           goldValue: 0,
           cashBalance: -totals.totalAmount, // Only total amount (negative)
+          premiumBalance: 0, // Premium included in total amount
+          discountBalance: 0, // Discount included in total amount
         },
       },
     };
@@ -827,6 +940,8 @@ class MetalTransactionService {
       goldBalance: 0,
       goldValue: 0,
       cashBalance: 0,
+      premiumBalance: 0,
+      discountBalance: 0,
     };
 
     console.log("=== BALANCE CHANGES ===", {
@@ -835,6 +950,8 @@ class MetalTransactionService {
       goldBalance: changes.goldBalance,
       goldValue: changes.goldValue,
       cashBalance: changes.cashBalance,
+      premiumBalance: changes.premiumBalance,
+      discountBalance: changes.discountBalance,
     });
 
     return changes;
@@ -976,6 +1093,73 @@ class MetalTransactionService {
     return { results, errors, totalProcessed: transactionsData.length };
   }
 
+  // Additional helper method to get premium/discount breakdown
+  static getPremiumDiscountBreakdown(stockItems) {
+    return stockItems.reduce(
+      (acc, item) => {
+        const premiumDiscountAmount =
+          item.itemTotal?.premiumTotal || item.premium?.amount || 0;
+
+        if (premiumDiscountAmount > 0) {
+          acc.totalPremium += premiumDiscountAmount;
+          acc.premiumItems.push({
+            stockCode: item.stockCode,
+            amount: premiumDiscountAmount,
+            type: "premium",
+          });
+        } else if (premiumDiscountAmount < 0) {
+          const discountAmount = Math.abs(premiumDiscountAmount);
+          acc.totalDiscount += discountAmount;
+          acc.discountItems.push({
+            stockCode: item.stockCode,
+            amount: discountAmount,
+            type: "discount",
+          });
+        }
+
+        return acc;
+      },
+      {
+        totalPremium: 0,
+        totalDiscount: 0,
+        premiumItems: [],
+        discountItems: [],
+      }
+    );
+  }
+
+  // Method to validate premium/discount values
+  static validatePremiumDiscount(stockItems) {
+    const invalidItems = [];
+
+    stockItems.forEach((item, index) => {
+      const premiumDiscountAmount =
+        item.itemTotal?.premiumTotal || item.premium?.amount;
+
+      if (premiumDiscountAmount !== undefined && isNaN(premiumDiscountAmount)) {
+        invalidItems.push({
+          index,
+          stockCode: item.stockCode,
+          error: "Premium/Discount must be a valid number",
+        });
+      }
+    });
+
+    if (invalidItems.length > 0) {
+      throw createAppError(
+        `Invalid premium/discount values found: ${invalidItems
+          .map(
+            (item) =>
+              `Item ${item.index + 1} (${item.stockCode}): ${item.error}`
+          )
+          .join(", ")}`,
+        400,
+        "INVALID_PREMIUM_DISCOUNT"
+      );
+    }
+
+    return true;
+  }
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////
   // Get all metal transactions with pagination and filters
   static async getAllMetalTransactions(page = 1, limit = 50, filters = {}) {

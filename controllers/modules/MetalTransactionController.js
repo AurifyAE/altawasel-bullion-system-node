@@ -102,7 +102,6 @@ console.log(req.body)
       notes: notes?.trim(),
     };
 
-  //  console.log(transactionData)
 
       const metalTransaction = await MetalTransactionService.createMetalTransaction(
         transactionData,
