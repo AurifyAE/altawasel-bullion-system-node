@@ -698,6 +698,45 @@ static async getRegistriesByPartyId(partyId, page = 1, limit = 10) {
   }
 }
 
+
+static async getPremiumAndDiscountRegistries({ page = 1, limit = 50 }) {
+  try {
+    // Case-insensitive match for "PREMIUM" or "DISCOUNT"
+    const typeRegex = [/^premium$/i, /^discount$/i];
+
+    const filters = {
+      type: { $in: typeRegex },
+      isActive: true,
+    };
+
+    const skip = (page - 1) * limit;
+
+    const [registries, totalItems] = await Promise.all([
+      Registry.find(filters)
+        .populate('createdBy', 'name email')
+        .populate('updatedBy', 'name email')
+        .sort({ transactionDate: -1 })
+        .skip(skip)
+        .limit(Number(limit)),
+      Registry.countDocuments(filters),
+    ]);
+
+    const pagination = {
+      totalItems,
+      totalPages: Math.ceil(totalItems / limit),
+      currentPage: Number(page),
+      itemsPerPage: Number(limit),
+    };
+
+    return { registries, pagination, summary: null }; // Add summary if needed
+  } catch (error) {
+    throw error;
+  }
+}
+
+
+
+
 }
 
 export default RegistryService;

@@ -15,6 +15,7 @@ import {
   getRegistryPremiumDiscount,
   getMakingChargesRegistries,
   getRegistriesByPartyId,
+  getPremiumOrDiscountRegistries,
 } from "../../controllers/modules/RegistryController.js";
 import { authenticateToken } from "../../middleware/authMiddleware.js";
 import {
@@ -35,10 +36,13 @@ router.use(authenticateToken);
 router.post("/", validateRegistryCreate, createRegistry);
 
 // Get all registries with filters and search
-router.get("/",  getAllRegistries);
+router.get("/", getAllRegistries);
 
 // Get registry statistics
 router.get("/statistics", validateDateRange, getRegistryStatistics);
+
+// get registy for the premium and discount
+router.get("/get-premium-discount", getPremiumOrDiscountRegistries);
 
 // getting registry for stock_balance
 router.get("/get-stock-balance", getRegistryStockBalance);

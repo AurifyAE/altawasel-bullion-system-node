@@ -411,3 +411,24 @@ export const getRegistriesByPartyId = async (req, res, next) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };   
+
+
+// Get registries by type "PREMIUM" or "DISCOUNT" (case-insensitive)
+export const getPremiumOrDiscountRegistries = async (req, res, next) => {
+  try {
+    const { page = 1, limit = 50 } = req.query;
+    const result = await RegistryService.getPremiumAndDiscountRegistries({
+      page: Number(page),
+      limit: Number(limit),
+    });
+    res.status(200).json({
+      success: true,
+      message: "Premium and Discount registries retrieved successfully",
+      data: result.registries,
+      pagination: result.pagination,
+      summary: result.summary,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
