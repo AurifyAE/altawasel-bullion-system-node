@@ -851,7 +851,7 @@ class MetalTransactionService {
   }
 
   // Build update operations for account balance (FIXED - Added premium/discount)
-  static buildUpdateOperations(balanceChanges) {
+static buildUpdateOperations(balanceChanges) {
     const incObj = {};
     const setObj = {};
 
@@ -861,27 +861,14 @@ class MetalTransactionService {
       setObj["balances.goldBalance.lastUpdated"] = new Date();
     }
 
-    if (balanceChanges.cashBalance !== 0) {
-      incObj["balances.cashBalance.amount"] = parseFloat(
-        balanceChanges.cashBalance.toFixed(2)
-      );
+    // Combine all cash-related changes into single cashBalance update
+    const totalCashChange = balanceChanges.cashBalance + 
+                           balanceChanges.premiumBalance + 
+                           balanceChanges.discountBalance;
+
+    if (totalCashChange !== 0) {
+      incObj["balances.cashBalance.amount"] = parseFloat(totalCashChange.toFixed(2));
       setObj["balances.cashBalance.lastUpdated"] = new Date();
-    }
-
-    // Add premium balance update
-    if (balanceChanges.premiumBalance !== 0) {
-      incObj["balances.premiumBalance.amount"] = parseFloat(
-        balanceChanges.premiumBalance.toFixed(2)
-      );
-      setObj["balances.premiumBalance.lastUpdated"] = new Date();
-    }
-
-    // Add discount balance update
-    if (balanceChanges.discountBalance !== 0) {
-      incObj["balances.discountBalance.amount"] = parseFloat(
-        balanceChanges.discountBalance.toFixed(2)
-      );
-      setObj["balances.discountBalance.lastUpdated"] = new Date();
     }
 
     setObj["balances.lastBalanceUpdate"] = new Date();
@@ -893,7 +880,7 @@ class MetalTransactionService {
     return updateOps;
   }
 
-  // Calculate balance changes (FIXED - Premium/Discount handling)
+  // Calculate balance changes (UPDATED - Premium/Discount handling in cash balance)
   static calculateBalanceChanges(transactionType, mode, totals) {
     let goldBalance = 0,
       goldValue = 0,
@@ -907,15 +894,15 @@ class MetalTransactionService {
           goldBalance: totals.pureWeight,
           goldValue: totals.goldValue,
           cashBalance: totals.makingCharges,
-          premiumBalance: totals.premium, // Premium added
-          discountBalance: -totals.discount, // Discount subtracted
+          premiumBalance: totals.premium,     // Premium credited (+)
+          discountBalance: -totals.discount,  // Discount debited (-)
         },
         fix: {
-          goldBalance: 0, // No gold balance change for fix
+          goldBalance: 0,
           goldValue: 0,
-          cashBalance: totals.totalAmount, // Only total amount
-          premiumBalance: 0, // Premium included in total amount
-          discountBalance: 0, // Discount included in total amount
+          cashBalance: totals.totalAmount,    // Total amount includes all components
+          premiumBalance: 0,                  // Already included in totalAmount
+          discountBalance: 0,                 // Already included in totalAmount
         },
       },
       sale: {
@@ -923,15 +910,15 @@ class MetalTransactionService {
           goldBalance: -totals.pureWeight,
           goldValue: -totals.goldValue,
           cashBalance: -totals.makingCharges,
-          premiumBalance: -totals.premium, // Premium subtracted
-          discountBalance: totals.discount, // Discount added back
+          premiumBalance: -totals.premium,    // Premium debited (-)
+          discountBalance: totals.discount,   // Discount credited (+)
         },
         fix: {
-          goldBalance: 0, // No gold balance change for fix
+          goldBalance: 0,
           goldValue: 0,
-          cashBalance: -totals.totalAmount, // Only total amount (negative)
-          premiumBalance: 0, // Premium included in total amount
-          discountBalance: 0, // Discount included in total amount
+          cashBalance: -totals.totalAmount,   // Total amount deducted
+          premiumBalance: 0,                  // Already included in totalAmount
+          discountBalance: 0,                 // Already included in totalAmount
         },
       },
     };
@@ -952,6 +939,7 @@ class MetalTransactionService {
       cashBalance: changes.cashBalance,
       premiumBalance: changes.premiumBalance,
       discountBalance: changes.discountBalance,
+      totalCashChange: changes.cashBalance + changes.premiumBalance + changes.discountBalance
     });
 
     return changes;
