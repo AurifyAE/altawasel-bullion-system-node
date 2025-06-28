@@ -17,6 +17,7 @@ import RegistryRouter from "./routes/modules/registryRouter.js"
 import VoucherRoute from "./routes/modules/VoucherMasterRoute.js"
 import accountRoutes from "./routes/modules/accountMasterRoutes.js"
 import entryRoutes from "./routes/modules/entryMasterRoutes.js";
+import cookieParser from "cookie-parser";
 // import accountRoute from './routes/modules/accountMasterRoutes.js'
 
 
@@ -28,6 +29,7 @@ dotenv.config();
 const app = express();
 const port = process.env.PORT || 4444;
 
+app.use(cookieParser());
 app.use(express.static("public"));
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ limit: "50mb", extended: true })); // Increase URL-encoded payload limit

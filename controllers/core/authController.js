@@ -11,6 +11,7 @@ export const login = async (req, res, next) => {
     const { email, password } = req.body;
     const ipAddress = req.ip || req.connection.remoteAddress;
     const result = await loginAdmin(email, password, ipAddress);
+
     res.cookie("refreshToken", result.data.tokens.refreshToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
@@ -35,7 +36,9 @@ export const login = async (req, res, next) => {
 
 export const refreshToken = async (req, res, next) => {
   try {
-    const refreshToken = req.cookies.refreshToken || req.body.refreshToken;
+
+    const refreshToken = req.cookies.refreshToken
+
     if (!refreshToken) {
       throw createAppError(
         "Refresh token not provided",
@@ -43,7 +46,6 @@ export const refreshToken = async (req, res, next) => {
         "MISSING_REFRESH_TOKEN"
       );
     }
-
     const result = await refreshAccessToken(refreshToken);
 
     res.status(200).json(result);
