@@ -18,9 +18,9 @@ export const createKarat = async (req, res, next) => {
       !karatCode ||
       !division ||
       !description ||
-      standardPurity === undefined ||
-      minimum === undefined ||
-      maximum === undefined
+      // minimum === undefined ||
+      // maximum === undefined||
+      standardPurity === undefined
     ) {
       throw createAppError(
         "All fields are required: karatCode, division, description, standardPurity, minimum, maximum",
@@ -30,7 +30,14 @@ export const createKarat = async (req, res, next) => {
     }
 
     // Validate numeric fields
-    if (isNaN(standardPurity) || isNaN(minimum) || isNaN(maximum)) {
+    // if (isNaN(standardPurity) || isNaN(minimum) || isNaN(maximum)) {
+    //   throw createAppError(
+    //     "Standard purity, minimum, and maximum must be valid numbers",
+    //     400,
+    //     "INVALID_NUMERIC_VALUES"
+    //   );
+    // }
+    if (isNaN(standardPurity)) {
       throw createAppError(
         "Standard purity, minimum, and maximum must be valid numbers",
         400,
@@ -48,33 +55,33 @@ export const createKarat = async (req, res, next) => {
     }
 
     // Validate min/max based on isScrap
-    if (!isScrap) {
-      // Regular validation for non-scrap items
-      if (minimum < 0 || maximum < 0) {
-        throw createAppError(
-          "Minimum and maximum values cannot be negative for non-scrap items",
-          400,
-          "INVALID_VALUE_RANGE"
-        );
-      }
-    }
+    // if (!isScrap) {
+    //   // Regular validation for non-scrap items
+    //   if (minimum < 0 || maximum < 0) {
+    //     throw createAppError(
+    //       "Minimum and maximum values cannot be negative for non-scrap items",
+    //       400,
+    //       "INVALID_VALUE_RANGE"
+    //     );
+    //   }
+    // }
 
     // Common validation: minimum must be less than maximum
-    if (minimum >= maximum) {
-      throw createAppError(
-        "Minimum value must be less than maximum value",
-        400,
-        "INVALID_MIN_MAX_RANGE"
-      );
-    }
+    // if (minimum >= maximum) {
+    //   throw createAppError(
+    //     "Minimum value must be less than maximum value",
+    //     400,
+    //     "INVALID_MIN_MAX_RANGE"
+    //   );
+    // }
 
     const karatData = {
       karatCode: karatCode.trim(),
       division,
       description: description.trim(),
       standardPurity: parseFloat(standardPurity),
-      minimum: parseFloat(minimum),
-      maximum: parseFloat(maximum),
+      minimum: parseFloat(minimum) ||0,
+      maximum: parseFloat(maximum)||0,
       isScrap: isScrap || false,
     };
 
@@ -131,7 +138,7 @@ export const getKarat = async (req, res, next) => {
 export const updateKarat = async (req, res, next) => {
   try {
 
-    
+
     const { id } = req.params;
     const updateData = req.body;
 
@@ -143,7 +150,7 @@ export const updateKarat = async (req, res, next) => {
     // Get existing karat to check current isScrap status
     const existingKarat = await KaratMaster.findById(id);
 
-        console.log("9");
+    console.log("9");
     if (!existingKarat) {
       throw createAppError("Karat not found", 404, "KARAT_NOT_FOUND");
     }
@@ -170,7 +177,7 @@ export const updateKarat = async (req, res, next) => {
       updateData.standardPurity = parseFloat(updateData.standardPurity);
     }
 
-        console.log("9");
+    console.log("9");
     if (updateData.minimum !== undefined) {
       if (isNaN(updateData.minimum)) {
         throw createAppError(
@@ -189,7 +196,7 @@ export const updateKarat = async (req, res, next) => {
       }
       updateData.minimum = parseFloat(updateData.minimum);
     }
-        console.log("9");
+    console.log("9");
 
     if (updateData.maximum !== undefined) {
       if (isNaN(updateData.maximum)) {
@@ -213,7 +220,7 @@ export const updateKarat = async (req, res, next) => {
     // Validate min/max relationship
     const finalMinimum = updateData.minimum !== undefined ? updateData.minimum : existingKarat.minimum;
     const finalMaximum = updateData.maximum !== undefined ? updateData.maximum : existingKarat.maximum;
-    
+
     if (finalMinimum >= finalMaximum) {
       throw createAppError(
         "Minimum value must be less than maximum value",
@@ -221,7 +228,7 @@ export const updateKarat = async (req, res, next) => {
         "INVALID_MIN_MAX_RANGE"
       );
     }
-        console.log("9");
+    console.log("9");
 
     // Trim string fields if provided
     if (updateData.karatCode) {
@@ -232,7 +239,7 @@ export const updateKarat = async (req, res, next) => {
     }
 
 
-        console.log("9");
+    console.log("9");
     const updatedKarat = await KaratMasterService.updateKarat(
       id,
       updateData,

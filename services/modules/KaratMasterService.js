@@ -8,8 +8,7 @@ class KaratMasterService {
     try {
       // Check if division exists and is active
       const division = await DivisionMaster.findById(karatData.division);
-    console.log(division)
-      if (!division || !division.isActive ) {
+      if (!division || !division.isActive) {
         throw createAppError(
           "Division not found or inactive",
           400,
@@ -38,19 +37,25 @@ class KaratMasterService {
 
       await karat.save();
 
-      // Populate division details before returning
+      // Populate division and creator info
       await karat.populate("division", "code description");
       await karat.populate("createdBy", "name email");
 
       return karat;
     } catch (error) {
-      if (error.name === "ValidationError") {
+      if (
+        error.name === "ValidationError" &&
+        error.errors &&
+        typeof error.errors === "object"
+      ) {
         const messages = Object.values(error.errors).map((err) => err.message);
         throw createAppError(messages.join(", "), 400, "VALIDATION_ERROR");
       }
+
       throw error;
     }
   }
+
 
   // Get all karats with pagination and filters
   static async getKarats(query = {}) {
@@ -151,9 +156,9 @@ class KaratMasterService {
       ) {
         const division = await DivisionMaster.findById(updateData.division);
 
-  console.log('====================================');
-  console.log(division);
-  console.log('====================================');
+        console.log('====================================');
+        console.log(division);
+        console.log('====================================');
         if (!division || !division.isActive || division.status !== "active") {
           throw createAppError(
             "Division not found or inactive",

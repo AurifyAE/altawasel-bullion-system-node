@@ -32,10 +32,12 @@ const KaratMasterSchema = new mongoose.Schema(
     },
     minimum: {
       type: Number,
+      default:0,
       required: [true, "Minimum value is required"],
     },
     maximum: {
       type: Number,
+      default:0,
       required: [true, "Maximum value is required"],
     },
     isScrap: {
@@ -96,19 +98,14 @@ KaratMasterSchema.pre("save", function (next) {
       return next(error);
     }
 
-    if (this.minimum >= this.maximum) {
-      const error = new Error("Minimum value must be less than maximum value");
-      error.name = "ValidationError";
-      return next(error);
-    }
   } else {
     // For scrap items, allow any numeric values (including negative)
     // Only validate that minimum is less than maximum
-    if (this.minimum >= this.maximum) {
-      const error = new Error("Minimum value must be less than maximum value");
-      error.name = "ValidationError";
-      return next(error);
-    }
+    // if (this.minimum >= this.maximum) {
+    //   const error = new Error("Minimum value must be less than maximum value");
+    //   error.name = "ValidationError";
+    //   return next(error);
+    // }
   }
 
   next();
