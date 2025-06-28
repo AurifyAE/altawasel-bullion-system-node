@@ -5,19 +5,15 @@ const AccountSchema = new mongoose.Schema(
     // Basic Account Information
     accountType: {
       type: String,
-      enum: {
-        values: ["DEBTOR", "CREDITOR"],
-        message: "Account type must be either 'DEBTOR' or 'CREDITOR'",
-      },
-      trim: true,
-      default: null, // Set default to null explicitly
-      required: [true, "Account type is required"]
+      enum: ["DEBTOR", "CREDITOR"],
+      required: [true, "Account type is required"],
+      trim: true
     },    
     title: {
       type: String,
       required: [true, "Title is required"],
       trim: true,
-      maxlength: [10, "Title cannot exceed 10 characters"],
+      maxlength: [10, "Title cannot exceed 10 characters"]
     },
     accountCode: {
       type: String,
@@ -25,430 +21,215 @@ const AccountSchema = new mongoose.Schema(
       trim: true,
       uppercase: true,
       maxlength: [20, "Account code cannot exceed 20 characters"],
-      match: [
-        /^[A-Z0-9]+$/,
-        "Account code should contain only uppercase letters and numbers",
-      ],
+      match: [/^[A-Z0-9]+$/, "Account code should contain only uppercase letters and numbers"]
     },
     customerName: {
       type: String,
-      default: null,
+      required: [true, "Customer name is required"],
       trim: true,
-      maxlength: [100, "Customer name cannot exceed 100 characters"],
+      maxlength: [100, "Customer name cannot exceed 100 characters"]
     },
     classification: {
       type: String,
-      default: null,
       trim: true,
+      default: null
     },
     remarks: {
       type: String,
       trim: true,
-      default: null,
       maxlength: [500, "Remarks cannot exceed 500 characters"],
+      default: null
     },
 
-    // Balance Information - UPDATED SECTION
+    // Balance Information
     balances: {
       goldBalance: {
-        totalGrams: {
-          type: Number,
-          default: 0,
-          // Removed min validation to allow negative values
-        },
-        totalValue: {
-          type: Number,
-          default: 0,
-          // Removed min validation to allow negative values
-        },
-        lastUpdated: {
-          type: Date,
-          default: Date.now,
-        },
+        totalGrams: { type: Number, default: 0 },
+        totalValue: { type: Number, default: 0 },
+        lastUpdated: { type: Date, default: Date.now }
       },
-      // UPDATED: Single cash balance with default currency
       cashBalance: {
-        currency: {
-          type: mongoose.Schema.Types.ObjectId,
-          ref: "CurrencyMaster",
-          default: null, // This will be set to default currency from A/C Definition
-        },
-        amount: {
-          type: Number,
-          default: 0,
-          // Allow negative for debit balances
-        },
-        lastUpdated: {
-          type: Date,
-          default: Date.now,
-        },
+        currency: { type: mongoose.Schema.Types.ObjectId, ref: "CurrencyMaster", default: null },
+        amount: { type: Number, default: 0 },
+        lastUpdated: { type: Date, default: Date.now }
       },
-      // Overall balance summary
-      totalOutstanding: {
-        type: Number,
-        default: 0,
-      },
-      lastBalanceUpdate: {
-        type: Date,
-        default: Date.now,
-      },
+      totalOutstanding: { type: Number, default: 0 },
+      lastBalanceUpdate: { type: Date, default: Date.now }
     },
 
-    // A/C Definition Session
+    // A/C Definition
     acDefinition: {
-      currencies: [
-        {
-          currency: {
-            type: mongoose.Schema.Types.ObjectId,
-            ref: "CurrencyMaster",
-            default: null,
+      currencies: {
+        type: [{
+          currency: { type: mongoose.Schema.Types.ObjectId, ref: "CurrencyMaster" },
+          isDefault: { type: Boolean, default: false }
+        }],
+        required: [true, "At least one currency is required"],
+        validate: {
+          validator: function(currencies) {
+            return currencies && currencies.length > 0;
           },
-          isDefault: {
-            type: Boolean,
-            default: false,
-          },
-        },
-      ],
-      branches: [
-        {
-          branch: {
-            type: mongoose.Schema.Types.ObjectId,
-            // ref: "BranchMaster",
-            default: null,
-          },
-          isDefault: {
-            type: Boolean,
-            default: false,
-          },
-        },
-      ],
+          message: "At least one currency must be specified"
+        }
+      },
+      branches: {
+        type: [{
+          branch: { type: mongoose.Schema.Types.ObjectId },
+          isDefault: { type: Boolean, default: false }
+        }],
+        default: []
+      }
     },
 
-    // Limits & Margins Session
-    limitsMargins: [
-      {
-        creditDaysAmt: {
-          type: Number,
-          min: [0, "Credit Days Amount cannot be negative"],
-          default: 0,
+    // Limits & Margins
+    limitsMargins: {
+      type: [{
+        creditDaysAmt: { type: Number, min: 0, default: 0 },
+        creditDaysMtl: { type: Number, min: 0, default: 0 },
+        shortMargin: { 
+          type: Number, 
+          min: 0, 
+          max: 100, 
+          required: [true, "Short margin is required"]
         },
-        creditDaysMtl: {
-          type: Number,
-          min: [0, "Credit Days Material cannot be negative"],
-          default: 0,
-        },
-        shortMargin: {
-          type: Number,
-          min: [0, "Short Margin cannot be negative"],
-          max: [100, "Short Margin cannot exceed 100%"],
-          default: 0,
-        },
-        longMargin: {
-          type: Number,
-          min: [0, "Long Margin cannot be negative"],
-          max: [100, "Long Margin cannot exceed 100%"],
-          default: 0,
-        },
-      },
-    ],
+        longMargin: { type: Number, min: 0, max: 100, default: 0 }
+      }],
+      default: []
+    },
 
-    // Address Details Session
-    addresses: [
-      {
-        streetAddress: {
-          type: String,
-          default: null,
-          trim: true,
-          maxlength: [200, "Street address cannot exceed 200 characters"],
-        },
-        city: {
-          type: String,
-          default: null,
-          trim: true,
-          maxlength: [50, "City cannot exceed 50 characters"],
-        },
-        country: {
-          type: String,
-          default: null,
-          trim: true,
-          maxlength: [50, "Country cannot exceed 50 characters"],
-        },
-        zipCode: {
-          type: String,
-          default: null,
-          trim: true,
-          maxlength: [20, "Zip code cannot exceed 20 characters"],
-        },
-        phoneNumber1: {
-          type: String,
-          default: null,
-          trim: true,
-          match: [/^[0-9]{10,15}$/, "Please enter a valid mobile number"],
-        },
-        phoneNumber2: {
-          type: String,
-          default: null,
-          trim: true,
-          match: [/^[0-9]{10,15}$/, "Please enter a valid mobile number"],
-        },
-        phoneNumber3: {
-          type: String,
-          default: null,
-          trim: true,
-          match: [/^[0-9]{10,15}$/, "Please enter a valid mobile number"],
-        },
-        email: {
-          type: String,
-          default: null,
-          trim: true,
+    // Address Details
+    addresses: {
+      type: [{
+        streetAddress: { type: String, trim: true, maxlength: 200, default: null },
+        city: { type: String, trim: true, maxlength: 50, default: null },
+        country: { type: String, trim: true, maxlength: 50, default: null },
+        zipCode: { type: String, trim: true, maxlength: 20, default: null },
+        phoneNumber1: { type: String, trim: true, match: /^[0-9]{10,15}$/, default: null },
+        phoneNumber2: { type: String, trim: true, match: /^[0-9]{10,15}$/, default: null },
+        phoneNumber3: { type: String, trim: true, match: /^[0-9]{10,15}$/, default: null },
+        email: { 
+          type: String, 
+          trim: true, 
           lowercase: true,
-          match: [
-            /^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/,
-            "Please enter a valid email",
-          ],
+          match: [/^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/, "Please enter a valid email"],
+          default: null
         },
-        telephone: {
-          type: String,
-          default: null,
-          trim: true,
-          match: [/^[0-9]{10,15}$/, "Please enter a valid Telephone number"],
-        },
-        website: {
-          type: String,
-          default: null,
-          trim: true,
-          // match: [
-          //   /https?:\/\/(www\.)?[-a-zA-Z0-9@:%._\+~#=]{2,256}\.[a-z]{2,6}\b([-a-zA-Z0-9@:%_\+.~#?&//=]*)/,
-          //   "Please enter a valid URL",
-          // ],
-        },
-        isPrimary: {
-          type: Boolean,
-          default: false,
-        },
-      },
-    ],
+        telephone: { type: String, trim: true, match: /^[0-9]{10,15}$/, default: null },
+        website: { type: String, trim: true, default: null },
+        isPrimary: { type: Boolean, default: false }
+      }],
+      default: []
+    },
 
     // Employee Details
-    employees: [
-      {
-        name: {
-          type: String,
-          default: null,
-          trim: true,
-          maxlength: [100, "Employee name cannot exceed 100 characters"],
-        },
-        designation: {
-          type: String,
-          default: null,
-          trim: true,
-          maxlength: [50, "Designation cannot exceed 50 characters"],
-        },
-        email: {
-          type: String,
-          default: null,
-          trim: true,
+    employees: {
+      type: [{
+        name: { type: String, trim: true, maxlength: 100, default: null },
+        designation: { type: String, trim: true, maxlength: 50, default: null },
+        email: { 
+          type: String, 
+          trim: true, 
           lowercase: true,
-          match: [
-            /^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/,
-            "Please enter a valid email",
-          ],
+          match: [/^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/, "Please enter a valid email"],
+          default: null
         },
-        mobile: {
-          type: String,
-          default: null,
-          trim: true,
-          match: [/^[0-9]{10,15}$/, "Please enter a valid mobile number"],
-        },
-        poAlert: {
-          type: Boolean,
-          default: false,
-        },
-        soAlert: {
-          type: Boolean,
-          default: false,
-        },
-        isPrimary: {
-          type: Boolean,
-          default: false,
-        },
-      },
-    ],
-
-    // VAT/GST Details
-    vatGstDetails: {
-      vatStatus: {
-        type: String,
-        enum: ["REGISTERED", "UNREGISTERED", "EXEMPTED"],
-        default: "UNREGISTERED",
-      },
-      vatNumber: {
-        type: String,
-        trim: true,
-        maxlength: [50, "VAT number cannot exceed 50 characters"],
-      },
-      documents: [
-        {
-          fileName: String,
-          filePath: String,
-          fileType: String,
-          s3Key: String,
-          uploadedAt: {
-            type: Date,
-            default: Date.now,
-          },
-          default: [],
-        },
-      ],
+        mobile: { type: String, trim: true, match: /^[0-9]{10,15}$/, default: null },
+        poAlert: { type: Boolean, default: false },
+        soAlert: { type: Boolean, default: false },
+        isPrimary: { type: Boolean, default: false }
+      }],
+      default: []
     },
 
-    // Bank Details Session
-    bankDetails: [
-      {
-        bankName: {
-          type: String,
-          default: null,
-          trim: true,
-          maxlength: [100, "Bank name cannot exceed 100 characters"],
+    // VAT/GST Details - FIXED: Made completely optional
+    vatGstDetails: {
+      type: {
+        vatStatus: { 
+          type: String, 
+          enum: ["REGISTERED", "UNREGISTERED", "EXEMPTED"], 
+          default: null 
         },
-        swiftId: {
-          type: String,
-          trim: true,
-          default: null,
-          uppercase: true,
-          maxlength: [20, "SWIFT ID cannot exceed 20 characters"],
-        },
-        iban: {
-          type: String,
-          trim: true,
-          default: null,
-          uppercase: true,
-          maxlength: [50, "IBAN cannot exceed 50 characters"],
-        },
-        accountNumber: {
-          type: String,
-          default: null,
-          trim: true,
-          maxlength: [30, "Account number cannot exceed 30 characters"],
-        },
-        branchCode: {
-          type: String,
-          trim: true,
-          default: null,
-          maxlength: [20, "Branch code cannot exceed 20 characters"],
-        },
-        purpose: {
-          type: String,
-          default: null,
-        },
-        country: {
-          type: String,
-          default: null,
-          trim: true,
-          maxlength: [50, "Country cannot exceed 50 characters"],
-        },
-        city: {
-          type: String,
-          default: null,
-          trim: true,
-          maxlength: [50, "City cannot exceed 50 characters"],
-        },
-        routingCode: {
-          type: String,
-          trim: true,
-          default: null,
-          maxlength: [20, "Routing code cannot exceed 20 characters"],
-        },
-        address: {
-          type: String,
-          trim: true,
-          default: null,
-          maxlength: [200, "Address cannot exceed 200 characters"],
-        },
-        isPrimary: {
-          type: Boolean,
-          default: false,
-        },
+        vatNumber: { type: String, trim: true, maxlength: 50, default: null },
+        documents: {
+          type: [{
+            fileName: { type: String, default: null },
+            filePath: { type: String, default: null },
+            fileType: { type: String, default: null },
+            s3Key: { type: String, default: null },
+            uploadedAt: { type: Date, default: Date.now }
+          }],
+          default: []
+        }
       },
-    ],
+      default: null  // FIXED: Made the entire vatGstDetails optional
+    },
 
-    // KYC Details Session
-    kycDetails: [
-      {
-        documentType: {
-          type: String,
-          default: null,
-          trim: true,
-        },
-        documentNumber: {
-          type: String,
-          default: null,
-          trim: true,
-          maxlength: [50, "Document number cannot exceed 50 characters"],
-        },
-        issueDate: {
-          type: Date,
-          default: null,
-          required: [true, "Issue date is required"],
+    // Bank Details
+    bankDetails: {
+      type: [{
+        bankName: { type: String, trim: true, maxlength: 100, default: null },
+        swiftId: { type: String, trim: true, uppercase: true, maxlength: 20, default: null },
+        iban: { type: String, trim: true, uppercase: true, maxlength: 50, default: null },
+        accountNumber: { type: String, trim: true, maxlength: 30, default: null },
+        branchCode: { type: String, trim: true, maxlength: 20, default: null },
+        purpose: { type: String, default: null },
+        country: { type: String, trim: true, maxlength: 50, default: null },
+        city: { type: String, trim: true, maxlength: 50, default: null },
+        routingCode: { type: String, trim: true, maxlength: 20, default: null },
+        address: { type: String, trim: true, maxlength: 200, default: null },
+        isPrimary: { type: Boolean, default: false }
+      }],
+      default: []
+    },
+
+    // KYC Details - FIXED: Made completely optional
+    kycDetails: {
+      type: [{
+        documentType: { type: String, trim: true, default: null },
+        documentNumber: { type: String, trim: true, maxlength: 50, default: null },
+        issueDate: { 
+          type: Date, 
+          default: null  // FIXED: Made optional
         },
         expiryDate: {
           type: Date,
-          default: null,
           validate: {
             validator: function (value) {
-              return value > this.issueDate;
+              return !value || !this.issueDate || value > this.issueDate;
             },
-            message: "Expiry date must be after issue date",
+            message: "Expiry date must be after issue date"
           },
+          default: null
         },
-        documents: [
-          {
-            fileName: String,
-            filePath: String,
-            fileType: String,
-            s3Key: String,
-            uploadedAt: {
-              type: Date,
-              default: Date.now,
-            },
-            default: [],
-          },
-        ],
-        isVerified: {
-          type: Boolean,
-          default: false,
+        documents: {
+          type: [{
+            fileName: { type: String, default: null },
+            filePath: { type: String, default: null },
+            fileType: { type: String, default: null },
+            s3Key: { type: String, default: null },
+            uploadedAt: { type: Date, default: Date.now }
+          }],
+          default: []
         },
-      },
-    ],
+        isVerified: { type: Boolean, default: false }
+      }],
+      default: []
+    },
 
     // Status and Activity
-    isActive: {
-      type: Boolean,
-      default: true,
-    },
-    status: {
-      type: String,
-      enum: ["active", "inactive", "suspended"],
-      default: "active",
-    },
-    createdBy: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Admin",
-      required: true,
-    },
-    updatedBy: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Admin",
-    },
+    isActive: { type: Boolean, default: true },
+    status: { type: String, enum: ["active", "inactive", "suspended"], default: "active" },
+    createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "Admin", required: true },
+    updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: "Admin", default: null }
   },
   {
     timestamps: true,
     toJSON: { virtuals: true },
-    toObject: { virtuals: true },
+    toObject: { virtuals: true }
   }
 );
 
-// Indexes for better performance
+// Indexes for performance
 AccountSchema.index({ accountCode: 1 });
 AccountSchema.index({ customerName: 1 });
 AccountSchema.index({ status: 1 });
@@ -456,184 +237,133 @@ AccountSchema.index({ isActive: 1 });
 AccountSchema.index({ createdAt: -1 });
 AccountSchema.index({ "employees.email": 1 });
 AccountSchema.index({ "vatGstDetails.vatNumber": 1 });
-// Updated indexes for balance queries
 AccountSchema.index({ "balances.totalOutstanding": 1 });
 AccountSchema.index({ "balances.goldBalance.totalGrams": 1 });
 AccountSchema.index({ "balances.cashBalance.amount": 1 });
 
-// UPDATED Pre-save middleware with single cash balance handling
+// Pre-save middleware
 AccountSchema.pre("save", function (next) {
+  // Uppercase account code
   if (this.accountCode) {
     this.accountCode = this.accountCode.toUpperCase();
   }
 
-  // Set default currency for cash balance from A/C Definition if not set
-  if (this.acDefinition && this.acDefinition.currencies && this.acDefinition.currencies.length > 0) {
+  // Set default currency for cash balance
+  if (this.acDefinition?.currencies?.length > 0) {
     const defaultCurrency = this.acDefinition.currencies.find(c => c.isDefault);
     if (defaultCurrency && !this.balances.cashBalance.currency) {
       this.balances.cashBalance.currency = defaultCurrency.currency;
     }
   }
 
-
-  // Ensure only one primary address
-  if (this.addresses && this.addresses.length > 0) {
-    const primaryAddresses = this.addresses.filter((addr) => addr.isPrimary);
-    if (primaryAddresses.length > 1) {
-      this.addresses.forEach((addr, index) => {
-        if (index > 0) addr.isPrimary = false;
+  // Helper function to ensure single primary/default
+  const ensureSingle = (items, field) => {
+    if (!items?.length) return;
+    const found = items.filter(item => item[field]);
+    if (found.length > 1) {
+      items.forEach((item, index) => {
+        if (index > 0) item[field] = false;
       });
     }
-  }
+  };
 
-  // Ensure only one primary employee
-  if (this.employees && this.employees.length > 0) {
-    const primaryEmployees = this.employees.filter((emp) => emp.isPrimary);
-    if (primaryEmployees.length > 1) {
-      this.employees.forEach((emp, index) => {
-        if (index > 0) emp.isPrimary = false;
-      });
-    }
-  }
-
-  // Ensure only one primary bank
-  if (this.bankDetails && this.bankDetails.length > 0) {
-    const primaryBanks = this.bankDetails.filter((bank) => bank.isPrimary);
-    if (primaryBanks.length > 1) {
-      this.bankDetails.forEach((bank, index) => {
-        if (index > 0) bank.isPrimary = false;
-      });
-    }
-  }
-
-  // Ensure only one default currency in A/C Definition
-  if (this.acDefinition && this.acDefinition.currencies && this.acDefinition.currencies.length > 0) {
-    const defaultCurrencies = this.acDefinition.currencies.filter((curr) => curr.isDefault);
-    if (defaultCurrencies.length > 1) {
-      this.acDefinition.currencies.forEach((curr, index) => {
-        if (index > 0) curr.isDefault = false;
-      });
-    }
-  }
+  // Ensure single primary/default items (only if arrays exist and are not null)
+  if (this.addresses) ensureSingle(this.addresses, 'isPrimary');
+  if (this.employees) ensureSingle(this.employees, 'isPrimary');
+  if (this.bankDetails) ensureSingle(this.bankDetails, 'isPrimary');
+  if (this.acDefinition?.currencies) ensureSingle(this.acDefinition.currencies, 'isDefault');
 
   next();
 });
 
-// UPDATED Static method to check if account code exists
-AccountSchema.statics.isAccountCodeExists = async function (
-  accountCode,
-  excludeId = null
-) {
+// Static Methods
+AccountSchema.statics.isAccountCodeExists = async function (accountCode, excludeId = null) {
   const query = { accountCode: accountCode.toUpperCase() };
-  if (excludeId) {
-    query._id = { $ne: excludeId };
-  }
-  const account = await this.findOne(query);
-  return !!account;
+  if (excludeId) query._id = { $ne: excludeId };
+  return !!(await this.findOne(query));
 };
 
-// Static method to get active accounts
 AccountSchema.statics.getActiveAccounts = function () {
   return this.find({ isActive: true, status: "active" });
 };
 
-// Instance method to get primary contact
+// Instance Methods
 AccountSchema.methods.getPrimaryContact = function () {
-  return this.employees.find((emp) => emp.isPrimary) || this.employees[0];
+  return this.employees?.find(emp => emp.isPrimary) || this.employees?.[0];
 };
 
-// Instance method to get primary address
 AccountSchema.methods.getPrimaryAddress = function () {
-  return this.addresses.find((addr) => addr.isPrimary) || this.addresses[0];
+  return this.addresses?.find(addr => addr.isPrimary) || this.addresses?.[0];
 };
 
-// Instance method to get primary bank
 AccountSchema.methods.getPrimaryBank = function () {
-  return this.bankDetails.find((bank) => bank.isPrimary) || this.bankDetails[0];
+  return this.bankDetails?.find(bank => bank.isPrimary) || this.bankDetails?.[0];
 };
 
-// NEW Instance method to get default currency
 AccountSchema.methods.getDefaultCurrency = function () {
-  if (this.acDefinition && this.acDefinition.currencies && this.acDefinition.currencies.length > 0) {
-    const defaultCurrency = this.acDefinition.currencies.find(c => c.isDefault);
-    return defaultCurrency ? defaultCurrency.currency : null;
-  }
-  return null;
+  const defaultCurrency = this.acDefinition?.currencies?.find(c => c.isDefault);
+  return defaultCurrency?.currency || null;
 };
 
-// Instance method to update gold balance
-AccountSchema.methods.updateGoldBalance = function (
-  grams,
-  value,
-  currency = null
-) {
-  this.balances.goldBalance.totalGrams = grams;
-  this.balances.goldBalance.totalValue = value;
-  if (currency) {
-    this.balances.goldBalance.currency = currency;
-  }
-  this.balances.goldBalance.lastUpdated = new Date();
+AccountSchema.methods.updateGoldBalance = function (grams, value) {
+  Object.assign(this.balances.goldBalance, {
+    totalGrams: grams,
+    totalValue: value,
+    lastUpdated: new Date()
+  });
   this.balances.lastBalanceUpdate = new Date();
   return this.save();
 };
 
-// UPDATED Instance method to update cash balance (single currency)
 AccountSchema.methods.updateCashBalance = function (amount, currency = null) {
-  // Use provided currency or default currency from A/C Definition
   const targetCurrency = currency || this.getDefaultCurrency();
   
-  this.balances.cashBalance.currency = targetCurrency;
-  this.balances.cashBalance.amount = amount;
-  this.balances.cashBalance.lastUpdated = new Date();
+  Object.assign(this.balances.cashBalance, {
+    currency: targetCurrency,
+    amount: amount,
+    lastUpdated: new Date()
+  });
   this.balances.lastBalanceUpdate = new Date();
-  
   return this.save();
 };
 
-// UPDATED Instance method to get cash balance
 AccountSchema.methods.getCashBalance = function () {
   return this.balances.cashBalance.amount || 0;
 };
 
-// UPDATED Instance method to get cash balance currency
 AccountSchema.methods.getCashBalanceCurrency = function () {
   return this.balances.cashBalance.currency;
 };
 
-// UPDATED Instance method to calculate total outstanding
 AccountSchema.methods.calculateTotalOutstanding = function () {
   const cashAmount = this.balances.cashBalance.amount || 0;
   const goldValue = this.balances.goldBalance.totalValue || 0;
-  
   this.balances.totalOutstanding = cashAmount + goldValue;
   return this.balances.totalOutstanding;
 };
 
-// NEW Instance method to set default currency for cash balance
 AccountSchema.methods.setDefaultCashCurrency = function (currencyId) {
-  this.balances.cashBalance.currency = currencyId;
-  this.balances.cashBalance.lastUpdated = new Date();
+  // Update cash balance currency
+  Object.assign(this.balances.cashBalance, {
+    currency: currencyId,
+    lastUpdated: new Date()
+  });
   this.balances.lastBalanceUpdate = new Date();
   
-  // Also update in A/C Definition
-  if (this.acDefinition && this.acDefinition.currencies) {
-    // Remove isDefault from all currencies
-    this.acDefinition.currencies.forEach(curr => {
-      curr.isDefault = false;
-    });
+  // Update A/C Definition
+  if (this.acDefinition?.currencies) {
+    // Reset all to non-default
+    this.acDefinition.currencies.forEach(curr => curr.isDefault = false);
     
-    // Set the new currency as default or add it if it doesn't exist
+    // Set new default or add if doesn't exist
     const existingCurrency = this.acDefinition.currencies.find(
-      curr => curr.currency && curr.currency.toString() === currencyId.toString()
+      curr => curr.currency?.toString() === currencyId.toString()
     );
     
     if (existingCurrency) {
       existingCurrency.isDefault = true;
     } else {
-      this.acDefinition.currencies.push({
-        currency: currencyId,
-        isDefault: true
-      });
+      this.acDefinition.currencies.push({ currency: currencyId, isDefault: true });
     }
   }
   
@@ -641,5 +371,4 @@ AccountSchema.methods.setDefaultCashCurrency = function (currencyId) {
 };
 
 const Account = mongoose.model("Account", AccountSchema);
-
 export default Account;

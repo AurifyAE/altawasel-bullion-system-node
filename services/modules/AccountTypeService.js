@@ -18,46 +18,36 @@ static async createTradeDebtor(debtorData, adminId) {
       );
     }
 
-    // Validate required nested data
-    if (!debtorData.addresses || debtorData.addresses.length === 0) {
-      throw createAppError(
-        "At least one address is required",
-        400,
-        "MISSING_ADDRESS"
-      );
-    }
-
-    if (!debtorData.employees || debtorData.employees.length === 0) {
-      throw createAppError(
-        "At least one employee contact is required",
-        400,
-        "MISSING_EMPLOYEE"
-      );
-    }
-
-
     // Set created by
     debtorData.createdBy = adminId;
 
-    // Initialize balances with default values if not provided
-    if (!debtorData.balances) {
-      debtorData.balances = {
-        goldBalance: {
-          totalGrams: 0,
-          totalValue: 0,
-          lastUpdated: new Date()
-        },
-        cashBalance: {
-          currency: null, // Will be set from acDefinition default currency
-          amount: 0,
-          lastUpdated: new Date()
-        },
-        totalOutstanding: 0,
-        lastBalanceUpdate: new Date()
-      };
+    // FIXED: Clean up empty objects to prevent validation errors
+    if (debtorData.vatGstDetails && Object.keys(debtorData.vatGstDetails).length === 0) {
+      delete debtorData.vatGstDetails; // Remove empty object
     }
 
-    // Ensure only one primary address
+    if (debtorData.kycDetails && Array.isArray(debtorData.kycDetails) && debtorData.kycDetails.length === 0) {
+      delete debtorData.kycDetails; // Remove empty array
+    }
+
+    // Clean up kycDetails array - remove items that have no meaningful data
+    if (debtorData.kycDetails && Array.isArray(debtorData.kycDetails)) {
+      debtorData.kycDetails = debtorData.kycDetails.filter(kyc => {
+        // Keep KYC record if it has documents or any meaningful data
+        return (kyc.documents && kyc.documents.length > 0) || 
+               kyc.documentType || 
+               kyc.documentNumber || 
+               kyc.issueDate || 
+               kyc.expiryDate;
+      });
+      
+      // If no valid KYC records remain, remove the field entirely
+      if (debtorData.kycDetails.length === 0) {
+        delete debtorData.kycDetails;
+      }
+    }
+
+    // Ensure only one primary address (if addresses provided)
     if (debtorData.addresses && debtorData.addresses.length > 0) {
       let primaryFound = false;
       debtorData.addresses.forEach((address, index) => {
@@ -66,14 +56,13 @@ static async createTradeDebtor(debtorData, adminId) {
         } else if (address.isPrimary && primaryFound) {
           address.isPrimary = false;
         } else if (index === 0 && !primaryFound) {
-          // Make first address primary if none specified
           address.isPrimary = true;
           primaryFound = true;
         }
       });
     }
 
-    // Ensure only one primary employee
+    // Ensure only one primary employee (if employees provided)
     if (debtorData.employees && debtorData.employees.length > 0) {
       let primaryFound = false;
       debtorData.employees.forEach((employee, index) => {
@@ -82,7 +71,6 @@ static async createTradeDebtor(debtorData, adminId) {
         } else if (employee.isPrimary && primaryFound) {
           employee.isPrimary = false;
         } else if (index === 0 && !primaryFound) {
-          // Make first employee primary if none specified
           employee.isPrimary = true;
           primaryFound = true;
         }
@@ -98,14 +86,13 @@ static async createTradeDebtor(debtorData, adminId) {
         } else if (bank.isPrimary && primaryFound) {
           bank.isPrimary = false;
         } else if (index === 0 && !primaryFound) {
-          // Make first bank primary if none specified
           bank.isPrimary = true;
           primaryFound = true;
         }
       });
     }
 
-    // Ensure only one default currency in acDefinition
+    // Ensure only one default currency in acDefinition (required field)
     if (debtorData.acDefinition && debtorData.acDefinition.currencies && debtorData.acDefinition.currencies.length > 0) {
       let defaultFound = false;
       debtorData.acDefinition.currencies.forEach((currency, index) => {
@@ -114,14 +101,13 @@ static async createTradeDebtor(debtorData, adminId) {
         } else if (currency.isDefault && defaultFound) {
           currency.isDefault = false;
         } else if (index === 0 && !defaultFound) {
-          // Make first currency default if none specified
           currency.isDefault = true;
           defaultFound = true;
         }
       });
     }
 
-    // Ensure only one default branch in acDefinition (if branches provided)
+    // Ensure only one default branch (if branches provided)
     if (debtorData.acDefinition && debtorData.acDefinition.branches && debtorData.acDefinition.branches.length > 0) {
       let defaultFound = false;
       debtorData.acDefinition.branches.forEach((branch, index) => {
@@ -130,51 +116,26 @@ static async createTradeDebtor(debtorData, adminId) {
         } else if (branch.isDefault && defaultFound) {
           branch.isDefault = false;
         } else if (index === 0 && !defaultFound) {
-          // Make first branch default if none specified
           branch.isDefault = true;
           defaultFound = true;
         }
       });
     }
 
-    // Initialize limitsMargins array if not provided or empty
-    if (!debtorData.limitsMargins || debtorData.limitsMargins.length === 0) {
-      debtorData.limitsMargins = [{
-        creditDaysAmt: 0,
-        creditDaysMtl: 0,
-        shortMargin: 0,
-        longMargin: 0
-      }];
-    }
-
-    // Validate and set default VAT status if not provided
-    if (!debtorData.vatGstDetails) {
-      debtorData.vatGstDetails = {
-        vatStatus: 'UNREGISTERED',
-        documents: []
-      };
-    } else if (!debtorData.vatGstDetails.vatStatus) {
-      debtorData.vatGstDetails.vatStatus = 'UNREGISTERED';
-    }
-
-    // Ensure documents arrays are properly initialized
-    if (debtorData.vatGstDetails && !debtorData.vatGstDetails.documents) {
-      debtorData.vatGstDetails.documents = [];
-    }
-
+    // Handle remaining KYC details if they exist
     if (debtorData.kycDetails && Array.isArray(debtorData.kycDetails)) {
       debtorData.kycDetails.forEach(kyc => {
         if (!kyc.documents) {
           kyc.documents = [];
         }
-        // Ensure isVerified is set
         if (kyc.isVerified === undefined) {
           kyc.isVerified = false;
         }
+        // Don't set issueDate if it's not provided - let schema handle defaults
       });
     }
 
-    // Create trade debtor
+    // Create trade debtor - schema will handle defaults
     const tradeDebtor = new AccountType(debtorData);
     await tradeDebtor.save();
 
@@ -209,7 +170,6 @@ static async createTradeDebtor(debtorData, adminId) {
       );
     }
     
-    // Handle duplicate key errors
     if (error.code === 11000) {
       const field = Object.keys(error.keyPattern)[0];
       throw createAppError(
@@ -219,7 +179,6 @@ static async createTradeDebtor(debtorData, adminId) {
       );
     }
     
-    // Handle cast errors
     if (error.name === "CastError") {
       throw createAppError(
         `Invalid value for field: ${error.path}`,
