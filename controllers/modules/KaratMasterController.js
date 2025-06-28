@@ -3,7 +3,7 @@ import KaratMasterService from "../../services/modules/KaratMasterService.js";
 import { createAppError } from "../../utils/errorHandler.js";
 export const createKarat = async (req, res, next) => {
   try {
-    const {
+    let {
       karatCode,
       division,
       description,
@@ -13,13 +13,17 @@ export const createKarat = async (req, res, next) => {
       isScrap,
     } = req.body;
 
+    minimum = minimum ?? 0;
+    maximum = maximum ?? 0;
+
+
     // Validation
     if (
       !karatCode ||
       !division ||
       !description ||
-      // minimum === undefined ||
-      // maximum === undefined||
+      minimum === undefined ||
+      maximum === undefined ||
       standardPurity === undefined
     ) {
       throw createAppError(
@@ -30,13 +34,13 @@ export const createKarat = async (req, res, next) => {
     }
 
     // Validate numeric fields
-    // if (isNaN(standardPurity) || isNaN(minimum) || isNaN(maximum)) {
-    //   throw createAppError(
-    //     "Standard purity, minimum, and maximum must be valid numbers",
-    //     400,
-    //     "INVALID_NUMERIC_VALUES"
-    //   );
-    // }
+    if (isNaN(standardPurity) || isNaN(minimum) || isNaN(maximum)) {
+      throw createAppError(
+        "Standard purity, minimum, and maximum must be valid numbers",
+        400,
+        "INVALID_NUMERIC_VALUES"
+      );
+    }
     if (isNaN(standardPurity)) {
       throw createAppError(
         "Standard purity, minimum, and maximum must be valid numbers",
@@ -55,33 +59,53 @@ export const createKarat = async (req, res, next) => {
     }
 
     // Validate min/max based on isScrap
-    // if (!isScrap) {
-    //   // Regular validation for non-scrap items
-    //   if (minimum < 0 || maximum < 0) {
-    //     throw createAppError(
-    //       "Minimum and maximum values cannot be negative for non-scrap items",
-    //       400,
-    //       "INVALID_VALUE_RANGE"
-    //     );
-    //   }
-    // }
+    if (!isScrap) {
+      if (minimum < 0 || maximum < 0) {
+        throw createAppError(
+          "Minimum and maximum values cannot be negative for non-scrap items",
+          400,
+          "INVALID_VALUE_RANGE"
+        );
+      }
+    }
+
+    // Handle 0-100 range validation if min & max are NOT zero
+    if (!(minimum === 0 && maximum === 0)) {
+      if (minimum < 0 || minimum > 100 || maximum < 0 || maximum > 100) {
+        throw createAppError(
+          "Minimum and maximum must be between 0 and 100",
+          400,
+          "INVALID_MIN_MAX_RANGE"
+        );
+      }
+
+      // Also validate min < max
+      if (minimum >= maximum) {
+        throw createAppError(
+          "Minimum value must be less than maximum value",
+          400,
+          "INVALID_MIN_MAX_RANGE"
+        );
+      }
+    }
+
 
     // Common validation: minimum must be less than maximum
-    // if (minimum >= maximum) {
-    //   throw createAppError(
-    //     "Minimum value must be less than maximum value",
-    //     400,
-    //     "INVALID_MIN_MAX_RANGE"
-    //   );
-    // }
+    if (!(minimum === 0 && maximum === 0) && minimum >= maximum) {
+      throw createAppError(
+        "Minimum value must be less than maximum value",
+        400,
+        "INVALID_MIN_MAX_RANGE"
+      );
+    }
 
     const karatData = {
       karatCode: karatCode.trim(),
       division,
       description: description.trim(),
       standardPurity: parseFloat(standardPurity),
-      minimum: parseFloat(minimum) ||0,
-      maximum: parseFloat(maximum)||0,
+      minimum: parseFloat(minimum) || 0,
+      maximum: parseFloat(maximum) || 0,
       isScrap: isScrap || false,
     };
 
