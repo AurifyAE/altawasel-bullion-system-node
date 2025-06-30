@@ -1,6 +1,8 @@
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
+import cookieParser from "cookie-parser";
+
 import adminRouter from "./routes/core/admin/index.js";
 import divisionRouter from "./routes/modules/divisionsRoutes.js";
 import karatMasterRoutes from "./routes/modules/karatMasterRoutes.js";
@@ -13,13 +15,11 @@ import metalStockRoutes from "./routes/modules/metalStockRoutes.js";
 import costCenterMasterRoutes from "./routes/modules/costCenterMasterRoutes.js";
 import metalTransaction from "./routes/modules/metalTransactionRoutes.js";
 import transactionFixingRoutes from "./routes/modules/transactionFixingRoutes.js";
-import RegistryRouter from "./routes/modules/registryRouter.js"
-import VoucherRoute from "./routes/modules/VoucherMasterRoute.js"
-import accountRoutes from "./routes/modules/accountMasterRoutes.js"
+import RegistryRouter from "./routes/modules/registryRouter.js";
+import VoucherRoute from "./routes/modules/VoucherMasterRoute.js";
+import accountRoutes from "./routes/modules/accountMasterRoutes.js";
 import entryRoutes from "./routes/modules/entryMasterRoutes.js";
-import cookieParser from "cookie-parser";
-// import accountRoute from './routes/modules/accountMasterRoutes.js'
-
+import fundTransferRoutes from "./routes/modules/fundTransferRoutes.js";
 
 import { mongodb } from "./config/db.js";
 import { errorHandler } from "./utils/errorHandler.js";
@@ -36,10 +36,7 @@ app.use(express.urlencoded({ limit: "50mb", extended: true })); // Increase URL-
 
 // CORS configuration - BEFORE other middleware
 const corsOptions = {
-  // Specify allowed origins explicitly instead of using wildcard when credentials are enabled
   origin: function (origin, callback) {
-    // Allow any origin to access your API
-    // For production, you should list specific domains
     const allowedOrigins = [
       "http://localhost:5173",
       "http://localhost:3000",
@@ -47,11 +44,9 @@ const corsOptions = {
       "https://bullion-system-react2.onrender.com"
     ];
 
-    // Allow requests with no origin (like mobile apps or curl requests)
     if (!origin || allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
-      // Add more origins as needed for your app
       callback(null, true); // Allow all origins for now, change in production
     }
   },
@@ -62,7 +57,6 @@ const corsOptions = {
   optionsSuccessStatus: 204,
 };
 
-// Apply CORS first
 app.use(cors(corsOptions));
 
 // Database connecting
@@ -85,6 +79,7 @@ app.use("/api/v1/registry", RegistryRouter);
 app.use("/api/v1/voucher", VoucherRoute);
 app.use("/api/v1/account", accountRoutes);
 app.use("/api/v1/entry", entryRoutes);
+app.use("/api/v1/fund-transfer", fundTransferRoutes);
 
 // Global error handling middleware
 app.use(errorHandler);
