@@ -16,3 +16,23 @@ export const accountToAccountTransfer = async (req, res, next) => {
     next(error);
   }
 };
+
+export const openingBalanceTransfer = async (req, res, next) => {
+  try {
+    const { receiverId, value } = req.body;
+    const adminId = req.admin.id;
+
+    if (!receiverId || !value) {
+      return res.status(400).json({ message: "Missing required fields" });
+    }
+
+    await FundTransferService.openingBalanceTransfer(receiverId, value, adminId);
+
+    res.status(200).json({ message: "Opening balance transfer successful" });
+  } catch (error) {
+    next(error);
+  }
+};
+
+ 
+

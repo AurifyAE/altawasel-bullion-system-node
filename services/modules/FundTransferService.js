@@ -25,6 +25,52 @@ class FundTransferService {
       throw error;
     }
   }
+
+  static async openingBalanceTransfer(receiverId, value, adminId) {
+    try {
+        const receiverAccount = await AccountType.findById(receiverId);
+        if (!receiverAccount) {
+            throw createAppError("Receiver account not found", 404, "ACCOUNT_NOT_FOUND");
+        }
+
+        receiverAccount.balances.cashBalance.amount += value;
+
+        const transaction = new Registry({
+            transactionId: await Registry.generateTransactionId(),
+            type: "PARTY_CASH_BALANCE",
+            description: `OPENING BALANCE FOR ${receiverAccount.customerName}`,
+            value: value,
+            runningBalance: 0,
+            previousBalance: 0,
+            credit: value,
+            reference: `Opening balance for ${receiverAccount.customerName}`,
+            createdBy: adminId,
+            party: receiverAccount._id,
+        });
+        const transactionForParty = new Registry({
+            transactionId: await Registry.generateTransactionId(),
+            type: "OPENING_BALANCE",
+            description: `OPENING BALANCE FOR ${receiverAccount.customerName}`,
+            value: value,
+            runningBalance: 0,
+            previousBalance: 0,
+            credit: value,
+            reference: `Opening balance for ${receiverAccount.customerName}`,
+            createdBy: adminId,
+            party: receiverAccount._id,
+        });
+        await receiverAccount.save();
+        await transactionForParty.save();
+        await transaction.save();
+    } catch (error) {
+      if (error.name === "ValidationError") {
+        const messages = Object.values(error.errors).map((err) => err.message);
+        throw createAppError(messages.join(", "), 400, "VALIDATION_ERROR");
+      }
+      throw error;
+        
+    }
+  }
 }
 
 async function handleCashTransfer(senderAccount, receiverAccount, value, adminId) {
