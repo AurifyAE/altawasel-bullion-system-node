@@ -79,7 +79,8 @@ class FundTransferService {
         .populate("receivingParty.party")
         .populate("sendingParty.party")
         .populate("createdBy")
-        .populate("updatedBy");
+        .populate("updatedBy")
+        .sort({ createdAt: -1 });
     } catch (error) {
       throw createAppError("Error fetching fund transfers", 500, "FETCH_ERROR");
     }
