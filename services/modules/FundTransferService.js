@@ -75,7 +75,7 @@ class FundTransferService {
         });
         const transactionForParty = new Registry({
           transactionId: await Registry.generateTransactionId(),
-          type: "OPENING_BALANCE",
+          type: "OPENING_CASH_BALANCE",
           description: `OPENING BALANCE FOR ${receiverAccount.customerName}`,
           value: value,
           runningBalance: 0,
@@ -105,7 +105,7 @@ class FundTransferService {
         });
         const transactionForParty = new Registry({
           transactionId: await Registry.generateTransactionId(),
-          type: "OPENING_BALANCE",
+          type: "OPENING_GOLD_BALANCE",
           description: `OPENING GOLD FOR ${receiverAccount.customerName}`,
           value: value,
           runningBalance: 0,
