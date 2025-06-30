@@ -1,5 +1,6 @@
 import Registry from "../../models/modules/Registry.js";
 import AccountType from "../../models/modules/AccountType.js";
+import FundTransfer from "../../models/modules/FundTransfer.js";
 import { createAppError } from "../../utils/errorHandler.js"; // Assuming createAppError is exported from a utility file
 
 class FundTransferService {
@@ -71,6 +72,18 @@ class FundTransferService {
         
     }
   }
+
+  static async getFundTransfers() {
+    try {
+      return await FundTransfer.find({})
+        .populate("receivingParty.party")
+        .populate("sendingParty.party")
+        .populate("createdBy")
+        .populate("updatedBy");
+    } catch (error) {
+      throw createAppError("Error fetching fund transfers", 500, "FETCH_ERROR");
+    }
+  }
 }
 
 async function handleCashTransfer(senderAccount, receiverAccount, value, adminId) {
@@ -110,10 +123,28 @@ async function handleCashTransfer(senderAccount, receiverAccount, value, adminId
     party: receiverAccount._id,
   });
 
+  const fundTransfer = new FundTransfer({
+    transactionId: await FundTransfer.generateTransactionId(),
+    description: `CASH TRANSFER FROM ${senderAccount.customerName} TO ${receiverAccount.customerName}`,
+    value: value,
+    assetType: "CASH",
+    receivingParty:{
+        party: receiverAccount._id,
+        credit: value
+    },
+    sendingParty: {
+        party: senderAccount._id,
+        debit: value
+    },
+    isBullion: false,
+    createdBy: adminId,
+  });
+
   await receiverAccount.save();
   await senderAccount.save();
   await transaction.save();
   await receiverTransaction.save();
+  await fundTransfer.save();
 }
 
 async function handleGoldTransfer(senderAccount, receiverAccount, value, adminId) {
@@ -153,10 +184,28 @@ async function handleGoldTransfer(senderAccount, receiverAccount, value, adminId
     party: receiverAccount._id,
   });
 
+   const fundTransfer = new FundTransfer({
+    transactionId: await FundTransfer.generateTransactionId(),
+    description: `GOLD TRANSFER FROM ${senderAccount.customerName} TO ${receiverAccount.customerName}`,
+    value: value,
+    assetType: "GOLD",
+    receivingParty:{
+        party: receiverAccount._id,
+        credit: value
+    },
+    sendingParty: {
+        party: senderAccount._id,
+        debit: value
+    },
+    isBullion: false,
+    createdBy: adminId,
+  });
+
   await receiverAccount.save();
   await senderAccount.save();
   await transaction.save();
   await receiverTransaction.save();
+  await fundTransfer.save();
 }
 
 export default FundTransferService;

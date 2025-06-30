@@ -34,5 +34,15 @@ export const openingBalanceTransfer = async (req, res, next) => {
   }
 };
 
+// get all fund transfers with full population
+export const getFundTransfers = async (req, res, next) => {
+  try {
+    const fundTransfers = await FundTransferService.getFundTransfers();
+    res.status(200).json(fundTransfers);
+  } catch (error) {
+    next(error);
+  }
+};
+
  
 
