@@ -17,6 +17,7 @@ import RegistryRouter from "./routes/modules/registryRouter.js"
 import VoucherRoute from "./routes/modules/VoucherMasterRoute.js"
 import accountRoutes from "./routes/modules/accountMasterRoutes.js"
 import entryRoutes from "./routes/modules/entryMasterRoutes.js";
+import fundTransferRoutes from "./routes/modules/fundTransferRoutes.js"
 // import accountRoute from './routes/modules/accountMasterRoutes.js'
 
 
@@ -83,6 +84,7 @@ app.use("/api/v1/registry", RegistryRouter);
 app.use("/api/v1/voucher", VoucherRoute);
 app.use("/api/v1/account", accountRoutes);
 app.use("/api/v1/entry", entryRoutes);
+app.use("/api/v1/fund-transfer", fundTransferRoutes);
 
 // Global error handling middleware
 app.use(errorHandler);
