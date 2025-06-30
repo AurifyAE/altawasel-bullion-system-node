@@ -163,7 +163,7 @@ async function handleCashTransfer(
   // Log the transaction in the registry for sender
   const transaction = new Registry({
     transactionId: await Registry.generateTransactionId(),
-    type: "PARTY_CASH",
+    type: "PARTY_CASH_BALANCE",
     description: `FUND TRANSFER FROM ${senderAccount.customerName} TO ${receiverAccount.customerName}`,
     value: value,
     runningBalance: 0,
@@ -177,7 +177,7 @@ async function handleCashTransfer(
   // Log the transaction in the registry for receiver
   const receiverTransaction = new Registry({
     transactionId: await Registry.generateTransactionId(),
-    type: "PARTY_CASH",
+    type: "PARTY_CASH_BALANCE",
     description: `FUND TRANSFER TO ${receiverAccount.customerName} FROM ${senderAccount.customerName}`,
     value: value,
     runningBalance: 0,
@@ -233,7 +233,7 @@ async function handleGoldTransfer(
   // Log the transaction in the registry for sender
   const transaction = new Registry({
     transactionId: await Registry.generateTransactionId(),
-    type: "PARTY_GOLD",
+    type: "PARTY_GOLD_BALANCE",
     description: `GOLD TRANSFER FROM ${senderAccount.customerName} TO ${receiverAccount.customerName}`,
     value: value,
     runningBalance: 0,
@@ -247,7 +247,7 @@ async function handleGoldTransfer(
   // Log the transaction in the registry for receiver
   const receiverTransaction = new Registry({
     transactionId: await Registry.generateTransactionId(),
-    type: "PARTY_GOLD",
+    type: "PARTY_GOLD_BALANCE",
     description: `GOLD TRANSFER TO ${receiverAccount.customerName} FROM ${senderAccount.customerName}`,
     value: value,
     runningBalance: 0,
