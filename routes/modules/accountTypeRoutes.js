@@ -30,7 +30,7 @@ router.get("/:id", getTradeDebtorById);
 router.post(
   "/",
   tradeDebtorUploadHandler({
-   useLocalStorage: false,
+    useLocalStorage: false,
     maxFileSize: 50 * 1024 * 1024,
   }),
   createTradeDebtor
@@ -41,7 +41,7 @@ router.post("/bulk-delete", bulkDeleteDebtors);
 router.put(
   "/:id",
   tradeDebtorUploadHandler({
-   useLocalStorage: false,
+    useLocalStorage: false,
     maxFileSize: 50 * 1024 * 1024,
   }),
   updateTradeDebtor

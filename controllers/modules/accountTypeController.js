@@ -589,40 +589,40 @@ export const updateTradeDebtor = async (req, res, next) => {
     });
 
     // Validate addresses if provided
-    if (updateData.addresses && Array.isArray(updateData.addresses)) {
-      for (const address of updateData.addresses) {
-        if (
-          !address.streetAddress ||
-          !address.city ||
-          !address.country ||
-          !address.zipCode
-        ) {
-          throw createAppError(
-            "Address must include streetAddress, city, country, and zipCode",
-            400,
-            "INVALID_ADDRESS_DATA"
-          );
-        }
-      }
-    }
+    // if (updateData.addresses && Array.isArray(updateData.addresses)) {
+    //   for (const address of updateData.addresses) {
+    //     if (
+    //       !address.streetAddress ||
+    //       !address.city ||
+    //       !address.country ||
+    //       !address.zipCode
+    //     ) {
+    //       throw createAppError(
+    //         "Address must include streetAddress, city, country, and zipCode",
+    //         400,
+    //         "INVALID_ADDRESS_DATA"
+    //       );
+    //     }
+    //   }
+    // }
 
     // Validate employees if provided
-    if (updateData.employees && Array.isArray(updateData.employees)) {
-      for (const employee of updateData.employees) {
-        if (
-          !employee.name ||
-          !employee.designation ||
-          !employee.email ||
-          !employee.mobile
-        ) {
-          throw createAppError(
-            "Employee must include name, designation, email, and mobile",
-            400,
-            "INVALID_EMPLOYEE_DATA"
-          );
-        }
-      }
-    }
+    // if (updateData.employees && Array.isArray(updateData.employees)) {
+    //   for (const employee of updateData.employees) {
+    //     if (
+    //       !employee.name ||
+    //       !employee.designation ||
+    //       !employee.email ||
+    //       !employee.mobile
+    //     ) {
+    //       throw createAppError(
+    //         "Employee must include name, designation, email, and mobile",
+    //         400,
+    //         "INVALID_EMPLOYEE_DATA"
+    //       );
+    //     }
+    //   }
+    // }
 
     // Clean up client-side flags
     delete updateData.replaceVatDocuments;
