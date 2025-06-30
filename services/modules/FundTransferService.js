@@ -4,19 +4,39 @@ import FundTransfer from "../../models/modules/FundTransfer.js";
 import { createAppError } from "../../utils/errorHandler.js"; // Assuming createAppError is exported from a utility file
 
 class FundTransferService {
-  static async accountToAccountTransfer(senderId, receiverId, value, assetType, adminId) {
+  static async accountToAccountTransfer(
+    senderId,
+    receiverId,
+    value,
+    assetType,
+    adminId
+  ) {
     try {
       const senderAccount = await AccountType.findById(senderId);
       const receiverAccount = await AccountType.findById(receiverId);
       if (!senderAccount || !receiverAccount) {
-        throw createAppError("Sender or receiver account not found", 404, "ACCOUNT_NOT_FOUND");
+        throw createAppError(
+          "Sender or receiver account not found",
+          404,
+          "ACCOUNT_NOT_FOUND"
+        );
       }
 
       if (assetType === "CASH") {
-        await handleCashTransfer(senderAccount, receiverAccount, value, adminId);
+        await handleCashTransfer(
+          senderAccount,
+          receiverAccount,
+          value,
+          adminId
+        );
       }
       if (assetType === "GOLD") {
-        await handleGoldTransfer(senderAccount, receiverAccount, value, adminId);
+        await handleGoldTransfer(
+          senderAccount,
+          receiverAccount,
+          value,
+          adminId
+        );
       }
     } catch (error) {
       if (error.name === "ValidationError") {
@@ -27,49 +47,84 @@ class FundTransferService {
     }
   }
 
-  static async openingBalanceTransfer(receiverId, value, adminId) {
+  static async openingBalanceTransfer(receiverId, value, adminId, assetType) {
     try {
-        const receiverAccount = await AccountType.findById(receiverId);
-        if (!receiverAccount) {
-            throw createAppError("Receiver account not found", 404, "ACCOUNT_NOT_FOUND");
-        }
+      const receiverAccount = await AccountType.findById(receiverId);
+      if (!receiverAccount) {
+        throw createAppError(
+          "Receiver account not found",
+          404,
+          "ACCOUNT_NOT_FOUND"
+        );
+      }
 
+      if (assetType === "CASH") {
         receiverAccount.balances.cashBalance.amount += value;
 
         const transaction = new Registry({
-            transactionId: await Registry.generateTransactionId(),
-            type: "PARTY_CASH_BALANCE",
-            description: `OPENING BALANCE FOR ${receiverAccount.customerName}`,
-            value: value,
-            runningBalance: 0,
-            previousBalance: 0,
-            credit: value,
-            reference: `Opening balance for ${receiverAccount.customerName}`,
-            createdBy: adminId,
-            party: receiverAccount._id,
+          transactionId: await Registry.generateTransactionId(),
+          type: "PARTY_CASH_BALANCE",
+          description: `OPENING BALANCE FOR ${receiverAccount.customerName}`,
+          value: value,
+          runningBalance: 0,
+          previousBalance: 0,
+          credit: value,
+          reference: `Opening balance for ${receiverAccount.customerName}`,
+          createdBy: adminId,
+          party: receiverAccount._id,
         });
         const transactionForParty = new Registry({
-            transactionId: await Registry.generateTransactionId(),
-            type: "OPENING_BALANCE",
-            description: `OPENING BALANCE FOR ${receiverAccount.customerName}`,
-            value: value,
-            runningBalance: 0,
-            previousBalance: 0,
-            credit: value,
-            reference: `Opening balance for ${receiverAccount.customerName}`,
-            createdBy: adminId,
-            party: receiverAccount._id,
+          transactionId: await Registry.generateTransactionId(),
+          type: "OPENING_BALANCE",
+          description: `OPENING BALANCE FOR ${receiverAccount.customerName}`,
+          value: value,
+          runningBalance: 0,
+          previousBalance: 0,
+          credit: value,
+          reference: `Opening balance for ${receiverAccount.customerName}`,
+          createdBy: adminId,
+          party: receiverAccount._id,
         });
         await receiverAccount.save();
         await transactionForParty.save();
         await transaction.save();
+      } else if (assetType === "GOLD") {
+        receiverAccount.balances.goldBalance.totalGrams += value;
+
+        const transaction = new Registry({
+          transactionId: await Registry.generateTransactionId(),
+          type: "PARTY_GOLD_BALANCE",
+          description: `OPENING GOLD FOR ${receiverAccount.customerName}`,
+          value: value,
+          runningBalance: 0,
+          previousBalance: 0,
+          credit: value,
+          reference: `Opening gold for ${receiverAccount.customerName}`,
+          createdBy: adminId,
+          party: receiverAccount._id,
+        });
+        const transactionForParty = new Registry({
+          transactionId: await Registry.generateTransactionId(),
+          type: "OPENING_BALANCE",
+          description: `OPENING GOLD FOR ${receiverAccount.customerName}`,
+          value: value,
+          runningBalance: 0,
+          previousBalance: 0,
+          credit: value,
+          reference: `Opening gold for ${receiverAccount.customerName}`,
+          createdBy: adminId,
+          party: receiverAccount._id,
+        });
+        await receiverAccount.save();
+        await transactionForParty.save();
+        await transaction.save();
+      }
     } catch (error) {
       if (error.name === "ValidationError") {
         const messages = Object.values(error.errors).map((err) => err.message);
         throw createAppError(messages.join(", "), 400, "VALIDATION_ERROR");
       }
       throw error;
-        
     }
   }
 
@@ -87,9 +142,18 @@ class FundTransferService {
   }
 }
 
-async function handleCashTransfer(senderAccount, receiverAccount, value, adminId) {
+async function handleCashTransfer(
+  senderAccount,
+  receiverAccount,
+  value,
+  adminId
+) {
   if (senderAccount.balances.cashBalance.amount < value) {
-    throw createAppError("Insufficient balance in sender's account", 400, "INSUFFICIENT_BALANCE");
+    throw createAppError(
+      "Insufficient balance in sender's account",
+      400,
+      "INSUFFICIENT_BALANCE"
+    );
   }
 
   // Deduct from sender's account
@@ -129,13 +193,13 @@ async function handleCashTransfer(senderAccount, receiverAccount, value, adminId
     description: `CASH TRANSFER FROM ${senderAccount.customerName} TO ${receiverAccount.customerName}`,
     value: value,
     assetType: "CASH",
-    receivingParty:{
-        party: receiverAccount._id,
-        credit: value
+    receivingParty: {
+      party: receiverAccount._id,
+      credit: value,
     },
     sendingParty: {
-        party: senderAccount._id,
-        debit: value
+      party: senderAccount._id,
+      debit: value,
     },
     isBullion: false,
     createdBy: adminId,
@@ -148,9 +212,18 @@ async function handleCashTransfer(senderAccount, receiverAccount, value, adminId
   await fundTransfer.save();
 }
 
-async function handleGoldTransfer(senderAccount, receiverAccount, value, adminId) {
+async function handleGoldTransfer(
+  senderAccount,
+  receiverAccount,
+  value,
+  adminId
+) {
   if (senderAccount.balances.goldBalance.totalGrams < value) {
-    throw createAppError("Insufficient balance in sender's account", 400, "INSUFFICIENT_BALANCE");
+    throw createAppError(
+      "Insufficient balance in sender's account",
+      400,
+      "INSUFFICIENT_BALANCE"
+    );
   }
 
   // Deduct from sender's account
@@ -185,18 +258,18 @@ async function handleGoldTransfer(senderAccount, receiverAccount, value, adminId
     party: receiverAccount._id,
   });
 
-   const fundTransfer = new FundTransfer({
+  const fundTransfer = new FundTransfer({
     transactionId: await FundTransfer.generateTransactionId(),
     description: `GOLD TRANSFER FROM ${senderAccount.customerName} TO ${receiverAccount.customerName}`,
     value: value,
     assetType: "GOLD",
-    receivingParty:{
-        party: receiverAccount._id,
-        credit: value
+    receivingParty: {
+      party: receiverAccount._id,
+      credit: value,
     },
     sendingParty: {
-        party: senderAccount._id,
-        debit: value
+      party: senderAccount._id,
+      debit: value,
     },
     isBullion: false,
     createdBy: adminId,

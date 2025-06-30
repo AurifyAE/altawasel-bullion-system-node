@@ -19,14 +19,14 @@ export const accountToAccountTransfer = async (req, res, next) => {
 
 export const openingBalanceTransfer = async (req, res, next) => {
   try {
-    const { receiverId, value } = req.body;
+    const { receiverId, value, assetType } = req.body;
     const adminId = req.admin.id;
 
-    if (!receiverId || !value) {
+    if (!receiverId || !value || !assetType) {
       return res.status(400).json({ message: "Missing required fields" });
     }
 
-    await FundTransferService.openingBalanceTransfer(receiverId, value, adminId);
+    await FundTransferService.openingBalanceTransfer(receiverId, value, adminId, assetType);
 
     res.status(200).json({ message: "Opening balance transfer successful" });
   } catch (error) {
