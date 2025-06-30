@@ -72,8 +72,9 @@ class RegistryService {
       // Execute query
       const [registries, total] = await Promise.all([
         Registry.find(query)
-          .populate('createdBy', 'name email')
-          .populate('updatedBy', 'name email')
+          .populate('createdBy')
+          .populate('updatedBy')
+          .populate('party')
           // .populate('costCenter', 'code name')
           .sort(sortConfig)
           .skip(skip)
