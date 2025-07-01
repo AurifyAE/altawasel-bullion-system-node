@@ -47,86 +47,114 @@ class FundTransferService {
     }
   }
 
-  static async openingBalanceTransfer(receiverId, value, adminId, assetType) {
-    try {
-      const receiverAccount = await AccountType.findById(receiverId);
-      if (!receiverAccount) {
-        throw createAppError(
-          "Receiver account not found",
-          404,
-          "ACCOUNT_NOT_FOUND"
-        );
-      }
-
-      if (assetType === "CASH") {
-        receiverAccount.balances.cashBalance.amount += value;
-
-        const transaction = new Registry({
-          transactionId: await Registry.generateTransactionId(),
-          type: "PARTY_CASH_BALANCE",
-          description: `OPENING BALANCE FOR ${receiverAccount.customerName}`,
-          value: value,
-          runningBalance: 0,
-          previousBalance: 0,
-          credit: value,
-          reference: `Opening balance for ${receiverAccount.customerName}`,
-          createdBy: adminId,
-          party: receiverAccount._id,
-        });
-        const transactionForParty = new Registry({
-          transactionId: await Registry.generateTransactionId(),
-          type: "OPENING_CASH_BALANCE",
-          description: `OPENING BALANCE FOR ${receiverAccount.customerName}`,
-          value: value,
-          runningBalance: 0,
-          previousBalance: 0,
-          credit: value,
-          reference: `Opening balance for ${receiverAccount.customerName}`,
-          createdBy: adminId,
-          party: receiverAccount._id,
-        });
-        await receiverAccount.save();
-        await transactionForParty.save();
-        await transaction.save();
-      } else if (assetType === "GOLD") {
-        receiverAccount.balances.goldBalance.totalGrams += value;
-
-        const transaction = new Registry({
-          transactionId: await Registry.generateTransactionId(),
-          type: "PARTY_GOLD_BALANCE",
-          description: `OPENING GOLD FOR ${receiverAccount.customerName}`,
-          value: value,
-          runningBalance: 0,
-          previousBalance: 0,
-          credit: value,
-          reference: `Opening gold for ${receiverAccount.customerName}`,
-          createdBy: adminId,
-          party: receiverAccount._id,
-        });
-        const transactionForParty = new Registry({
-          transactionId: await Registry.generateTransactionId(),
-          type: "OPENING_GOLD_BALANCE",
-          description: `OPENING GOLD FOR ${receiverAccount.customerName}`,
-          value: value,
-          runningBalance: 0,
-          previousBalance: 0,
-          credit: value,
-          reference: `Opening gold for ${receiverAccount.customerName}`,
-          createdBy: adminId,
-          party: receiverAccount._id,
-        });
-        await receiverAccount.save();
-        await transactionForParty.save();
-        await transaction.save();
-      }
-    } catch (error) {
-      if (error.name === "ValidationError") {
-        const messages = Object.values(error.errors).map((err) => err.message);
-        throw createAppError(messages.join(", "), 400, "VALIDATION_ERROR");
-      }
-      throw error;
+static async openingBalanceTransfer(receiverId, value, adminId, assetType) {
+  try {
+    const receiverAccount = await AccountType.findById(receiverId);
+    if (!receiverAccount) {
+      throw createAppError(
+        "Receiver account not found",
+        404,
+        "ACCOUNT_NOT_FOUND"
+      );
     }
+
+    // Determine if it's credit or debit
+    const isCredit = value > 0;
+    const isDebit = value < 0;
+    const absoluteValue = Math.abs(value);
+    
+    if (assetType === "CASH") {
+      // Store previous balance for tracking
+      const previousBalance = receiverAccount.balances.cashBalance.amount;
+      
+      // Update account balance (add positive, subtract negative)
+      receiverAccount.balances.cashBalance.amount += value;
+      
+      // Calculate running balance
+      const runningBalance = receiverAccount.balances.cashBalance.amount;
+
+      const transaction = new Registry({
+        transactionId: await Registry.generateTransactionId(),
+        type: "PARTY_CASH_BALANCE",
+        description: `OPENING BALANCE FOR ${receiverAccount.customerName}`,
+        value: absoluteValue,
+        runningBalance: runningBalance,
+        previousBalance: previousBalance,
+        credit: isCredit ? absoluteValue : 0,
+        debit: isDebit ? absoluteValue : 0,
+        reference: `Opening balance for ${receiverAccount.customerName}`,
+        createdBy: adminId,
+        party: receiverAccount._id,
+      });
+
+      const transactionForParty = new Registry({
+        transactionId: await Registry.generateTransactionId(),
+        type: "OPENING_CASH_BALANCE",
+        description: `OPENING BALANCE FOR ${receiverAccount.customerName}`,
+        value: absoluteValue,
+        runningBalance: runningBalance,
+        previousBalance: previousBalance,
+        credit: isCredit ? absoluteValue : 0,
+        debit: isDebit ? absoluteValue : 0,
+        reference: `Opening balance for ${receiverAccount.customerName}`,
+        createdBy: adminId,
+        party: receiverAccount._id,
+      });
+
+      await receiverAccount.save();
+      await transactionForParty.save();
+      await transaction.save();
+
+    } else if (assetType === "GOLD") {
+      // Store previous balance for tracking
+      const previousBalance = receiverAccount.balances.goldBalance.totalGrams;
+      
+      // Update account balance (add positive, subtract negative)
+      receiverAccount.balances.goldBalance.totalGrams += value;
+      
+      // Calculate running balance
+      const runningBalance = receiverAccount.balances.goldBalance.totalGrams;
+
+      const transaction = new Registry({
+        transactionId: await Registry.generateTransactionId(),
+        type: "PARTY_GOLD_BALANCE",
+        description: `OPENING GOLD FOR ${receiverAccount.customerName}`,
+        value: absoluteValue,
+        runningBalance: runningBalance,
+        previousBalance: previousBalance,
+        credit: isCredit ? absoluteValue : 0,
+        debit: isDebit ? absoluteValue : 0,
+        reference: `Opening gold for ${receiverAccount.customerName}`,
+        createdBy: adminId,
+        party: receiverAccount._id,
+      });
+
+      const transactionForParty = new Registry({
+        transactionId: await Registry.generateTransactionId(),
+        type: "OPENING_GOLD_BALANCE",
+        description: `OPENING GOLD FOR ${receiverAccount.customerName}`,
+        value: absoluteValue,
+        runningBalance: runningBalance,
+        previousBalance: previousBalance,
+        credit: isCredit ? absoluteValue : 0,
+        debit: isDebit ? absoluteValue : 0,
+        reference: `Opening gold for ${receiverAccount.customerName}`,
+        createdBy: adminId,
+        party: receiverAccount._id,
+      });
+
+      await receiverAccount.save();
+      await transactionForParty.save();
+      await transaction.save();
+    }
+  } catch (error) {
+    if (error.name === "ValidationError") {
+      const messages = Object.values(error.errors).map((err) => err.message);
+      throw createAppError(messages.join(", "), 400, "VALIDATION_ERROR");
+    }
+    throw error;
   }
+}
 
   static async getFundTransfers() {
     try {
