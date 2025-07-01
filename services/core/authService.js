@@ -4,12 +4,12 @@ import { createAppError } from "../../utils/errorHandler.js";
 
 // JWT Configuration
 const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key";
-const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || "7d";
-const JWT_REFRESH_EXPIRES_IN = process.env.JWT_REFRESH_EXPIRES_IN || "30d";
+const JWT_EXPIRES_IN = "7d";
+const JWT_REFRESH_EXPIRES_IN = "30d";
 
 
 export const generateTokens = (payload) => {
-  const accessToken = jwt.sign(payload, JWT_SECRET, {
+  const accessToken = jwt.sign({ ...payload, type: "access" }, JWT_SECRET, {
     expiresIn: JWT_EXPIRES_IN,
     issuer: "bullion-system",
     audience: "bullion-admin",
@@ -26,21 +26,47 @@ export const generateTokens = (payload) => {
 
 
 export const verifyToken = (token) => {
+  let type = "access"; // default to access if decoding fails
+
   try {
+    // Decode the token first (without verifying) to read the `type`
+    const decodedPayload = jwt.decode(token);
+
+    if (decodedPayload && decodedPayload.type) {
+      type = decodedPayload.type;
+    }
+
+    // Now fully verify the token
     return jwt.verify(token, JWT_SECRET, {
       issuer: "bullion-system",
       audience: "bullion-admin",
     });
+
   } catch (error) {
     if (error.name === "TokenExpiredError") {
-      throw createAppError("Token has expired", 401, "TOKEN_EXPIRED");
+      throw createAppError(
+        type === "refresh"
+          ? "Refresh token has expired. Please log in again."
+          : "Access token has expired",
+        401,
+        type === "refresh" ? "REFRESH_TOKEN_EXPIRED" : "ACCESS_TOKEN_EXPIRED"
+      );
     }
+
     if (error.name === "JsonWebTokenError") {
-      throw createAppError("Invalid token", 401, "INVALID_TOKEN");
+      throw createAppError(
+        type === "refresh"
+          ? "Invalid refresh token"
+          : "Invalid access token",
+        401,
+        type === "refresh" ? "INVALID_REFRESH_TOKEN" : "INVALID_ACCESS_TOKEN"
+      );
     }
+
     throw createAppError("Token verification failed", 401, "TOKEN_ERROR");
   }
 };
+
 
 
 export const loginAdmin = async (email, password, ipAddress = null) => {
@@ -161,6 +187,9 @@ export const refreshAccessToken = async (refreshToken) => {
 
     // Verify refresh token
     const decoded = verifyToken(refreshToken);
+    console.log('====================================');
+    console.log(decoded);
+    console.log('====================================');
 
     if (decoded.type !== "refresh") {
       throw createAppError("Invalid token type", 401, "INVALID_TOKEN_TYPE");
