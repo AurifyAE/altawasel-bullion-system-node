@@ -162,21 +162,21 @@ class MetalTransactionService {
   ) {
     return mode === "fix"
       ? this.buildPurchaseFixEntries(
-          totals,
-          party,
-          baseTransactionId,
-          voucherDate,
-          voucherNumber,
-          adminId
-        )
+        totals,
+        party,
+        baseTransactionId,
+        voucherDate,
+        voucherNumber,
+        adminId
+      )
       : this.buildPurchaseUnfixEntries(
-          totals,
-          party,
-          baseTransactionId,
-          voucherDate,
-          voucherNumber,
-          adminId
-        );
+        totals,
+        party,
+        baseTransactionId,
+        voucherDate,
+        voucherNumber,
+        adminId
+      );
   }
 
   // Build sale entries based on mode
@@ -191,21 +191,21 @@ class MetalTransactionService {
   ) {
     return mode === "fix"
       ? this.buildSaleFixEntries(
-          totals,
-          party,
-          baseTransactionId,
-          voucherDate,
-          voucherNumber,
-          adminId
-        )
+        totals,
+        party,
+        baseTransactionId,
+        voucherDate,
+        voucherNumber,
+        adminId
+      )
       : this.buildSaleUnfixEntries(
-          totals,
-          party,
-          baseTransactionId,
-          voucherDate,
-          voucherNumber,
-          adminId
-        );
+        totals,
+        party,
+        baseTransactionId,
+        voucherDate,
+        voucherNumber,
+        adminId
+      );
   }
 
   // Calculate totals from stock items (FIXED - Premium/Discount handling)
@@ -236,7 +236,7 @@ class MetalTransactionService {
           grossWeight: acc.grossWeight + grossWeight,
         };
       },
-      { makingCharges: 0, premium: 0, discount: 0, goldValue: 0, pureWeight: 0 ,grossWeight:0}
+      { makingCharges: 0, premium: 0, discount: 0, goldValue: 0, pureWeight: 0, grossWeight: 0 }
     );
 
     totals.totalAmount = totalAmountSession?.totalAmountAED || 0;
@@ -248,7 +248,7 @@ class MetalTransactionService {
       goldValue: totals.goldValue,
       pureWeight: totals.pureWeight,
       totalAmount: totals.totalAmount,
-      grossWeight:totals.grossWeight
+      grossWeight: totals.grossWeight
     });
 
     return totals;
@@ -851,7 +851,7 @@ class MetalTransactionService {
   }
 
   // Build update operations for account balance (FIXED - Added premium/discount)
-static buildUpdateOperations(balanceChanges) {
+  static buildUpdateOperations(balanceChanges) {
     const incObj = {};
     const setObj = {};
 
@@ -862,9 +862,9 @@ static buildUpdateOperations(balanceChanges) {
     }
 
     // Combine all cash-related changes into single cashBalance update
-    const totalCashChange = balanceChanges.cashBalance + 
-                           balanceChanges.premiumBalance + 
-                           balanceChanges.discountBalance;
+    const totalCashChange = balanceChanges.cashBalance +
+      balanceChanges.premiumBalance +
+      balanceChanges.discountBalance;
 
     if (totalCashChange !== 0) {
       incObj["balances.cashBalance.amount"] = parseFloat(totalCashChange.toFixed(2));
@@ -2081,9 +2081,8 @@ static buildUpdateOperations(balanceChanges) {
         new Registry({
           transactionId: transactionId,
           type: "gold",
-          description: `Gold ${transaction.transactionType} - ${
-            stockItem.description || "Metal Item"
-          }`,
+          description: `Gold ${transaction.transactionType} - ${stockItem.description || "Metal Item"
+            }`,
           paryty: transaction.partyCode,
           value: pureWeight,
           debit: transaction.transactionType === "sale" ? pureWeight : 0,
@@ -2099,9 +2098,8 @@ static buildUpdateOperations(balanceChanges) {
         new Registry({
           transactionId: transactionId,
           type: "stock_balance",
-          description: `Stock Balance ${transaction.transactionType} - ${
-            stockItem.description || "Metal Item"
-          }`,
+          description: `Stock Balance ${transaction.transactionType} - ${stockItem.description || "Metal Item"
+            }`,
           paryty: transaction.partyCode,
           value: pureWeight,
           debit: transaction.transactionType === "sale" ? pureWeight : 0,
@@ -2223,9 +2221,8 @@ static buildUpdateOperations(balanceChanges) {
         new Registry({
           transactionId: transactionId,
           type: "gold",
-          description: `REVERSAL - Gold ${transaction.transactionType} - ${
-            stockItem.description || "Metal Item"
-          }`,
+          description: `REVERSAL - Gold ${transaction.transactionType} - ${stockItem.description || "Metal Item"
+            }`,
           paryty: transaction.partyCode,
           value: pureWeight,
           debit: transaction.transactionType === "purchase" ? pureWeight : 0,
@@ -2241,9 +2238,8 @@ static buildUpdateOperations(balanceChanges) {
         new Registry({
           transactionId: transactionId,
           type: "stock_balance",
-          description: `REVERSAL - Stock Balance ${
-            transaction.transactionType
-          } - ${stockItem.description || "Metal Item"}`,
+          description: `REVERSAL - Stock Balance ${transaction.transactionType
+            } - ${stockItem.description || "Metal Item"}`,
           paryty: transaction.partyCode,
           value: pureWeight,
           debit: transaction.transactionType === "purchase" ? pureWeight : 0,

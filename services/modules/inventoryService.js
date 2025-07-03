@@ -24,6 +24,30 @@ class InventoryService {
         }
     }
 
+    static async fetchInventoryById(inventoryId) {
+        try {
+            const inventory = await Inventory.findById(inventoryId)
+                .populate([
+                    {
+                        path: "metal",
+                        populate: [
+                            { path: "karat" },
+                            { path: "metalType" }
+                        ]
+                    },
+                    { path: "createdBy" }
+                ]);
+    
+            if (!inventory) {
+                throw createAppError("Inventory not found", 404, "NOT_FOUND");
+            }
+    
+            return inventory;
+        } catch (err) {
+            throw createAppError("Failed to fetch inventory", 500, "FETCH_SINGLE_ERROR");
+        }
+    }
+
 
     static async addInitialInventory(metal, createdBy) {
         try {

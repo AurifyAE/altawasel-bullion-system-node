@@ -11,6 +11,16 @@ export const getAllInventory = async (req, res, next) => {
     }
 };
 
+export const getInventoryById = async (req, res, next) => {
+    try {
+
+        const getAllInventory = await InventoryService.fetchInventoryById(req.params.id)
+        res.status(200).json(getAllInventory);
+    } catch (error) {
+        next(error);
+    }
+};
+
 // inital invenoty add
 export const createInventory = async (req, res, next) => {
     try {
@@ -37,7 +47,7 @@ export const updateInventory = async (req, res, next) => {
             });
         }
         const adminId = req.admin.id;
-        const updatedItem = await InventoryService.updateInventoryByFrontendInput({ metalId, type, value,adminId });
+        const updatedItem = await InventoryService.updateInventoryByFrontendInput({ metalId, type, value, adminId });
 
         res.status(200).json({
             success: true,
