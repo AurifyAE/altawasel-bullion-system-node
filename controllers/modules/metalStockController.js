@@ -1,5 +1,6 @@
 import { createAppError } from "../../utils/errorHandler.js";
 import MetalStockService from "../../services/modules/MetalStockService.js";
+import InventoryService from "../../services/modules/inventoryService.js";
 
 // Create new metal stock
 export const createMetalStock = async (req, res, next) => {
@@ -68,6 +69,7 @@ export const createMetalStock = async (req, res, next) => {
     };
 
     const result = await MetalStockService.createMetalStock(metalStockData, req.admin.id);
+    await InventoryService.addInitialInventory(result, req.admin.id);
 
     res.status(201).json({
       success: true,

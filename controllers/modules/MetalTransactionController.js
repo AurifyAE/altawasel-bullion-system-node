@@ -1,3 +1,4 @@
+import InventoryService from "../../services/modules/inventoryService.js";
 import MetalTransactionService from "../../services/modules/MetalTransactionService.js";
 import { createAppError } from "../../utils/errorHandler.js";
 
@@ -19,7 +20,7 @@ export const createMetalTransaction = async (req, res, next) => {
       status,
       notes,
     } = req.body;
-console.log(req.body)
+    console.log(req.body)
     // Validation (already handled by middleware, but ensuring critical fields)
     if (
       !transactionType ||
@@ -102,17 +103,22 @@ console.log(req.body)
       notes: notes?.trim(),
     };
 
+    const metalTransaction = await MetalTransactionService.createMetalTransaction(
+      transactionData,
+      req.admin.id
+    );
 
-      const metalTransaction = await MetalTransactionService.createMetalTransaction(
-        transactionData,
-        req.admin.id
-      );
+    if (metalTransaction.transactionType === "sale") {
+      await InventoryService.updateInventory(metalTransaction, true);
+    } else {
+      await InventoryService.updateInventory(metalTransaction);
+    }
 
-      res.status(201).json({
-        success: true,
-        message: `Metal ${transactionType} created successfully`,
-        data: metalTransaction,
-      });
+    res.status(201).json({
+      success: true,
+      message: `Metal ${transactionType} created successfully`,
+      data: metalTransaction,
+    });
   } catch (error) {
     next(error);
   }
@@ -521,7 +527,7 @@ export const getUnfixedTransactions = async (req, res, next) => {
     res.status(200).json({
       success: true,
       message: "Unfixed transaction parties retrieved successfully",
-     data: {
+      data: {
         parties: result.parties.map((party) => ({
           _id: party._id,
           accountCode: party.accountCode,
