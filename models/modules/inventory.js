@@ -21,6 +21,7 @@ const InventorySchema = new mongoose.Schema(
                 message: "pcsCount must be a non-negative integer when pcs is true",
             },
         },
+        
         grossWeight: {
             type: Number,
             default: 0,
