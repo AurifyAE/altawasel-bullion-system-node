@@ -1,5 +1,5 @@
 import mongoose from "mongoose";
-import Inventory from "../../models/modules/Inventory.js";
+import Inventory from "../../models/modules/inventory.js";
 import Registry from "../../models/modules/Registry.js";
 import { createAppError } from "../../utils/errorHandler.js";
 import MetalStock from "../../models/modules/MetalStock.js";
