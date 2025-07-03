@@ -137,10 +137,10 @@ export const createTradeDebtor = async (req, res, next) => {
     if (parsedVatGstDetails && parsedVatGstDetails.vatStatus) {
       const vatStatusMap = {
         'registered': 'REGISTERED',
-        'unregistered': 'UNREGISTERED', 
+        'unregistered': 'UNREGISTERED',
         'exempted': 'EXEMPTED'
       };
-      
+
       const normalizedStatus = vatStatusMap[parsedVatGstDetails.vatStatus.toLowerCase()];
       if (normalizedStatus) {
         parsedVatGstDetails.vatStatus = normalizedStatus;
