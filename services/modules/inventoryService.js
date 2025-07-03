@@ -8,12 +8,22 @@ class InventoryService {
     static async fetchAllInventory() {
         try {
             return await Inventory.find()
-                .populate("metal createdBy")
+                .populate([
+                    {
+                        path: "metal",
+                        populate: [
+                            { path: "karat" },
+                            { path: "metalType" }
+                        ]
+                    },
+                    { path: "createdBy" }
+                ])
                 .sort({ createdAt: -1 });
         } catch (err) {
             throw createAppError("Failed to fetch inventory logs", 500, "FETCH_ERROR");
         }
     }
+
 
     static async addInitialInventory(metal, createdBy) {
         try {
