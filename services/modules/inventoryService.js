@@ -120,7 +120,7 @@ class InventoryService {
                 type: "OPENING_STOCK_BALANCE",
                 description: `OPENING STOCK FOR ${metal.code}`,
                 value: value,
-                credit: 0,
+                credit: value,
                 reference: metal.code,
                 createdBy: adminId
             });
