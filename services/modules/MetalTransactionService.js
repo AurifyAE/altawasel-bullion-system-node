@@ -828,122 +828,147 @@ class MetalTransactionService {
   }
 
   // Account balance updates (FIXED - Premium/Discount handling)
-  static async updateAccountBalances(party, metalTransaction, session) {
-    const { transactionType, fixed, unfix, stockItems, totalAmountSession } =
-      metalTransaction;
-    const totals = this.calculateTotals(stockItems, totalAmountSession);
-    const mode = this.getTransactionMode(fixed, unfix);
-    const balanceChanges = this.calculateBalanceChanges(
-      transactionType,
-      mode,
-      totals
-    );
+static async updateAccountBalances(party, metalTransaction, session) {
+  const { transactionType, fixed, unfix, stockItems, totalAmountSession } =
+    metalTransaction;
+  const totals = this.calculateTotals(stockItems, totalAmountSession);
+  const mode = this.getTransactionMode(fixed, unfix);
+  const balanceChanges = this.calculateBalanceChanges(
+    transactionType,
+    mode,
+    totals
+  );
 
-    // Build update operations
-    const updateOps = this.buildUpdateOperations(balanceChanges);
+  // Build update operations with proper debit/credit logic
+  const updateOps = this.buildUpdateOperations(balanceChanges);
 
-    if (Object.keys(updateOps).length > 0) {
-      await Account.findByIdAndUpdate(party._id, updateOps, {
-        session,
-        new: true,
-      });
-    }
+  if (Object.keys(updateOps).length > 0) {
+    console.log("=== ACCOUNT BALANCE UPDATE ===", {
+      partyId: party._id,
+      partyName: party.customerName,
+      balanceChanges,
+      updateOps
+    });
+
+    await Account.findByIdAndUpdate(party._id, updateOps, {
+      session,
+      new: true,
+    });
   }
+}
 
   // Build update operations for account balance (FIXED - Added premium/discount)
-  static buildUpdateOperations(balanceChanges) {
-    const incObj = {};
-    const setObj = {};
+static buildUpdateOperations(balanceChanges) {
+  const incObj = {};
+  const setObj = {};
 
-    if (balanceChanges.goldBalance !== 0) {
-      incObj["balances.goldBalance.totalGrams"] = balanceChanges.goldBalance;
-      incObj["balances.goldBalance.totalValue"] = balanceChanges.goldValue;
-      setObj["balances.goldBalance.lastUpdated"] = new Date();
-    }
-
-    // Combine all cash-related changes into single cashBalance update
-    const totalCashChange = balanceChanges.cashBalance +
-      balanceChanges.premiumBalance +
-      balanceChanges.discountBalance;
-
-    if (totalCashChange !== 0) {
-      incObj["balances.cashBalance.amount"] = parseFloat(totalCashChange.toFixed(2));
-      setObj["balances.cashBalance.lastUpdated"] = new Date();
-    }
-
-    setObj["balances.lastBalanceUpdate"] = new Date();
-
-    const updateOps = {};
-    if (Object.keys(incObj).length > 0) updateOps.$inc = incObj;
-    if (Object.keys(setObj).length > 0) updateOps.$set = setObj;
-
-    return updateOps;
+  // Handle Gold Balance Updates (Allow negative balances)
+  if (balanceChanges.goldBalance !== 0) {
+    // Gold balance can go negative (debited more than available)
+    incObj["balances.goldBalance.totalGrams"] = balanceChanges.goldBalance;
+    incObj["balances.goldBalance.totalValue"] = balanceChanges.goldValue;
+    setObj["balances.goldBalance.lastUpdated"] = new Date();
   }
 
+  // Handle Cash Balance Updates (Allow negative balances)
+  // Calculate net cash change: base + premium - discount
+  const netCashChange = balanceChanges.cashBalance + 
+                       balanceChanges.premiumBalance + 
+                       balanceChanges.discountBalance;
+
+  if (netCashChange !== 0) {
+    // Cash balance can go negative (debited more than available)
+    incObj["balances.cashBalance.amount"] = parseFloat(netCashChange.toFixed(2));
+    setObj["balances.cashBalance.lastUpdated"] = new Date();
+  }
+
+  // Always update the last balance update timestamp
+  setObj["balances.lastBalanceUpdate"] = new Date();
+
+  const updateOps = {};
+  if (Object.keys(incObj).length > 0) updateOps.$inc = incObj;
+  if (Object.keys(setObj).length > 0) updateOps.$set = setObj;
+
+  return updateOps;
+}
+
   // Calculate balance changes (UPDATED - Premium/Discount handling in cash balance)
-  static calculateBalanceChanges(transactionType, mode, totals) {
-    let goldBalance = 0,
-      goldValue = 0,
-      cashBalance = 0,
-      premiumBalance = 0,
-      discountBalance = 0;
-
-    const balanceMatrix = {
-      purchase: {
-        unfix: {
-          goldBalance: totals.pureWeight,
-          goldValue: totals.goldValue,
-          cashBalance: totals.makingCharges,
-          premiumBalance: totals.premium,     // Premium credited (+)
-          discountBalance: -totals.discount,  // Discount debited (-)
-        },
-        fix: {
-          goldBalance: 0,
-          goldValue: 0,
-          cashBalance: totals.totalAmount,    // Total amount includes all components
-          premiumBalance: 0,                  // Already included in totalAmount
-          discountBalance: 0,                 // Already included in totalAmount
-        },
+static calculateBalanceChanges(transactionType, mode, totals) {
+  const balanceMatrix = {
+    purchase: {
+      unfix: {
+        // PURCHASE UNFIX: Party receives gold, company pays cash components
+        goldBalance: totals.pureWeight,        // CREDIT: Add gold to party
+        goldValue: totals.goldValue,           // CREDIT: Add gold value
+        cashBalance: totals.makingCharges,     // CREDIT: Add making charges
+        premiumBalance: totals.premium,        // CREDIT: Add premium
+        discountBalance: -totals.discount,     // DEBIT: Subtract discount
       },
-      sale: {
-        unfix: {
-          goldBalance: -totals.pureWeight,
-          goldValue: -totals.goldValue,
-          cashBalance: -totals.makingCharges,
-          premiumBalance: -totals.premium,    // Premium debited (-)
-          discountBalance: totals.discount,   // Discount credited (+)
-        },
-        fix: {
-          goldBalance: 0,
-          goldValue: 0,
-          cashBalance: -totals.totalAmount,   // Total amount deducted
-          premiumBalance: 0,                  // Already included in totalAmount
-          discountBalance: 0,                 // Already included in totalAmount
-        },
+      fix: {
+        // PURCHASE FIX: Party receives total cash amount
+        goldBalance: 0,                        // No gold movement
+        goldValue: 0,                          // No gold value change
+        cashBalance: totals.totalAmount,       // CREDIT: Add total amount
+        premiumBalance: 0,                     // Already included in totalAmount
+        discountBalance: 0,                    // Already included in totalAmount
       },
-    };
+    },
+    sale: {
+      unfix: {
+        // SALE UNFIX: Party gives gold, company receives cash components
+        goldBalance: -totals.pureWeight,       // DEBIT: Remove gold from party
+        goldValue: -totals.goldValue,          // DEBIT: Remove gold value
+        cashBalance: -totals.makingCharges,    // DEBIT: Remove making charges
+        premiumBalance: -totals.premium,       // DEBIT: Remove premium
+        discountBalance: totals.discount,      // CREDIT: Add discount (party gets discount)
+      },
+      fix: {
+        // SALE FIX: Party pays total cash amount
+        goldBalance: 0,                        // No gold movement
+        goldValue: 0,                          // No gold value change
+        cashBalance: -totals.totalAmount,      // DEBIT: Remove total amount
+        premiumBalance: 0,                     // Already included in totalAmount
+        discountBalance: 0,                    // Already included in totalAmount
+      },
+    },
+  };
 
-    const changes = balanceMatrix[transactionType]?.[mode] || {
-      goldBalance: 0,
-      goldValue: 0,
-      cashBalance: 0,
-      premiumBalance: 0,
-      discountBalance: 0,
-    };
+  const changes = balanceMatrix[transactionType]?.[mode] || {
+    goldBalance: 0,
+    goldValue: 0,
+    cashBalance: 0,
+    premiumBalance: 0,
+    discountBalance: 0,
+  };
 
-    console.log("=== BALANCE CHANGES ===", {
-      transactionType,
-      mode,
+  // Calculate net cash change for logging
+  const netCashChange = changes.cashBalance + 
+                       changes.premiumBalance + 
+                       changes.discountBalance;
+
+  console.log("=== BALANCE CHANGES CALCULATION ===", {
+    transactionType: transactionType.toUpperCase(),
+    mode: mode.toUpperCase(),
+    totals: {
+      pureWeight: totals.pureWeight,
+      goldValue: totals.goldValue,
+      makingCharges: totals.makingCharges,
+      premium: totals.premium,
+      discount: totals.discount,
+      totalAmount: totals.totalAmount
+    },
+    changes: {
       goldBalance: changes.goldBalance,
       goldValue: changes.goldValue,
       cashBalance: changes.cashBalance,
       premiumBalance: changes.premiumBalance,
       discountBalance: changes.discountBalance,
-      totalCashChange: changes.cashBalance + changes.premiumBalance + changes.discountBalance
-    });
+      netCashChange: netCashChange
+    }
+  });
 
-    return changes;
-  }
+  return changes;
+}
 
   // Generate unique transaction ID (optimized)
   static generateTransactionId() {

@@ -5,7 +5,8 @@ const AccountSchema = new mongoose.Schema(
     // Basic Account Information
     accountType: {
       type: String,
-      enum: ["DEBTOR", "SUPPLIER"],
+      default: "DEBTOR",
+      // enum: ["DEBTOR", "SUPPLIER"],
       required: [true, "Account type is required"],
       trim: true
     },
