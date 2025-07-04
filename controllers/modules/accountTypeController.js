@@ -9,7 +9,6 @@ export const createTradeDebtor = async (req, res, next) => {
     console.log("Files by field:", req.filesByField);
 
     const {
-      accountType,
       title,
       accountCode,
       customerName,
@@ -23,6 +22,7 @@ export const createTradeDebtor = async (req, res, next) => {
       bankDetails,
       kycDetails,
     } = req.body;
+    let accountType = "DEBTOR"
 
     // Basic validation - only required fields
     if (!accountCode || !customerName || !title || !accountType) {
