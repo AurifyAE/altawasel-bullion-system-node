@@ -114,10 +114,11 @@ class InventoryService {
 
             await this.createRegistryEntry({
                 transactionId: await Registry.generateTransactionId(),
-                type: "OPENING_STOCK_BALANCE",
+                type: "GOLD_STOCK",
                 description: `OPENING STOCK FOR ${metal.code}`,
                 value: value,
-                credit: 0,
+                isBullion: true,
+                credit: value,
                 reference: metal.code,
                 createdBy: adminId
             });
