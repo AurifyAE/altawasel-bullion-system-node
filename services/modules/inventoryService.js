@@ -37,11 +37,11 @@ class InventoryService {
                     },
                     { path: "createdBy" }
                 ]);
-    
+
             if (!inventory) {
                 throw createAppError("Inventory not found", 404, "NOT_FOUND");
             }
-    
+
             return inventory;
         } catch (err) {
             throw createAppError("Failed to fetch inventory", 500, "FETCH_SINGLE_ERROR");
@@ -75,6 +75,8 @@ class InventoryService {
             }
 
             const inventory = await Inventory.findOne({ metal: new mongoose.Types.ObjectId(metalId) });
+
+
             if (!inventory) {
                 throw createAppError(`Inventory not found for metal ID: ${metalId}`, 404, "INVENTORY_NOT_FOUND");
             }
@@ -95,8 +97,9 @@ class InventoryService {
                 if (!Number.isInteger(qty) || qty < 0) {
                     throw createAppError("Piece count is required and must be a non-negative integer for piece-based stock", 400, "INVALID_PCS_COUNT");
                 }
+                inventory.grossWeight += qty * metal.totalValue;
                 inventory.pcsCount += qty;
-                description = `Inventory ${isAddition ? 'added' : 'removed'}: ${metal.code} - ${Math.abs(qty)} pieces`;
+                description = `Inventory ${isAddition ? 'added' : 'removed'}: ${metal.code} - ${Math.abs(qty)} pieces & ${metal.totalValue} grams`;
                 registryValue = Math.abs(qty) * (metal.pricePerPiece || 0);
 
             } else if (type === "grams") {

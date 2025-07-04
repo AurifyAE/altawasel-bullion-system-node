@@ -137,10 +137,10 @@ export const createTradeDebtor = async (req, res, next) => {
     if (parsedVatGstDetails && parsedVatGstDetails.vatStatus) {
       const vatStatusMap = {
         'registered': 'REGISTERED',
-        'unregistered': 'UNREGISTERED', 
+        'unregistered': 'UNREGISTERED',
         'exempted': 'EXEMPTED'
       };
-      
+
       const normalizedStatus = vatStatusMap[parsedVatGstDetails.vatStatus.toLowerCase()];
       if (normalizedStatus) {
         parsedVatGstDetails.vatStatus = normalizedStatus;
@@ -390,6 +390,16 @@ export const updateTradeDebtor = async (req, res, next) => {
   try {
     const { id } = req.params;
     let updateData = { ...req.body };
+    const { updatetype } = req.query;
+    // for updating type
+    if (updatetype === "true") {
+      const updatedTradeDebtor = await AccountTypeService.updateTradeDebtor(
+        id,
+        updateData,
+        req.admin.id
+      );
+      return res.status(200).json({ message: "Type updated", data: updatedTradeDebtor });
+    }
 
     if (!id) {
       throw createAppError("Trade debtor ID is required", 400, "MISSING_ID");
