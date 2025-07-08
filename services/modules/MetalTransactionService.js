@@ -407,7 +407,7 @@ class MetalTransactionService {
         this.createRegistryEntry(
           baseTransactionId,
           "001",
-          "PARTY_GOLD_CASH",
+          "PARTY_CASH_BALANCE",
           `Purchase Fix - Cash balance credited for ${partyName}: AED ${totals.totalAmount}`,
           party._id,
           false,
@@ -677,7 +677,7 @@ class MetalTransactionService {
         this.createRegistryEntry(
           baseTransactionId,
           "001",
-          "PARTY_GOLD_CASH",
+          "PARTY_CASH_BALANCE",
           `Sale Fix - Cash balance debited for ${partyName}: AED ${totals.totalAmount}`,
           party._id,
           false,
@@ -1173,6 +1173,8 @@ static calculateBalanceChanges(transactionType, mode, totals) {
 
     return true;
   }
+
+  
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////
   // Get all metal transactions with pagination and filters
   static async getAllMetalTransactions(page = 1, limit = 50, filters = {}) {

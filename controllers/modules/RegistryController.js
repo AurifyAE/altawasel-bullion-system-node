@@ -393,7 +393,7 @@ export const getRegistriesByPartyId = async (req, res, next) => {
   try {
     const partyId = req.params.partyId;
     const page = parseInt(req.query.page, 10) || 1;
-    const limit = parseInt(req.query.limit, 10) || 10;
+    const limit = parseInt(req.query.limit, 5000000) || 5000000;
 
     if (!partyId) {
       return res.status(400).json({ success: false, message: 'Party ID is required' });
