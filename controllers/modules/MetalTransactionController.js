@@ -37,7 +37,7 @@ export const createMetalTransaction = async (req, res, next) => {
       );
     }
 
-    if (!["purchase", "sale"].includes(transactionType)) {
+    if (!["purchase", "sale" , "purchaseReturn" ,"saleReturn"].includes(transactionType)) {
       throw createAppError(
         "Invalid transaction type. Must be 'purchase' or 'sale'",
         400,
@@ -103,6 +103,8 @@ export const createMetalTransaction = async (req, res, next) => {
       notes: notes?.trim(),
     };
 
+    console.log(transactionData);
+    
     const metalTransaction = await MetalTransactionService.createMetalTransaction(
       transactionData,
       req.admin.id

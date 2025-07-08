@@ -19,7 +19,7 @@ class VoucherMasterService {
   static async getVoucherConfig(module) {
     const cacheKey = module.toLowerCase();
     const cached = this.voucherCache.get(cacheKey);
-    
+
     if (cached && (Date.now() - cached.timestamp) < this.cacheExpiry) {
       return cached.data;
     }
@@ -57,7 +57,7 @@ class VoucherMasterService {
   }
 
   // Optimized transaction count method
-static async getTransactionCount(module, transactionType) {
+  static async getTransactionCount(module, transactionType) {
     const moduleLC = module.toLowerCase();
     console.log(`[getTransactionCount] INPUT: module="${module}", transactionType="${transactionType}"`);
 
@@ -87,7 +87,7 @@ static async getTransactionCount(module, transactionType) {
         const count = await Entry.countDocuments();
         console.log(`[getTransactionCount] Entry (all) Count:`, count);
         return count;
-      } else if (moduleLC.includes('metal')) {
+      } else if (["metal-purchase", "metal-sale", "purchase-return", "sales-return"].includes(moduleLC)) {
         console.log(`[getTransactionCount] Using model: MetalTransaction`);
         if (transactionType) {
           const query = {
@@ -114,7 +114,7 @@ static async getTransactionCount(module, transactionType) {
   // Format date based on voucher date format
   static formatDate(dateFormat) {
     const today = new Date();
-    
+
     switch (dateFormat) {
       case "DD/MM/YYYY":
         return `${today.getDate().toString().padStart(2, "0")}/${(today.getMonth() + 1).toString().padStart(2, "0")}/${today.getFullYear()}`;
@@ -135,7 +135,6 @@ static async getTransactionCount(module, transactionType) {
 
     // Get voucher configuration (with caching)
     const voucher = await this.getVoucherConfig(module);
-
     // Get transaction count
     const transactionCount = await this.getTransactionCount(module, transactionType);
 
@@ -216,7 +215,7 @@ static async getTransactionCount(module, transactionType) {
 
   static async getEntryVoucherInfo(module, entryType) {
     const validEntryTypes = ["metal receipt", "metal payment", "cash receipt", "cash payment"];
-    
+
     if (!validEntryTypes.includes(entryType.toLowerCase())) {
       throw createAppError(
         `Invalid entry type. Valid types: ${validEntryTypes.join(', ')}`,
@@ -241,10 +240,10 @@ static async getTransactionCount(module, transactionType) {
         const count = await Entry.countDocuments({
           type: { $regex: `^${type}$`, $options: "i" }
         });
-        
+
         const nextSequence = count + 1;
         const nextVoucherNumber = `${voucher.prefix}${nextSequence.toString().padStart(voucher.numberLength, "0")}`;
-        
+
         return {
           type,
           data: {
@@ -299,10 +298,10 @@ static async getTransactionCount(module, transactionType) {
     });
 
     await voucher.save();
-    
+
     // Clear cache for this module
     this.clearCache(module);
-    
+
     return voucher;
   }
 
@@ -329,10 +328,10 @@ static async getTransactionCount(module, transactionType) {
 
     Object.assign(voucher, { ...updateData, updatedBy });
     await voucher.save();
-    
+
     // Clear cache for this module
     this.clearCache(voucher.module);
-    
+
     return voucher;
   }
 
@@ -383,10 +382,10 @@ static async getTransactionCount(module, transactionType) {
     voucher.status = "inactive";
     voucher.updatedBy = updatedBy;
     await voucher.save();
-    
+
     // Clear cache for this module
     this.clearCache(voucher.module);
-    
+
     return voucher;
   }
 
@@ -395,13 +394,13 @@ static async getTransactionCount(module, transactionType) {
     if (!voucher) {
       throw createAppError("Voucher not found", 404, "VOUCHER_NOT_FOUND");
     }
-    
+
     const module = voucher.module;
     await VoucherMaster.findByIdAndDelete(id);
-    
+
     // Clear cache for this module
     this.clearCache(module);
-    
+
     return { message: "Voucher permanently deleted" };
   }
 
@@ -410,12 +409,12 @@ static async getTransactionCount(module, transactionType) {
       throw createAppError("Module is required", 400, "MISSING_MODULE");
     }
 
-    const query = { 
+    const query = {
       module: { $regex: `^${module}$`, $options: "i" },
       isActive: true,
       status: "active"
     };
-    
+
     if (voucherType) {
       query.voucherType = { $regex: `^${voucherType}$`, $options: "i" };
     }
