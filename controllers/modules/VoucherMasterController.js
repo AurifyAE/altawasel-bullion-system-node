@@ -199,7 +199,8 @@ export const getVouchersByModule = async (req, res, next) => {
 export const generateVoucherNumber = async (req, res, next) => {
   try {
     const { module } = req.params;
-    const { transactionType, entryType } = req.query;
+    
+    const { transactionType, entryType } = req.body;
 
     console.log("Generating voucher number for module:", module);
     console.log("Transaction Type:", transactionType);
@@ -218,6 +219,8 @@ export const generateVoucherNumber = async (req, res, next) => {
     }
 
     const result = await VoucherMasterService.generateVoucherNumber(module, actualTransactionType);
+    console.log(result);
+    
 
     res.status(200).json({
       success: true,
