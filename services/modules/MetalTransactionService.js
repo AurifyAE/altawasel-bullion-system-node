@@ -22,6 +22,9 @@ class MetalTransactionService {
         // Save transaction
         await metalTransaction.save({ session });
         createdTransaction = metalTransaction;
+        console.log('====================================');
+        console.log(metalTransaction);
+        console.log('====================================');
 
         // Process registry entries and balance updates in parallel
         await Promise.all([
@@ -88,6 +91,7 @@ class MetalTransactionService {
   static buildRegistryEntries(metalTransaction, party, adminId) {
     const {
       transactionType,
+      _id,
       fixed,
       unfix,
       stockItems,
@@ -114,6 +118,7 @@ class MetalTransactionService {
       entries.push(
         ...this.buildPurchaseEntries(
           mode,
+          _id,
           totals,
           party,
           baseTransactionId,
@@ -126,6 +131,7 @@ class MetalTransactionService {
       entries.push(
         ...this.buildSaleEntries(
           mode,
+          _id,
           totals,
           party,
           baseTransactionId,
@@ -153,6 +159,7 @@ class MetalTransactionService {
   // Build purchase entries based on mode
   static buildPurchaseEntries(
     mode,
+    metalTransactionId,
     totals,
     party,
     baseTransactionId,
@@ -163,6 +170,7 @@ class MetalTransactionService {
     return mode === "fix"
       ? this.buildPurchaseFixEntries(
         totals,
+        metalTransactionId,
         party,
         baseTransactionId,
         voucherDate,
@@ -171,6 +179,7 @@ class MetalTransactionService {
       )
       : this.buildPurchaseUnfixEntries(
         totals,
+        metalTransactionId,
         party,
         baseTransactionId,
         voucherDate,
@@ -257,6 +266,7 @@ class MetalTransactionService {
   // PURCHASE UNFIX - Registry entries (FIXED)
   static buildPurchaseUnfixEntries(
     totals,
+    metalTransactionId,
     party,
     baseTransactionId,
     voucherDate,
@@ -271,6 +281,7 @@ class MetalTransactionService {
       entries.push(
         this.createRegistryEntry(
           baseTransactionId,
+          metalTransactionId,
           "001",
           "PARTY_GOLD_BALANCE",
           `Purchase Unfix - Gold balance credited for ${partyName}: ${totals.pureWeight}g`,
@@ -392,6 +403,7 @@ class MetalTransactionService {
   // PURCHASE FIX - Registry entries (FIXED)
   static buildPurchaseFixEntries(
     totals,
+    metalTransactionId,
     party,
     baseTransactionId,
     voucherDate,
@@ -400,12 +412,12 @@ class MetalTransactionService {
   ) {
     const entries = [];
     const partyName = party.customerName || party.accountCode;
-
     // Party Cash Balance - CREDIT (total amount only)
     if (totals.totalAmount > 0) {
       entries.push(
         this.createRegistryEntry(
           baseTransactionId,
+          metalTransactionId,
           "001",
           "PARTY_CASH_BALANCE",
           `Purchase Fix - Cash balance credited for ${partyName}: AED ${totals.totalAmount}`,
@@ -797,6 +809,7 @@ class MetalTransactionService {
   // Helper to create registry entry (optimized)
   static createRegistryEntry(
     baseId,
+    metalTransactionId,
     suffix,
     type,
     description,
@@ -810,9 +823,10 @@ class MetalTransactionService {
     adminId
   ) {
     if (value <= 0) return null;
-
+    
     return {
       transactionId: `${baseId}-${suffix}`,
+      metalTransactionId,
       type,
       description,
       party: partyId,

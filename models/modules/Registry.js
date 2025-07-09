@@ -7,7 +7,11 @@ const RegistrySchema = new mongoose.Schema(
       required: [true, "Transaction ID is required"],
       trim: true,
       uppercase: true,
-    
+
+    },
+    metalTransactionId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "MetalTransaction",
     },
     costCenter: {
       type: String,
@@ -31,7 +35,7 @@ const RegistrySchema = new mongoose.Schema(
       ref: "Account",
       default: null,
     },
-     isBullion: {
+    isBullion: {
       type: Boolean,
       default: null,
     },
