@@ -22,9 +22,6 @@ class MetalTransactionService {
         // Save transaction
         await metalTransaction.save({ session });
         createdTransaction = metalTransaction;
-        console.log('====================================');
-        console.log(metalTransaction);
-        console.log('====================================');
 
         // Process registry entries and balance updates in parallel
         await Promise.all([
@@ -191,6 +188,7 @@ class MetalTransactionService {
   // Build sale entries based on mode
   static buildSaleEntries(
     mode,
+    metalTransactionId,
     totals,
     party,
     baseTransactionId,
@@ -201,6 +199,7 @@ class MetalTransactionService {
     return mode === "fix"
       ? this.buildSaleFixEntries(
         totals,
+        metalTransactionId,
         party,
         baseTransactionId,
         voucherDate,
@@ -209,6 +208,7 @@ class MetalTransactionService {
       )
       : this.buildSaleUnfixEntries(
         totals,
+        metalTransactionId,
         party,
         baseTransactionId,
         voucherDate,
@@ -438,6 +438,7 @@ class MetalTransactionService {
       entries.push(
         this.createRegistryEntry(
           baseTransactionId,
+          metalTransactionId,
           "002",
           "MAKING_CHARGES",
           `Purchase Fix - Making charges credited:  ${totals.makingCharges}`,
@@ -458,6 +459,7 @@ class MetalTransactionService {
       entries.push(
         this.createRegistryEntry(
           baseTransactionId,
+          metalTransactionId,
           "003",
           "PREMIUM",
           `Purchase Fix - Premium credited:  ${totals.premium}`,
@@ -478,6 +480,7 @@ class MetalTransactionService {
       entries.push(
         this.createRegistryEntry(
           baseTransactionId,
+          metalTransactionId,
           "007",
           "DISCOUNT",
           `Purchase Fix - Discount debited:  ${totals.discount}`,
@@ -539,6 +542,7 @@ class MetalTransactionService {
   // SALE UNFIX - Registry entries (FIXED)
   static buildSaleUnfixEntries(
     totals,
+    metalTransactionId,
     party,
     baseTransactionId,
     voucherDate,
@@ -553,6 +557,7 @@ class MetalTransactionService {
       entries.push(
         this.createRegistryEntry(
           baseTransactionId,
+          metalTransactionId,
           "001",
           "PARTY_GOLD_BALANCE",
           `Sale Unfix - Gold balance debited for ${partyName}: ${totals.pureWeight}g`,
@@ -573,6 +578,7 @@ class MetalTransactionService {
       entries.push(
         this.createRegistryEntry(
           baseTransactionId,
+          metalTransactionId,
           "003",
           "MAKING_CHARGES",
           `Sale Unfix - Making charges debited:  ${totals.makingCharges}`,
@@ -593,6 +599,7 @@ class MetalTransactionService {
       entries.push(
         this.createRegistryEntry(
           baseTransactionId,
+          metalTransactionId,
           "004",
           "PREMIUM",
           `Sale Unfix - Premium debited:  ${totals.premium}`,
@@ -613,6 +620,7 @@ class MetalTransactionService {
       entries.push(
         this.createRegistryEntry(
           baseTransactionId,
+          metalTransactionId,
           "007",
           "DISCOUNT",
           `Sale Unfix - Discount credited:  ${totals.discount}`,
@@ -633,6 +641,7 @@ class MetalTransactionService {
       entries.push(
         this.createRegistryEntry(
           baseTransactionId,
+          metalTransactionId,
           "005",
           "GOLD",
           `Sale Unfix - Gold inventory credited: ${totals.pureWeight}g`,
@@ -653,6 +662,7 @@ class MetalTransactionService {
       entries.push(
         this.createRegistryEntry(
           baseTransactionId,
+          metalTransactionId,
           "006",
           "GOLD_STOCK",
           `Sale Unfix - Gold stock credited: ${totals.grossWeight}g`,
@@ -674,6 +684,7 @@ class MetalTransactionService {
   // SALE FIX - Registry entries (FIXED)
   static buildSaleFixEntries(
     totals,
+    metalTransactionId,
     party,
     baseTransactionId,
     voucherDate,
@@ -688,6 +699,7 @@ class MetalTransactionService {
       entries.push(
         this.createRegistryEntry(
           baseTransactionId,
+          metalTransactionId,
           "001",
           "PARTY_CASH_BALANCE",
           `Sale Fix - Cash balance debited for ${partyName}: AED ${totals.totalAmount}`,
@@ -708,6 +720,7 @@ class MetalTransactionService {
       entries.push(
         this.createRegistryEntry(
           baseTransactionId,
+          metalTransactionId,
           "002",
           "MAKING_CHARGES",
           `Sale Fix - Making charges debited:  ${totals.makingCharges}`,
@@ -728,6 +741,7 @@ class MetalTransactionService {
       entries.push(
         this.createRegistryEntry(
           baseTransactionId,
+          metalTransactionId,
           "003",
           "PREMIUM",
           `Sale Fix - Premium debited:  ${totals.premium}`,
@@ -748,6 +762,7 @@ class MetalTransactionService {
       entries.push(
         this.createRegistryEntry(
           baseTransactionId,
+          metalTransactionId,
           "007",
           "DISCOUNT",
           `Sale Fix - Discount credited:  ${totals.discount}`,
@@ -768,6 +783,7 @@ class MetalTransactionService {
       entries.push(
         this.createRegistryEntry(
           baseTransactionId,
+          metalTransactionId,
           "004",
           "GOLD",
           `Sale Fix - Gold inventory credited: ${totals.pureWeight}g`,
@@ -788,6 +804,7 @@ class MetalTransactionService {
       entries.push(
         this.createRegistryEntry(
           baseTransactionId,
+          metalTransactionId,
           "005",
           "GOLD_STOCK",
           `Sale Fix - Gold stock credited: ${totals.grossWeight}g`,
