@@ -89,6 +89,13 @@ class MetalTransactionService {
     return await Registry.insertMany(entries, { session, ordered: false });
   }
 
+  //delete registry entries with metalTransactionId
+  static async DeleteRegistryEntry(metalTransaction) {
+    console.log(`Deleting registry entries for transaction ID: ${metalTransaction}`);
+    
+    return await Registry.deleteMany({ metalTransactionId: metalTransaction._id });
+  }
+
   // Build registry entries based on transaction type and fix/unfix flags
   static buildRegistryEntries(metalTransaction, party, adminId) {
     const {
@@ -1511,9 +1518,9 @@ class MetalTransactionService {
       description,
       party: partyId,
       isBullion,
-      value: parseFloat(value.toFixed(2)),
-      credit: parseFloat(credit.toFixed(2)),
-      debit: parseFloat(debit.toFixed(2)),
+      value: parseFloat(value),
+      credit: parseFloat(credit),
+      debit: parseFloat(debit),
       transactionDate: date,
       reference,
       createdBy: adminId,
@@ -2282,73 +2289,78 @@ class MetalTransactionService {
 
   // Update metal transaction
   static async updateMetalTransaction(transactionId, updateData, adminId) {
-    const session = await mongoose.startSession();
-    try {
-      session.startTransaction();
+  const session = await mongoose.startSession();
+  try {
+    session.startTransaction();
 
-      const transaction = await MetalTransaction.findById(
-        transactionId
-      ).session(session);
-      if (!transaction || !transaction.isActive) {
-        throw createAppError(
-          "Metal transaction not found",
-          404,
-          "TRANSACTION_NOT_FOUND"
-        );
-      }
-
-      const oldStockItems = [...transaction.stockItems];
-      const oldSessionTotals = { ...transaction.totalAmountSession };
-
-      // Update transaction
-      Object.assign(transaction, { ...updateData, updatedBy: adminId });
-
-      // Recalculate session totals if stock items changed
-      if (updateData.stockItems) {
-        transaction.calculateSessionTotals();
-      }
-
-      await transaction.save({ session });
-
-      // Update registry and balances if stock items or totals changed
-      if (updateData.stockItems || updateData.totalAmountSession) {
-        const party = await Account.findById(transaction.partyCode).session(
-          session
-        );
-        await this.createReversalRegistryEntries(
-          {
-            ...transaction.toObject(),
-            stockItems: oldStockItems,
-            totalAmountSession: oldSessionTotals,
-          },
-          party,
-          adminId,
-          session
-        );
-        await this.createCompleteRegistryEntries(
-          transaction,
-          party,
-          adminId,
-          session
-        );
-        await this.updateTradeDebtorsBalances(
-          party._id,
-          transaction,
-          session,
-          true
-        );
-      }
-
-      await session.commitTransaction();
-      return await this.getMetalTransactionById(transactionId);
-    } catch (error) {
-      await session.abortTransaction();
-      throw error;
-    } finally {
-      session.endSession();
+    const transaction = await MetalTransaction.findById(
+      transactionId
+    ).session(session);
+    if (!transaction || !transaction.isActive) {
+      throw createAppError(
+        "Metal transaction not found",
+        404,
+        "TRANSACTION_NOT_FOUND"
+      );
     }
-  }
 
+    const oldStockItems = [...transaction.stockItems];
+    const oldSessionTotals = { ...transaction.totalAmountSession };
+
+    // Update transaction
+    Object.assign(transaction, { ...updateData, updatedBy: adminId });
+
+    // Recalculate session totals if stock items changed
+    if (updateData.stockItems) {
+      transaction.calculateSessionTotals();
+    }
+
+    await transaction.save({ session });
+
+    // Update registry and balances if stock items or totals changed
+    if (updateData.stockItems || updateData.totalAmountSession) {
+      const party = await Account.findById(transaction.partyCode).session(
+        session
+      );
+      // Reverse old registry entries
+      await this.createReversalRegistryEntries(
+        {
+          ...transaction.toObject(),
+          stockItems: oldStockItems,
+          totalAmountSession: oldSessionTotals,
+        },
+        party,
+        adminId,
+        session
+      );
+      const deleteRegistryEntries = this.DeleteRegistryEntry(transaction)
+      // Create new registry entries using buildRegistryEntries
+      const newRegistryEntries = this.buildRegistryEntries(
+        transaction,
+        party,
+        adminId
+      );
+      if (newRegistryEntries.length > 0) {
+        await Registry.insertMany(newRegistryEntries, { session, ordered: false });
+      }
+      // Update account balances
+      await this.updateTradeDebtorsBalances(
+        party._id,
+        transaction,
+        session,
+        true
+      );
+    }
+
+    await session.commitTransaction();
+    return await this.getMetalTransactionById(transactionId);
+  } catch (error) {
+    await session.abortTransaction();
+    throw error;
+  } finally {
+    session.endSession();
+  }
+}
   // Delete metal transaction (soft delete)
   static async deleteMetalTransaction(transactionId, adminId) {
     const session = await mongoose.startSession();
@@ -2952,165 +2964,31 @@ class MetalTransactionService {
     }
   }
   static async createReversalRegistryEntries(
-    transaction,
-    party,
-    adminId,
-    session
-  ) {
-    const registryEntries = [];
-    const transactionId = `TXN-${new Date().getFullYear()}-${String(
-      Math.floor(Math.random() * 9000) + 1000
-    )}`;
-  
-    // Calculate totals for reversal
-    let totalMakingCharges = 0;
-    let totalPremiumAmount = 0;
-    let totalPureWeight = 0;
-  
-    // Process each stock item for reversal
-    for (const stockItem of transaction.stockItems) {
-      const pureWeight = stockItem.pureWeight || 0;
-      const makingCharges = stockItem.makingCharges?.amount || 0;
-      const premiumAmount = stockItem.premium?.amount || 0;
-  
-      totalPureWeight += pureWeight;
-      totalMakingCharges += makingCharges;
-      totalPremiumAmount += premiumAmount;
-  
-      const isPurchase = transaction.transactionType === "purchase";
-      const isSale = transaction.transactionType === "sale";
-      const isPurchaseReturn = transaction.transactionType === "purchaseReturn";
-      const isSaleReturn = transaction.transactionType === "saleReturn";
-  
-      // Reverse Gold Entry
-      registryEntries.push(
-        new Registry({
-          transactionId: transactionId,
-          type: "gold",
-          description: `REVERSAL - ${
-            isPurchaseReturn ? "Purchase Return" : isSaleReturn ? "Sale Return" : transaction.transactionType
-          } - ${stockItem.description || "Metal Item"}`,
-          paryty: transaction.partyCode,
-          value: pureWeight,
-          debit: isPurchase || isSaleReturn ? pureWeight : 0,
-          credit: isSale || isPurchaseReturn ? pureWeight : 0,
-          transactionDate: new Date(),
-          reference: `REV-Stock-${stockItem._id}`,
-          createdBy: adminId,
-        })
-      );
-  
-      // Reverse Stock Balance Entry
-      registryEntries.push(
-        new Registry({
-          transactionId: transactionId,
-          type: "stock_balance",
-          description: `REVERSAL - ${
-            isPurchaseReturn ? "Purchase Return" : isSaleReturn ? "Sale Return" : transaction.transactionType
-          } Stock Balance - ${stockItem.description || "Metal Item"}`,
-          paryty: transaction.partyCode,
-          value: pureWeight,
-          debit: isPurchase || isSaleReturn ? pureWeight : 0,
-          credit: isSale || isPurchaseReturn ? pureWeight : 0,
-          transactionDate: new Date(),
-          reference: `REV-Stock-${stockItem._id}`,
-          createdBy: adminId,
-        })
-      );
-    }
-  
-    // Reverse Making Charges Entry
-    if (totalMakingCharges > 0) {
-      registryEntries.push(
-        new Registry({
-          transactionId: transactionId,
-          type: "making_charges",
-          description: `REVERSAL - ${
-            transaction.transactionType === "purchaseReturn" ? "Purchase Return" :
-            transaction.transactionType === "saleReturn" ? "Sale Return" :
-            transaction.transactionType
-          } - Making Charges`,
-          paryty: transaction.partyCode,
-          value: totalMakingCharges,
-          debit: transaction.transactionType === "purchase" || transaction.transactionType === "saleReturn" ? totalMakingCharges : 0,
-          credit: transaction.transactionType === "sale" || transaction.transactionType === "purchaseReturn" ? totalMakingCharges : 0,
-          transactionDate: new Date(),
-          reference: `REV-MakingCharges-${transaction._id}`,
-          createdBy: adminId,
-        })
-      );
-    }
-  
-    // Reverse Premium Entry
-    if (totalPremiumAmount > 0) {
-      registryEntries.push(
-        new Registry({
-          transactionId: transactionId,
-          type: "premium",
-          description: `REVERSAL - ${
-            transaction.transactionType === "purchaseReturn" ? "Purchase Return" :
-            transaction.transactionType === "saleReturn" ? "Sale Return" :
-            transaction.transactionType
-          } - Premium Amount`,
-          paryty: transaction.partyCode,
-          value: totalPremiumAmount,
-          debit: transaction.transactionType === "purchase" || transaction.transactionType === "saleReturn" ? totalPremiumAmount : 0,
-          credit: transaction.transactionType === "sale" || transaction.transactionType === "purchaseReturn" ? totalPremiumAmount : 0,
-          transactionDate: new Date(),
-          reference: `REV-Premium-${transaction._id}`,
-          createdBy: adminId,
-        })
-      );
-    }
-  
-    // Reverse Party Gold Balance Entry
-    registryEntries.push(
-      new Registry({
-        transactionId: transactionId,
-        type: "party_gold_balance",
-        description: `REVERSAL - ${
-          transaction.transactionType === "purchaseReturn" ? "Purchase Return" :
-          transaction.transactionType === "saleReturn" ? "Sale Return" :
-          transaction.transactionType
-        } - Party Gold Balance`,
-        paryty: transaction.partyCode,
-        value: totalPureWeight,
-        debit: transaction.transactionType === "sale" || transaction.transactionType === "purchaseReturn" ? totalPureWeight : 0,
-        credit: transaction.transactionType === "purchase" || transaction.transactionType === "saleReturn" ? totalPureWeight : 0,
-        transactionDate: new Date(),
-        reference: `REV-PartyGold-${transaction._id}`,
-        createdBy: adminId,
-      })
-    );
-  
-    // Reverse Party Cash Balance Entry
-    const totalAmountAED = transaction.totalAmountSession?.totalAmountAED || 0;
-    if (totalAmountAED > 0) {
-      registryEntries.push(
-        new Registry({
-          transactionId: transactionId,
-          type: "party_cash_balance",
-          description: `REVERSAL - ${
-            transaction.transactionType === "purchaseReturn" ? "Purchase Return" :
-            transaction.transactionType === "saleReturn" ? "Sale Return" :
-            transaction.transactionType
-          } - Party Cash Balance`,
-          paryty: transaction.partyCode,
-          value: totalAmountAED,
-          debit: transaction.transactionType === "purchase" || transaction.transactionType === "saleReturn" ? totalAmountAED : 0,
-          credit: transaction.transactionType === "sale" || transaction.transactionType === "purchaseReturn" ? totalAmountAED : 0,
-          transactionDate: new Date(),
-          reference: `REV-PartyCash-${transaction._id}`,
-          createdBy: adminId,
-        })
-      );
-    }
-  
-    // Insert all reversal registry entries
-    if (registryEntries.length > 0) {
-      await Registry.insertMany(registryEntries, { session });
-    }
+  transaction,
+  party,
+  adminId,
+  session
+) {
+  // Use buildRegistryEntries to get the original entries
+  const originalEntries = this.buildRegistryEntries(transaction, party, adminId);
+
+  // Reverse the entries by swapping debit and credit
+  const reversalEntries = originalEntries.map((entry) => ({
+    ...entry,
+    transactionId: `${entry.transactionId}-REV`,
+    description: `REVERSAL - ${entry.description}`,
+    debit: entry.credit, // Swap debit and credit
+    credit: entry.debit,
+    transactionDate: new Date(), // Use current date for reversal
+    reference: `REV-${entry.reference}`,
+    createdAt: new Date(),
+  }));
+
+  // Insert reversal entries
+  if (reversalEntries.length > 0) {
+    await Registry.insertMany(reversalEntries, { session, ordered: false });
   }
+}
   
   static async updateTradeDebtorsBalances(
     partyId,
