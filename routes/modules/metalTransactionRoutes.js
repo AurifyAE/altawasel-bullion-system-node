@@ -76,7 +76,6 @@ router.get("/:id", validateObjectId("id"), getMetalTransactionById);
 router.put(
   "/:id",
   validateObjectId("id"),
-  validateMetalTransactionUpdate,
   updateMetalTransaction
 );
 

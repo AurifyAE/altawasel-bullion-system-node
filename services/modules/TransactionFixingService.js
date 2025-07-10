@@ -115,7 +115,6 @@ export const TransactionFixingService = {
         // 3. PARTY_GOLD_BALANCE - Debit (party gives gold to us)
         const partyGoldBalanceEntry = new Registry({
           transactionId: `${registryTransactionId}-PARTY-GOLD`,
-          FixingIDd,
           type: "PARTY_GOLD_BALANCE",
           description: `Party gold balance - Purchase from ${
             account.customerName || account.accountCode
@@ -126,7 +125,7 @@ export const TransactionFixingService = {
           debit: transactionData.quantityGm, // Party gives gold (debit from party perspective)
           credit: 0,
           transactionDate: transactionData.transactionDate || new Date(),
-          reference: transaction._id.toString(),
+          reference: transaction.voucherNumber,
           createdBy: adminId,
         });
 
@@ -143,7 +142,7 @@ export const TransactionFixingService = {
           debit: 0,
           credit: totalValue, // We pay cash to party (credit to party)
           transactionDate: transactionData.transactionDate || new Date(),
-          reference: transaction._id.toString(),
+          reference: transaction.voucherNumber,
           createdBy: adminId,
         });
 
@@ -192,7 +191,7 @@ export const TransactionFixingService = {
           debit: 0,
           credit: transactionData.quantityGm, // Party receives gold (credit to party)
           transactionDate: transactionData.transactionDate || new Date(),
-          reference: transaction._id.toString(),
+          reference: transaction.voucherNumber,
           createdBy: adminId,
         });
 
@@ -205,10 +204,10 @@ export const TransactionFixingService = {
           }`,
           party: transactionData.partyId,
           value: totalValue,
-          debit: totalValue, // Party pays cash (debit from party)
+          debit: totalValue, // Party pays cas  h (debit from party)
           credit: 0,
           transactionDate: transactionData.transactionDate || new Date(),
-          reference: transaction._id.toString(),
+          reference: transaction.voucherNumber,
           createdBy: adminId,
         });
 

@@ -570,6 +570,8 @@ class MetalTransactionService {
 
     return entries;
   }
+
+  
   static buildSaleReturnFixEntries(
     totals,
     metalTransactionId,
@@ -1209,6 +1211,8 @@ class MetalTransactionService {
 
     return entries;
   }
+
+
 
   // SALE UNFIX - Registry entries (FIXED)
   static buildSaleUnfixEntries(

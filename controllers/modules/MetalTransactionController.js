@@ -101,7 +101,7 @@ export const createMetalTransaction = async (req, res, next) => {
       status: status || "draft",
       notes: notes?.trim(),
     };
-
+console.log("Creating Metal Transaction with data:", transactionData);
     const metalTransaction = await MetalTransactionService.createMetalTransaction(
       transactionData,
       req.admin.id
