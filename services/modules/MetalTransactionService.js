@@ -581,7 +581,6 @@ class MetalTransactionService {
   ) {
     const entries = [];
     const partyName = party.customerName || party.accountCode;
-
     // Party Cash Balance - CREDIT (reverse the cash debited in sale)
     if (totals.totalAmount > 0) {
       entries.push(
@@ -966,6 +965,7 @@ class MetalTransactionService {
       entries.push(
         this.createRegistryEntry(
           baseTransactionId,
+          metalTransactionId,
           "003",
           "MAKING_CHARGES",
           `Purchase Unfix - Making charges credited:  ${totals.makingCharges}`,
@@ -986,6 +986,7 @@ class MetalTransactionService {
       entries.push(
         this.createRegistryEntry(
           baseTransactionId,
+          metalTransactionId,
           "004",
           "PREMIUM",
           `Purchase Unfix - Premium credited:  ${totals.premium}`,
@@ -1006,6 +1007,7 @@ class MetalTransactionService {
       entries.push(
         this.createRegistryEntry(
           baseTransactionId,
+          metalTransactionId,
           "007",
           "DISCOUNT",
           `Purchase Unfix - Discount debited:  ${totals.discount}`,
@@ -1026,6 +1028,7 @@ class MetalTransactionService {
       entries.push(
         this.createRegistryEntry(
           baseTransactionId,
+          metalTransactionId,
           "005",
           "GOLD",
           `Purchase Unfix - Gold inventory debited: ${totals.pureWeight}g`,
@@ -1046,6 +1049,7 @@ class MetalTransactionService {
       entries.push(
         this.createRegistryEntry(
           baseTransactionId,
+          metalTransactionId,
           "006",
           "GOLD_STOCK",
           `Purchase Unfix - Gold stock debited: ${totals.pureWeight}g`,
@@ -1076,6 +1080,7 @@ class MetalTransactionService {
   ) {
     const entries = [];
     const partyName = party.customerName || party.accountCode;
+
     // Party Cash Balance - CREDIT (total amount only)
     if (totals.totalAmount > 0) {
       entries.push(
@@ -1083,12 +1088,12 @@ class MetalTransactionService {
           baseTransactionId,
           metalTransactionId,
           "001",
-          "PARTY_CASH_BALANCE",
-          `Purchase Fix - Cash balance credited for ${partyName}: AED ${totals.totalAmount}`,
+          "PARTY_GOLD_BALANCE",
+          `Purchase fix - Gold balance credited for ${partyName}: ${totals.pureWeight}g`,
           party._id,
           false,
-          totals.totalAmount,
-          totals.totalAmount,
+          totals.pureWeight,
+          totals.pureWeight,
           0,
           voucherDate,
           voucherNumber,
