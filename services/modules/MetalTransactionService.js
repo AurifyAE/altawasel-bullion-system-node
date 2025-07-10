@@ -182,15 +182,13 @@ class MetalTransactionService {
 
   // Determine transaction mode based on fix/unfix flags
   static getTransactionMode(fixed, unfix) {
-    console.log("============================");
-    console.log(fixed);
-    console.log(unfix);
+    console.log("Transaction Mode Check:", { fixed, unfix });
     if (fixed && !unfix) return "fix";
     if (unfix && !fixed) return "unfix";
-    if (!fixed && !unfix) return "unfix"; // Default to unfix
+    if (!fixed && !unfix) return "unfix";
     if (fixed && unfix) {
       console.warn("Both fixed and unfix flags are true; prioritizing fix mode");
-      return "fix"; // Prioritize fix when both are true
+      return "fix";
     }
   }
 
@@ -893,18 +891,23 @@ class MetalTransactionService {
       (acc, item) => {
         const makingChargesAmount =
           item.itemTotal?.makingChargesTotal || item.makingCharges?.amount || 0;
-
-        // Handle premium/discount - positive = premium, negative = discount
         const premiumDiscountAmount =
           item.itemTotal?.premiumTotal || item.premium?.amount || 0;
-
         const goldValue = item.itemTotal?.baseAmount || 0;
         const pureWeight = item.pureWeight || 0;
         const grossWeight = item.grossWeight || 0;
-        // Separate premium and discount
         const premium = premiumDiscountAmount > 0 ? premiumDiscountAmount : 0;
-        const discount =
-          premiumDiscountAmount < 0 ? Math.abs(premiumDiscountAmount) : 0;
+        const discount = premiumDiscountAmount < 0 ? Math.abs(premiumDiscountAmount) : 0;
+
+        console.log(`Processing stockItem:`, {
+          stockCode: item.stockCode,
+          pureWeight,
+          grossWeight,
+          goldValue,
+          makingChargesAmount,
+          premium,
+          discount
+        });
 
         return {
           makingCharges: acc.makingCharges + makingChargesAmount,
@@ -920,16 +923,7 @@ class MetalTransactionService {
 
     totals.totalAmount = totalAmountSession?.totalAmountAED || 0;
 
-    console.log("=== CALCULATED TOTALS ===", {
-      makingCharges: totals.makingCharges,
-      premium: totals.premium,
-      discount: totals.discount,
-      goldValue: totals.goldValue,
-      pureWeight: totals.pureWeight,
-      totalAmount: totals.totalAmount,
-      grossWeight: totals.grossWeight
-    });
-
+    console.log("=== CALCULATED TOTALS ===", totals);
     return totals;
   }
 
@@ -1171,10 +1165,11 @@ class MetalTransactionService {
       entries.push(
         this.createRegistryEntry(
           baseTransactionId,
+          metalTransactionId,
           "004",
           "GOLD",
           `Purchase Fix - Gold inventory debited: ${totals.pureWeight}g`,
-          null,
+          party._id,
           true,
           totals.pureWeight,
           0,
@@ -1191,10 +1186,11 @@ class MetalTransactionService {
       entries.push(
         this.createRegistryEntry(
           baseTransactionId,
+          metalTransactionId,
           "005",
           "GOLD_STOCK",
           `Purchase Fix - Gold stock debited: ${totals.grossWeight}g`,
-          null,
+          party._id,
           true,
           totals.grossWeight,
           0,
@@ -2292,7 +2288,7 @@ class MetalTransactionService {
     const session = await mongoose.startSession();
     try {
       session.startTransaction();
-  
+
       // Fetch the existing transaction
       const transaction = await MetalTransaction.findById(transactionId).session(session);
       if (!transaction || !transaction.isActive) {
@@ -2302,15 +2298,15 @@ class MetalTransactionService {
           "TRANSACTION_NOT_FOUND"
         );
       }
-  
+
       // Store the old partyCode and stock items for reversal
       const oldPartyId = transaction.partyCode;
       const oldStockItems = [...transaction.stockItems];
       const oldSessionTotals = { ...transaction.totalAmountSession };
-  
+
       // Check if partyCode is changing
       const isPartyChanged = updateData.partyCode && transaction.partyCode.toString() !== updateData.partyCode.toString();
-  
+
       // Fetch old and new parties (if partyCode is changing)
       let oldParty = null;
       let newParty = null;
@@ -2336,18 +2332,18 @@ class MetalTransactionService {
         oldParty = await Account.findById(oldPartyId).session(session);
         newParty = oldParty;
       }
-  
+
       // Update transaction with new data
       Object.assign(transaction, { ...updateData, updatedBy: adminId });
-  
+
       // Recalculate session totals if stock items changed
       if (updateData.stockItems) {
         transaction.calculateSessionTotals();
       }
-  
+
       // Save the updated transaction
       await transaction.save({ session });
-  
+
       // Handle registry entries and balance updates
       if (updateData.stockItems || updateData.totalAmountSession || isPartyChanged) {
         // Step 1: Reverse old registry entries for the old party
@@ -2362,10 +2358,10 @@ class MetalTransactionService {
           adminId,
           session
         );
-  
+
         // Step 2: Delete old registry entries
         await this.DeleteRegistryEntry(transaction);
-  
+
         // Step 3: Create new registry entries for the new party
         const newRegistryEntries = this.buildRegistryEntries(
           transaction,
@@ -2375,7 +2371,7 @@ class MetalTransactionService {
         if (newRegistryEntries.length > 0) {
           await Registry.insertMany(newRegistryEntries, { session, ordered: false });
         }
-  
+
         // Step 4: Reverse balances for the old party (if party changed)
         if (isPartyChanged) {
           const oldTransaction = {
@@ -2392,7 +2388,7 @@ class MetalTransactionService {
             true   // Reversal flag
           );
         }
-  
+
         // Step 5: Update balances for the new party
         await this.updateTradeDebtorsBalances(
           newParty._id,
@@ -2401,7 +2397,7 @@ class MetalTransactionService {
           true // Update flag
         );
       }
-  
+
       await session.commitTransaction();
       return await this.getMetalTransactionById(transactionId);
     } catch (error) {
@@ -2411,7 +2407,7 @@ class MetalTransactionService {
       session.endSession();
     }
   }
-  
+
   // Delete metal transaction (soft delete)
   static async deleteMetalTransaction(transactionId, adminId) {
     const session = await mongoose.startSession();

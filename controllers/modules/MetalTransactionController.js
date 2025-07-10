@@ -108,8 +108,10 @@ export const createMetalTransaction = async (req, res, next) => {
     );
 
     if (metalTransaction.transactionType === "sale") {
+      // update inventory if sale happen
       await InventoryService.updateInventory(metalTransaction, true);
     } else {
+       // update inventory if Purchase happen
       await InventoryService.updateInventory(metalTransaction);
     }
 
