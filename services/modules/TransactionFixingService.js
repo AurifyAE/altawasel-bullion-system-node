@@ -10,6 +10,9 @@ export const TransactionFixingService = {
     const session = await mongoose.startSession();
     session.startTransaction();
 
+    console.log('====================================');
+    console.log(transactionData , "Trans");
+    console.log('====================================');
     try {
       // Validate party ID
       if (!mongoose.Types.ObjectId.isValid(transactionData.partyId)) {
@@ -89,6 +92,9 @@ export const TransactionFixingService = {
         throw createAppError("Account not found", 404, "ACCOUNT_NOT_FOUND");
       }
 
+      console.log('====================================');
+      console.log(transactionData);
+      console.log('====================================');
       // Create the main transaction
       const transaction = new TransactionFixing({
         transactionId: transactionId, // Use the generated ID
@@ -109,6 +115,7 @@ export const TransactionFixingService = {
         // 3. PARTY_GOLD_BALANCE - Debit (party gives gold to us)
         const partyGoldBalanceEntry = new Registry({
           transactionId: `${registryTransactionId}-PARTY-GOLD`,
+          FixingIDd,
           type: "PARTY_GOLD_BALANCE",
           description: `Party gold balance - Purchase from ${
             account.customerName || account.accountCode

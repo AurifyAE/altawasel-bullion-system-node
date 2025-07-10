@@ -8,6 +8,24 @@ const TransactionFixingSchema = new mongoose.Schema(
       trim: true,
       uppercase: true,
     },
+    voucherType: {
+      type: String,
+      trim: true,
+      default: null,
+      maxlength: [50, "Voucher type cannot exceed 50 characters"],
+    },
+    voucherDate: {
+      type: Date,
+      default: Date.now,
+      index: true,
+    },
+    voucherNumber: {
+      type: String,
+      trim: true,
+      maxlength: [50, "Voucher number cannot exceed 50 characters"],
+      index: true,
+      // Allow null values but enforce uniqueness when present
+    },
     partyId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Account", // Assuming you have a PartyMaster model

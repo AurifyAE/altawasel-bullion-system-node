@@ -173,9 +173,9 @@ export const getVouchersByModule = async (req, res, next) => {
     }
 
     const result = await VoucherMasterService.getVouchersByModule(
-      module, 
-      voucherType, 
-      parseInt(page), 
+      module,
+      voucherType,
+      parseInt(page),
       parseInt(limit)
     );
 
@@ -199,7 +199,6 @@ export const getVouchersByModule = async (req, res, next) => {
 export const generateVoucherNumber = async (req, res, next) => {
   try {
     const { module } = req.params;
-    
     const { transactionType, entryType } = req.body;
 
     console.log("Generating voucher number for module:", module);
@@ -212,7 +211,7 @@ export const generateVoucherNumber = async (req, res, next) => {
 
     // Determine the actual transaction type based on module and query params
     let actualTransactionType = transactionType;
-    
+
     // For entry modules, use entryType as transactionType
     if (module.toLowerCase().includes('entry') && entryType) {
       actualTransactionType = entryType;
@@ -220,7 +219,7 @@ export const generateVoucherNumber = async (req, res, next) => {
 
     const result = await VoucherMasterService.generateVoucherNumber(module, actualTransactionType);
     console.log(result);
-    
+
 
     res.status(200).json({
       success: true,
@@ -244,7 +243,7 @@ export const getVoucherInfoByModule = async (req, res, next) => {
 
     // Determine the actual transaction type based on module and query params
     let actualTransactionType = transactionType;
-    
+
     // For entry modules, use entryType as transactionType if provided
     if (module.toLowerCase().includes('entry') && entryType) {
       actualTransactionType = entryType;

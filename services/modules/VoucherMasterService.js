@@ -1,5 +1,6 @@
 import VoucherMaster from "../../models/modules/VoucherMaster.js";
 import MetalTransaction from "../../models/modules/MetalTransaction.js";
+import TransactionFix from "../../models/modules/TransactionFixing.js";
 import Entry from "../../models/modules/EntryModel.js";
 import { createAppError } from "../../utils/errorHandler.js";
 
@@ -100,6 +101,20 @@ class VoucherMasterService {
         }
         const count = await MetalTransaction.countDocuments();
         console.log(`[getTransactionCount] MetalTransaction (all) Count:`, count);
+        return count;
+      } else if (moduleLC === "sales-fixing" || moduleLC === "purchase-fixing") {
+        console.log(`[getTransactionCount] Using model: TransactionFix`);
+        if (transactionType) {
+          const query = {
+            type: { $regex: `^${transactionType}$`, $options: "i" }
+          };
+          console.log(`[getTransactionCount] TransactionFix Query:`, query);
+          const count = await TransactionFix.countDocuments(query);
+          console.log(`[getTransactionCount] TransactionFix Count:`, count);
+          return count;
+        }
+        const count = await TransactionFix.countDocuments();
+        console.log(`[getTransactionCount] TransactionFix (all) Count:`, count);
         return count;
       }
 
