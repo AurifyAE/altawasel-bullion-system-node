@@ -1706,9 +1706,9 @@ class MetalTransactionService {
   // Generate unique transaction ID (optimized)
   static generateTransactionId() {
     const timestamp = Date.now();
-    const year = new Date().getFullYear();
+    const currentYear =  new Date().getFullYear();
     const randomNum = Math.floor(Math.random() * 900) + 100;
-    return `TXN-${year}-${randomNum}-${timestamp}`;
+    return `TXN-${currentYear}-${randomNum}`;
   }
 
 
@@ -2859,9 +2859,7 @@ class MetalTransactionService {
     session
   ) {
     const registryEntries = [];
-    const transactionId = `TXN-${new Date().getFullYear()}-${String(
-      Math.floor(Math.random() * 9000) + 1000
-    )}`;
+    const transactionId = `TXN-${new Date().getFullYear()}-${Math.floor(Math.random() * 900) + 100}`;
 
     // Calculate totals for charges
     let totalMakingCharges = 0;
