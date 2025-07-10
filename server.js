@@ -42,7 +42,8 @@ const corsOptions = {
       "http://localhost:5173",
       "http://localhost:3000",
       "http://localhost:8080",
-      "https://bullion-system-react2.onrender.com"
+      "https://bullion-system-react2.onrender.com",
+      "https://altawasel.bullionpro.net"
     ];
 
     if (!origin || allowedOrigins.includes(origin)) {

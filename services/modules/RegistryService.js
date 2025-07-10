@@ -687,9 +687,10 @@ class RegistryService {
         .populate('party', 'name code')
         .populate('createdBy', 'name email')
         .populate('updatedBy', 'name email')
-        .sort({ transactionDate: -1 })
+        .sort({ transactionDate: 1 })
         .skip(skip)
-        .limit(limit);
+        .limit(limit)
+       
 
       const totalPages = Math.ceil(totalItems / limit);
 
