@@ -1084,7 +1084,7 @@ class MetalTransactionService {
     const partyName = party.customerName || party.accountCode;
 
     // Party Cash Balance - CREDIT (total amount only)
-    if (totals.totalAmount > 0) {
+    if (totals.goldValue > 0) {
       entries.push(
         this.createRegistryEntry(
           baseTransactionId,
@@ -1094,8 +1094,8 @@ class MetalTransactionService {
           `Purchase fix - Gold balance credited for ${partyName}: ${totals.pureWeight}g`,
           party._id,
           false,
-          totals.totalAmount,
-          totals.totalAmount,
+          totals.goldValue,
+          totals.goldValue,
           0,
           voucherDate,
           voucherNumber,
@@ -1706,6 +1706,7 @@ class MetalTransactionService {
 
     return changes;
   }
+
 
   // Generate unique transaction ID (optimized)
   static generateTransactionId() {
