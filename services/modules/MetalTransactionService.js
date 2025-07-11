@@ -571,7 +571,7 @@ class MetalTransactionService {
     return entries;
   }
 
-  
+
   static buildSaleReturnFixEntries(
     totals,
     metalTransactionId,
@@ -1710,7 +1710,7 @@ class MetalTransactionService {
   // Generate unique transaction ID (optimized)
   static generateTransactionId() {
     const timestamp = Date.now();
-    const currentYear =  new Date().getFullYear();
+    const currentYear = new Date().getFullYear();
     const randomNum = Math.floor(Math.random() * 900) + 100;
     return `TXN-${currentYear}-${randomNum}`;
   }
@@ -2297,7 +2297,7 @@ class MetalTransactionService {
     const session = await mongoose.startSession();
     try {
       session.startTransaction();
-
+  
       // Fetch the existing transaction
       const transaction = await MetalTransaction.findById(transactionId).session(session);
       if (!transaction || !transaction.isActive) {
@@ -2307,15 +2307,15 @@ class MetalTransactionService {
           "TRANSACTION_NOT_FOUND"
         );
       }
-
-      // Store the old partyCode and stock items for reversal
+  
+      // Store the old transaction data for reversal
       const oldPartyId = transaction.partyCode;
       const oldStockItems = [...transaction.stockItems];
       const oldSessionTotals = { ...transaction.totalAmountSession };
-
+  
       // Check if partyCode is changing
       const isPartyChanged = updateData.partyCode && transaction.partyCode.toString() !== updateData.partyCode.toString();
-
+  
       // Fetch old and new parties (if partyCode is changing)
       let oldParty = null;
       let newParty = null;
@@ -2336,42 +2336,47 @@ class MetalTransactionService {
             "NEW_PARTY_NOT_FOUND"
           );
         }
+        // Validate old party's balances before reversal
+        const oldTransaction = {
+          ...transaction.toObject(),
+          stockItems: oldStockItems,
+          totalAmountSession: oldSessionTotals,
+          partyCode: oldPartyId,
+        };
+        await this.validatePartyBalances(oldParty, oldTransaction, true);
+        console.log(
+          `Party changed from ${oldParty.customerName} (${oldParty.accountCode}) to ${newParty.customerName} (${newParty.accountCode})`
+        );
       } else {
         // If partyCode is not changing, fetch the current party
         oldParty = await Account.findById(oldPartyId).session(session);
         newParty = oldParty;
+        if (!oldParty || !oldParty.isActive) {
+          throw createAppError(
+            "Party not found or inactive",
+            404,
+            "PARTY_NOT_FOUND"
+          );
+        }
       }
-
+  
       // Update transaction with new data
       Object.assign(transaction, { ...updateData, updatedBy: adminId });
-
+  
       // Recalculate session totals if stock items changed
       if (updateData.stockItems) {
         transaction.calculateSessionTotals();
       }
-
+  
       // Save the updated transaction
       await transaction.save({ session });
-
+  
       // Handle registry entries and balance updates
       if (updateData.stockItems || updateData.totalAmountSession || isPartyChanged) {
-        // Step 1: Reverse old registry entries for the old party
-        await this.createReversalRegistryEntries(
-          {
-            ...transaction.toObject(),
-            stockItems: oldStockItems,
-            totalAmountSession: oldSessionTotals,
-            partyCode: oldPartyId,
-          },
-          oldParty,
-          adminId,
-          session
-        );
-
-        // Step 2: Delete old registry entries
+        // Step 1: Delete old registry entries
         await this.DeleteRegistryEntry(transaction);
-
-        // Step 3: Create new registry entries for the new party
+  
+        // Step 2: Create new registry entries for the updated transaction
         const newRegistryEntries = this.buildRegistryEntries(
           transaction,
           newParty,
@@ -2380,33 +2385,33 @@ class MetalTransactionService {
         if (newRegistryEntries.length > 0) {
           await Registry.insertMany(newRegistryEntries, { session, ordered: false });
         }
-
-        // Step 4: Reverse balances for the old party (if party changed)
-        if (isPartyChanged) {
-          const oldTransaction = {
-            ...transaction.toObject(),
-            stockItems: oldStockItems,
-            totalAmountSession: oldSessionTotals,
-            partyCode: oldPartyId,
-          };
-          await this.updateTradeDebtorsBalances(
-            oldParty._id,
-            oldTransaction,
-            session,
-            false, // Not an update, but a reversal
-            true   // Reversal flag
-          );
-        }
-
-        // Step 5: Update balances for the new party
+  
+        // Step 3: Reverse balances for the old transaction (always)
+        const oldTransaction = {
+          ...transaction.toObject(),
+          stockItems: oldStockItems,
+          totalAmountSession: oldSessionTotals,
+          partyCode: oldPartyId,
+        };
+        await this.updateTradeDebtorsBalances(
+          oldParty._id,
+          oldTransaction,
+          session,
+          false, // Not an update, but a reversal
+          true   // Reversal flag
+        );
+  
+        // Step 4: Apply balances for the updated transaction
         await this.updateTradeDebtorsBalances(
           newParty._id,
           transaction,
           session,
           true // Update flag
         );
+      } else {
+        console.log(`No balance-affecting fields updated for transaction ${transactionId}`);
       }
-
+  
       await session.commitTransaction();
       return await this.getMetalTransactionById(transactionId);
     } catch (error) {
@@ -2414,6 +2419,41 @@ class MetalTransactionService {
       throw this.handleError(error);
     } finally {
       session.endSession();
+    }
+  }
+
+  // [NEW] Validate party balances before reversal
+  static async validatePartyBalances(party, transaction, isReversal = false) {
+    const { transactionType, stockItems, totalAmountSession } = transaction;
+    const totals = this.calculateTotals(stockItems, totalAmountSession);
+    const mode = this.getTransactionMode(transaction.fixed, transaction.unfix);
+
+    const balanceChanges = this.calculateBalanceChanges(transactionType, mode, totals);
+
+    if (isReversal) {
+      // Check if party has sufficient balances to reverse the transaction
+      const goldBalance = party.balances.goldBalance.totalGrams || 0;
+      const cashBalance = party.balances.cashBalance.amount || 0;
+
+      // For reversal, negate the balance changes
+      const requiredGoldBalance = -balanceChanges.goldBalance;
+      const requiredCashBalance = -(balanceChanges.cashBalance + balanceChanges.premiumBalance + balanceChanges.discountBalance);
+
+      if (requiredGoldBalance > goldBalance) {
+        throw createAppError(
+          `Insufficient gold balance for reversal: ${goldBalance}g available, ${requiredGoldBalance}g required`,
+          400,
+          "INSUFFICIENT_GOLD_BALANCE"
+        );
+      }
+
+      if (requiredCashBalance > cashBalance) {
+        throw createAppError(
+          `Insufficient cash balance for reversal: ${cashBalance} AED available, ${requiredCashBalance} AED required`,
+          400,
+          "INSUFFICIENT_CASH_BALANCE"
+        );
+      }
     }
   }
 
@@ -3046,104 +3086,85 @@ class MetalTransactionService {
     isReversal = false
   ) {
     const party = await Account.findById(partyId).session(session);
-    if (!party) return;
-
-    //update old parties balance ( detucting the amount if party is changed..)
-
-    // Update Gold Balance
-    let totalPureWeightInGrams = 0;
-    let totalGoldValue = 0;
-
-    transaction.stockItems.forEach((stockItem) => {
-      const pureWeight = stockItem.pureWeight || 0;
-      const itemValue = stockItem.itemTotal?.itemTotalAmount || 0;
-      totalPureWeightInGrams += pureWeight;
-      totalGoldValue += itemValue;
+    if (!party) {
+      throw createAppError("Party not found", 404, "PARTY_NOT_FOUND");
+    }
+  
+    // Calculate balance changes using the provided transaction
+    const { transactionType, stockItems, totalAmountSession, fixed, unfix } = transaction;
+    const totals = this.calculateTotals(stockItems, totalAmountSession);
+    const mode = this.getTransactionMode(fixed, unfix);
+    const balanceChanges = this.calculateBalanceChanges(transactionType, mode, totals);
+  
+    // Log balance update details
+    console.log(`Updating balances for party ${party.customerName} (${party.accountCode})`, {
+      transactionType,
+      isReversal,
+      isUpdate,
+      transactionId: transaction._id,
+      balanceChanges,
     });
-
-    if (isReversal) {
-      // Reverse the transaction
-      if (transaction.transactionType === "purchase") {
-        party.balances.goldBalance.totalGrams = Math.max(
-          0,
-          party.balances.goldBalance.totalGrams - totalPureWeightInGrams
-        );
-        party.balances.goldBalance.totalValue = Math.max(
-          0,
-          party.balances.goldBalance.totalValue - totalGoldValue
-        );
-      } else if (transaction.transactionType === "sale") {
-        party.balances.goldBalance.totalGrams += totalPureWeightInGrams;
-        party.balances.goldBalance.totalValue += totalGoldValue;
+  
+    // Initialize update operations
+    const updateOps = { $set: {}, $inc: {} };
+  
+    // Handle Gold Balance Updates
+    if (balanceChanges.goldBalance !== 0 || balanceChanges.goldValue !== 0) {
+      if (isReversal) {
+        // Reverse gold balance changes
+        updateOps.$inc["balances.goldBalance.totalGrams"] = -balanceChanges.goldBalance;
+        updateOps.$inc["balances.goldBalance.totalValue"] = -balanceChanges.goldValue;
+      } else {
+        // Apply gold balance changes
+        updateOps.$inc["balances.goldBalance.totalGrams"] = balanceChanges.goldBalance;
+        updateOps.$inc["balances.goldBalance.totalValue"] = balanceChanges.goldValue;
       }
-    } else {
-      // Normal transaction processing
-      if (transaction.transactionType === "purchase") {
-        party.balances.goldBalance.totalGrams += totalPureWeightInGrams;
-        party.balances.goldBalance.totalValue += totalGoldValue;
-      } else if (transaction.transactionType === "sale") {
-        party.balances.goldBalance.totalGrams = Math.max(
-          0,
-          party.balances.goldBalance.totalGrams - totalPureWeightInGrams
-        );
-        party.balances.goldBalance.totalValue = Math.max(
-          0,
-          party.balances.goldBalance.totalValue - totalGoldValue
-        );
-      }
+      updateOps.$set["balances.goldBalance.lastUpdated"] = new Date();
     }
-
-    // Update Cash Balance
-    const totalAmountAED = transaction.totalAmountSession?.totalAmountAED || 0;
-    const totalAmountParty =
-      transaction.totalAmountSession?.totalAmountParty || 0;
-
-    if (isReversal) {
-      // Reverse cash balance changes
-      if (transaction.transactionType === "purchase") {
-        // Reverse purchase: reduce cash balance (we had increased it)
-        party.balances.cashBalance.totalAmountAED = Math.max(
-          0,
-          party.balances.cashBalance.totalAmountAED - totalAmountAED
-        );
-        party.balances.cashBalance.totalAmountParty = Math.max(
-          0,
-          party.balances.cashBalance.totalAmountParty - totalAmountParty
-        );
-      } else if (transaction.transactionType === "sale") {
-        // Reverse sale: increase cash balance (we had decreased it)
-        party.balances.cashBalance.totalAmountAED += totalAmountAED;
-        party.balances.cashBalance.totalAmountParty += totalAmountParty;
+  
+    // Handle Cash Balance Updates (including making charges, premium, and discount)
+    const netCashChange = balanceChanges.cashBalance + balanceChanges.premiumBalance + balanceChanges.discountBalance;
+    if (netCashChange !== 0) {
+      if (isReversal) {
+        // Reverse cash balance changes
+        updateOps.$inc["balances.cashBalance.amount"] = -netCashChange;
+      } else {
+        // Apply cash balance changes
+        updateOps.$inc["balances.cashBalance.amount"] = netCashChange;
       }
-    } else {
-      // Normal cash balance processing
-      if (transaction.transactionType === "purchase") {
-        // Purchase: increase cash balance (money owed to party)
-        party.balances.cashBalance.totalAmountAED += totalAmountAED;
-        party.balances.cashBalance.totalAmountParty += totalAmountParty;
-      } else if (transaction.transactionType === "sale") {
-        // Sale: decrease cash balance (money paid by party)
-        party.balances.cashBalance.totalAmountAED = Math.max(
-          0,
-          party.balances.cashBalance.totalAmountAED - totalAmountAED
-        );
-        party.balances.cashBalance.totalAmountParty = Math.max(
-          0,
-          party.balances.cashBalance.totalAmountParty - totalAmountParty
-        );
-      }
+      updateOps.$set["balances.cashBalance.lastUpdated"] = new Date();
     }
-
-    // Update last transaction date
-    party.balances.lastTransactionDate = new Date();
-
-    // Update balance summary
-    party.balances.summary = {
-      totalOutstanding: party.balances.cashBalance.totalAmountAED,
-      goldHoldings: party.balances.goldBalance.totalGrams,
+  
+    // Update last transaction date and balance summary
+    updateOps.$set["balances.lastTransactionDate"] = new Date();
+    updateOps.$set["balances.summary"] = {
+      totalOutstanding: (party.balances.cashBalance.amount || 0) + (updateOps.$inc["balances.cashBalance.amount"] || 0),
+      goldHoldings: (party.balances.goldBalance.totalGrams || 0) + (updateOps.$inc["balances.goldBalance.totalGrams"] || 0),
       lastUpdated: new Date(),
     };
-
+  
+    // Log balance before and after
+    console.log(`Before balance update:`, {
+      goldBalance: party.balances.goldBalance,
+      cashBalance: party.balances.cashBalance,
+    });
+  
+    // Apply updates
+    if (Object.keys(updateOps.$inc).length > 0 || Object.keys(updateOps.$set).length > 0) {
+      await Account.findByIdAndUpdate(partyId, updateOps, { session, new: true });
+    }
+  
+    console.log(`After balance update:`, {
+      goldBalance: {
+        totalGrams: (party.balances.goldBalance.totalGrams || 0) + (updateOps.$inc["balances.goldBalance.totalGrams"] || 0),
+        totalValue: (party.balances.goldBalance.totalValue || 0) + (updateOps.$inc["balances.goldBalance.totalValue"] || 0),
+      },
+      cashBalance: {
+        amount: (party.balances.cashBalance.amount || 0) + (updateOps.$inc["balances.cashBalance.amount"] || 0),
+      },
+      summary: updateOps.$set["balances.summary"],
+    });
+  
     await party.save({ session });
   }
 
