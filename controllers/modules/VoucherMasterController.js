@@ -273,7 +273,7 @@ export const getVoucherInfoByModule = async (req, res, next) => {
       }
     } else if (moduleLC.includes('entry')) {
       if (actualTransactionType) {
-        const validEntryTypes = ["metal receipt", "metal payment", "cash receipt", "cash payment"];
+        const validEntryTypes = ["metal-receipt", "metal-payment", "cash receipt", "cash payment"];
         if (validEntryTypes.includes(actualTransactionType.toLowerCase())) {
           result = await VoucherMasterService.getEntryVoucherInfo(module, actualTransactionType);
         } else {

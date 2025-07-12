@@ -2,6 +2,7 @@ import Entry from "../../models/modules/EntryModel.js";
 import Registry from "../../models/modules/Registry.js";
 import AccountType from "../../models/modules/AccountType.js"; // Make sure this is at the top
 import AccountMaster from "../../models/modules/accountMaster.js";
+import InventoryService from "../../services/modules/inventoryService.js";
 
 const createEntry = async (req, res) => {
   try {
@@ -9,8 +10,8 @@ const createEntry = async (req, res) => {
 
     // Validate entry type
     const validTypes = [
-      "metal receipt",
-      "metal payment",
+      "metal-receipt",
+      "metal-payment",
       "cash receipt",
       "cash payment",
     ];
@@ -28,12 +29,12 @@ const createEntry = async (req, res) => {
       voucherCode: req.body.voucherCode,
       voucherDate: req.body.voucherDate,
       party: req.body.party,
-      enteredBy: req.body.enteredBy,
+      enteredBy: req.admin.id,
       remarks: req.body.remarks,
     };
 
     // Add type-specific fields
-    if (type === "metal receipt" || type === "metal payment") {
+    if (type === "metal-receipt" || type === "metal-payment") {
       entryData.stocks = req.body.stocks;
     } else if (type === "cash receipt" || type === "cash payment") {
       entryData.cash = req.body.cash;
@@ -41,8 +42,8 @@ const createEntry = async (req, res) => {
 
     const entry = new Entry(entryData);
 
-    // Handle metal receipt
-    if (type === "metal receipt") {
+    // Handle metal-receipt
+    if (type === "metal-receipt") {
       await handleMetalReceipt(entry);
     }
 
@@ -56,8 +57,8 @@ const createEntry = async (req, res) => {
       await handleCashPayment(entry);
     }
 
-    // Handle metal payment
-    if (type === "metal payment") {
+    // Handle metal-payment
+    if (type === "metal-payment") {
       await handleMetalPayment(entry);
     }
 
@@ -78,25 +79,26 @@ const createEntry = async (req, res) => {
   }
 };
 
-// Helper function for metal receipt
+// Helper function for metal-receipt
 const handleMetalReceipt = async (entry) => {
   for (const stock of entry.stocks) {
     const transactionId = await Registry.generateTransactionId();
-
+    // Use consistent description logic
     const description =
       stock.remarks && stock.remarks.trim() !== ""
         ? stock.remarks
-        : "No description";
+        : "metal-receipt transaction";
+
     // Registry entry for "stock balance"
     await Registry.create({
       transactionId,
       type: "STOCK_BALANCE",
-      description,
+      description, // Use the computed description
       value: stock.purityWeight,
       runningBalance: 0,
       previousBalance: 0,
       credit: stock.purityWeight,
-      reference: stock.stock ? stock.stock.toString() : "",
+      reference: entry.voucherCode || "",
       createdBy: entry.enteredBy,
       party: null,
       isBullion: true,
@@ -107,18 +109,32 @@ const handleMetalReceipt = async (entry) => {
     await Registry.create({
       transactionId: await Registry.generateTransactionId(),
       type: "GOLD",
-      description: stock.remarks || "",
+      description, // Use the same computed description
       value: stock.purityWeight,
       runningBalance: 0,
       previousBalance: 0,
       debit: stock.purityWeight,
-      reference: stock.stock ? stock.stock.toString() : "",
+      reference: entry.voucherCode || "",
       createdBy: entry.enteredBy,
       party: null,
       isBullion: true,
     });
     console.log(`Created gold entry for stock: ${stock.stock}`);
   }
+  const transaction = {
+    stockItems: entry.stocks.map(stock => ({
+      stockCode: { _id: stock.stock, code: stock.stock.toString() }, // Assuming stock.stock is the ObjectId
+      pieces: 0, // Adjust if pieces are relevant; not provided in sample data
+      grossWeight: stock.grossWeight,
+      purity: stock.purity,
+    })),
+  };
+
+  // Determine if it's a sale (metal-payment) or receipt (metal-receipt)
+  const isSale = entry.type === "metal-payment";
+
+  // Update inventory
+  await InventoryService.updateInventory(transaction, isSale);
 };
 
 // Helper function for cash receipt
@@ -176,7 +192,7 @@ const handleCashReceipt = async (entry) => {
     // Deduct amount from cash type opening balance
     cashType.openingBalance = (cashType.openingBalance || 0) + requestedAmount;
     await cashType.save();
-     await accountType.save();
+    await accountType.save();
 
     // Registry entry for "cash balance"
     await Registry.create({
@@ -186,8 +202,8 @@ const handleCashReceipt = async (entry) => {
         cashItem.remarks && cashItem.remarks.trim() !== ""
           ? cashItem.remarks
           : entry.remarks && entry.remarks.trim() !== ""
-          ? entry.remarks
-          : "No description",
+            ? entry.remarks
+            : "No description",
       value: requestedAmount,
       runningBalance: 0,
       previousBalance: 0,
@@ -313,21 +329,29 @@ const handleCashPayment = async (entry) => {
   await accountType.save();
 };
 
-// Helper function for metal payment
+// Helper function for metal-payment
 const handleMetalPayment = async (entry) => {
+  console.log('====================================');
+  console.log(entry);
+  console.log('====================================');
+
   for (const stock of entry.stocks) {
     const transactionId = await Registry.generateTransactionId();
+    const description =
+      stock.remarks && stock.remarks.trim() !== ""
+        ? stock.remarks
+        : "metal-payment transaction";
 
     // Registry entry for "stock balance" (debit for payment)
     await Registry.create({
       transactionId,
       type: "STOCK_BALANCE",
-      description: stock.remarks || "",
+      description,
       value: stock.purityWeight,
       runningBalance: 0,
       previousBalance: 0,
       debit: stock.purityWeight,
-      reference: stock.stock ? stock.stock.toString() : "",
+      reference: entry.voucherCode || "",
       createdBy: entry.enteredBy,
       party: null,
       isBullion: true,
@@ -338,18 +362,34 @@ const handleMetalPayment = async (entry) => {
     await Registry.create({
       transactionId: await Registry.generateTransactionId(),
       type: "GOLD",
-      description: stock.remarks || "",
+      description,
       value: stock.purityWeight,
       runningBalance: 0,
       previousBalance: 0,
       credit: stock.purityWeight,
-      reference: stock.stock ? stock.stock.toString() : "",
+      reference: entry.voucherCode || "",
       createdBy: entry.enteredBy,
       party: null,
       isBullion: true,
     });
     console.log(`Created gold entry for stock: ${stock.stock}`);
   }
+
+  // Prepare transaction data for inventory update
+  const transaction = {
+    stockItems: entry.stocks.map(stock => ({
+      stockCode: { _id: stock.stock, code: stock.stock.toString() }, // Assuming stock.stock is the ObjectId
+      pieces: 0, // Adjust if pieces are relevant; not provided in sample data
+      grossWeight: stock.grossWeight,
+      purity: stock.purity,
+    })),
+  };
+
+  // Determine if it's a sale (metal-payment) or receipt (metal-receipt)
+  const isSale = entry.type === "metal-payment";
+
+  // Update inventory
+  await InventoryService.updateInventory(transaction, isSale);
 };
 
 const getCashPayments = async (req, res) => {
@@ -383,7 +423,7 @@ const getCashReceipts = async (req, res) => {
 
 const getMetalPayments = async (req, res) => {
   try {
-    const entries = await Entry.find({ type: "metal payment" })
+    const entries = await Entry.find({ type: "metal-payment" })
       .populate("voucherId")
       .populate("party")
       .populate("enteredBy")
@@ -397,7 +437,7 @@ const getMetalPayments = async (req, res) => {
 
 const getMetalReceipts = async (req, res) => {
   try {
-    const entries = await Entry.find({ type: "metal receipt" })
+    const entries = await Entry.find({ type: "metal-receipt" })
       .populate("voucherId")
       .populate("party")
       .populate("enteredBy")

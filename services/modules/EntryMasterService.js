@@ -17,17 +17,18 @@ exports.createEntry = async (data) => {
     };
 
     // Add type-specific fields
-    if (data.type === "metal receipt" || data.type === "metal payment") {
+    if (data.type === "metal-receipt" || data.type === "metal-payment") {
       entryData.stocks = data.stocks;
     } else if (data.type === "cash receipt" || data.type === "cash payment") {
       entryData.cash = data.cash;
     }
 
     const entry = new Entry(entryData);
+    
 
-    // Handle metal receipt
-    if (data.type === "metal receipt") {
-      await handleMetalReceipt(entry);
+    // Handle metal-receipt
+    if (data.type === "metal-receipt") {
+      await handleMetalReceipt(entry ,entry.voucherNumber );
     }
 
     // Handle cash receipt
@@ -40,8 +41,8 @@ exports.createEntry = async (data) => {
       await handleCashPayment(entry);
     }
 
-    // Handle metal payment
-    if (data.type === "metal payment") {
+    // Handle metal-payment
+    if (data.type === "metal-payment") {
       await handleMetalPayment(entry);
     }
 
@@ -59,8 +60,9 @@ exports.createEntry = async (data) => {
   }
 };
 
-// Helper function for metal receipt
-const handleMetalReceipt = async (entry) => {
+// Helper function for metal-receipt
+const handleMetalReceipt = async (entry , reference) => {
+  log
   for (const stock of entry.stocks) {
     const transactionId = await Registry.generateTransactionId();
 
@@ -77,7 +79,7 @@ const handleMetalReceipt = async (entry) => {
       runningBalance: 0,
       previousBalance: 0,
       credit: stock.purityWeight,
-      reference: stock.stock ? stock.stock.toString() : "",
+      reference: reference,
       createdBy: entry.enteredBy,
       party: entry.party ? entry.party.toString() : null,
     });
@@ -92,11 +94,11 @@ const handleMetalReceipt = async (entry) => {
       runningBalance: 0,
       previousBalance: 0,
       debit: stock.purityWeight,
-      reference: stock.stock ? stock.stock.toString() : "",
+      reference: reference,
       createdBy: entry.enteredBy,
       party: entry.party ? entry.party.toString() : null,
     });
-    console.log(`Created gold entry for stock: ${stock.stock}`);
+    console.log(`Created gold entry for stock: ${reference}`);
   }
 };
 
@@ -282,7 +284,7 @@ const handleCashPayment = async (entry) => {
   await accountType.save();
 };
 
-// Helper function for metal payment
+// Helper function for metal-payment
 const handleMetalPayment = async (entry) => {
   for (const stock of entry.stocks) {
     const transactionId = await Registry.generateTransactionId();

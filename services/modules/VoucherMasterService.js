@@ -148,10 +148,16 @@ class VoucherMasterService {
       throw createAppError("Module is required", 400, "MISSING_MODULE");
     }
 
+    console.log('====================================');
+    console.log(transactionType);
+    console.log('====================================');
     // Get voucher configuration (with caching)
     const voucher = await this.getVoucherConfig(module);
     // Get transaction count
     const transactionCount = await this.getTransactionCount(module, transactionType);
+    console.log('====================================');
+    console.log(transactionCount);
+    console.log('====================================');
 
     // Generate next voucher number
     const nextSequence = transactionCount + 1;
@@ -229,7 +235,7 @@ class VoucherMasterService {
   }
 
   static async getEntryVoucherInfo(module, entryType) {
-    const validEntryTypes = ["metal receipt", "metal payment", "cash receipt", "cash payment"];
+    const validEntryTypes = ["metal-receipt", "metal-payment", "cash receipt", "cash payment"];
 
     if (!validEntryTypes.includes(entryType.toLowerCase())) {
       throw createAppError(
@@ -247,7 +253,7 @@ class VoucherMasterService {
   static async getAllEntryTypesVoucherInfo(module = "entry") {
     try {
       const voucher = await this.getVoucherConfig(module);
-      const entryTypes = ["metal receipt", "metal payment", "cash receipt", "cash payment"];
+      const entryTypes = ["metal-receipt", "metal-payment", "cash receipt", "cash payment"];
       const entryTypesInfo = {};
 
       // Get counts for all entry types in parallel
