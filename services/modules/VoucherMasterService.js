@@ -3,6 +3,8 @@ import MetalTransaction from "../../models/modules/MetalTransaction.js";
 import TransactionFix from "../../models/modules/TransactionFixing.js";
 import Entry from "../../models/modules/EntryModel.js";
 import { createAppError } from "../../utils/errorHandler.js";
+import FundTransfer from "../../models/modules/FundTransfer.js";
+import MetalStock from "../../models/modules/MetalStock.js";
 
 class VoucherMasterService {
   // Cache for voucher configurations to reduce DB queries
@@ -116,6 +118,48 @@ class VoucherMasterService {
         const count = await TransactionFix.countDocuments();
         console.log(`[getTransactionCount] TransactionFix (all) Count:`, count);
         return count;
+      } else if (moduleLC === "transfer") {
+        console.log(`[getTransactionCount] Using model: TransactionFix`);
+        if (transactionType) {
+          const query = {
+            type: { $regex: `^${transactionType}$`, $options: "i" }
+          };
+          console.log(`[getTransactionCount] TransactionFix Query:`, query);
+          const count = await FundTransfer.countDocuments(query);
+          console.log(`[getTransactionCount] TransactionFix Count:`, count);
+          return count;
+        }
+        const count = await TransactionFix.countDocuments();
+        console.log(`[getTransactionCount] TransactionFix (all) Count:`, count);
+        return count;
+      } else if (moduleLC === "opening-balance") {
+        console.log(`[getTransactionCount] Using model: TransactionFix`);
+        if (transactionType) {
+          const query = {
+            type: { $regex: `^${transactionType}$`, $options: "i" }
+          };
+          console.log(`[getTransactionCount] TransactionFix Query:`, query);
+          const count = await FundTransfer.countDocuments(query);
+          console.log(`[getTransactionCount] TransactionFix Count:`, count);
+          return count;
+        }
+        const count = await TransactionFix.countDocuments();
+        console.log(`[getTransactionCount] TransactionFix (all) Count:`, count);
+        return count;
+      }else if(moduleLC === "metal-stock"){
+        console.log(`[getTransactionCount] Using model: TransactionFix`);
+        if (transactionType) {
+          const query = {
+            referenceType: { $regex: `^${transactionType}$`, $options: "i" }
+          };
+          console.log(`[getTransactionCount] TransactionFix Query:`, query);
+          const count = await MetalStock.countDocuments(query);
+          console.log(`[getTransactionCount] TransactionFix Count:`, count);
+          return count;
+        }
+        const count = await TransactionFix.countDocuments();
+        console.log(`[getTransactionCount] TransactionFix (all) Count:`, count);
+        return count;
       }
 
       console.log(`[getTransactionCount] No matching model for module="${module}". Returning 0.`);
@@ -148,9 +192,6 @@ class VoucherMasterService {
       throw createAppError("Module is required", 400, "MISSING_MODULE");
     }
 
-    console.log('====================================');
-    console.log(transactionType);
-    console.log('====================================');
     // Get voucher configuration (with caching)
     const voucher = await this.getVoucherConfig(module);
     // Get transaction count

@@ -6,8 +6,12 @@ const MetalStockSchema = new mongoose.Schema(
     metalType: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "DivisionMaster",
-       default: null,
+      default: null,
       // required: [true, "Metal type is required"],
+    },
+    referenceType: {
+      type: String,
+      index: true,
     },
     code: {
       type: String,
@@ -35,7 +39,7 @@ const MetalStockSchema = new mongoose.Schema(
       ref: "KaratMaster",
       required: [true, "Karat is required"],
     },
- 
+
     pcs: {
       type: Boolean,
       default: false, // true for pieces, false for weight-based
@@ -57,6 +61,24 @@ const MetalStockSchema = new mongoose.Schema(
       default: 0,
       min: [0, "Total value cannot be negative"],
     },
+    voucherType: {
+      type: String,
+      trim: true,
+      default: null,
+      maxlength: [50, "Voucher type cannot exceed 50 characters"],
+    },
+    voucherDate: {
+      type: Date,
+      default: Date.now,
+      index: true,
+    },
+    voucherNumber: {
+      type: String,
+      trim: true,
+      maxlength: [50, "Voucher number cannot exceed 50 characters"],
+      index: true,
+      // Allow null values but enforce uniqueness when present
+    },
     charges: {
       type: Number,
       default: 0,
@@ -72,20 +94,20 @@ const MetalStockSchema = new mongoose.Schema(
     category: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "MainCategory",
-       default: null,
+      default: null,
       // required: [true, "Category is required"],
     },
     subCategory: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "SubCategory",
-       default: null,
+      default: null,
       // required: [true, "Sub category is required"],
     },
     type: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Type",
       // required: [true, "Type is required"],
-       default: null,
+      default: null,
     },
     size: {
       type: mongoose.Schema.Types.ObjectId,

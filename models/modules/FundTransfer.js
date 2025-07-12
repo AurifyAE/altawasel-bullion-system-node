@@ -7,17 +7,17 @@ const FundTransferSchema = new mongoose.Schema(
       required: [true, "Transaction ID is required"],
       trim: true,
       uppercase: true,
-    
+
     },
-    assetType:{
-        type: String,
-        enum: ["CASH", "GOLD"],
-        required: [true, "Asset type is required"],
+    assetType: {
+      type: String,
+      enum: ["CASH", "GOLD"],
+      required: [true, "Asset type is required"],
     },
     type: {
       type: String,
       required: [true, "Transaction type is required"],
-      default: "FUND_TRANSFER", // Default type can be changed as needed
+      default: "FUND-TRANSFER", // Default type can be changed as needed
     },
     description: {
       type: String,
@@ -45,8 +45,25 @@ const FundTransferSchema = new mongoose.Schema(
         type: Number,
       },
     },
-     
-     isBullion: {
+    voucherType: {
+      type: String,
+      trim: true,
+      default: null,
+      maxlength: [50, "Voucher type cannot exceed 50 characters"],
+    },
+    voucherDate: {
+      type: Date,
+      default: Date.now,
+      index: true,
+    },
+    voucherNumber: {
+      type: String,
+      trim: true,
+      maxlength: [50, "Voucher number cannot exceed 50 characters"],
+      index: true,
+      // Allow null values but enforce uniqueness when present
+    },
+    isBullion: {
       type: Boolean,
       default: null,
     },
