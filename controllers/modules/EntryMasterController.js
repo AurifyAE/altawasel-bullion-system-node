@@ -14,6 +14,7 @@ const createEntry = async (req, res) => {
       "metal-payment",
       "cash receipt",
       "cash payment",
+      "currency-receipt"
     ];
     if (!validTypes.includes(type)) {
       return res.status(400).json({

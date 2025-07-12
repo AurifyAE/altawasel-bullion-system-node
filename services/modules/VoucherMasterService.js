@@ -78,7 +78,7 @@ class VoucherMasterService {
         const validEntryTypes = ["metal-receipt", "metal-payment", "currency-receipt", "currency-payment"];
         console.log(`[getTransactionCount] validEntryTypes:`, validEntryTypes);
 
-        if (transactionType && validEntryTypes.includes(transactionType.toLowerCase())) {
+        if (transactionType) {
           const query = {
             type: { $regex: `^${transactionType}$`, $options: "i" }
           };
@@ -146,7 +146,7 @@ class VoucherMasterService {
         const count = await TransactionFix.countDocuments();
         console.log(`[getTransactionCount] TransactionFix (all) Count:`, count);
         return count;
-      }else if(moduleLC === "metal-stock"){
+      } else if (moduleLC === "metal-stock") {
         console.log(`[getTransactionCount] Using model: TransactionFix`);
         if (transactionType) {
           const query = {
@@ -276,7 +276,7 @@ class VoucherMasterService {
   }
 
   static async getEntryVoucherInfo(module, entryType) {
-    const validEntryTypes = ["metal-receipt", "metal-payment", "cash receipt", "cash payment"];
+    const validEntryTypes = ["metal-receipt", "metal-payment", "cash receipt", "cash payment", "currency-receipt"];
 
     if (!validEntryTypes.includes(entryType.toLowerCase())) {
       throw createAppError(

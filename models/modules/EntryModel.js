@@ -4,7 +4,7 @@ const entrySchema = new mongoose.Schema({
     type: {
         type: String,
         required: [true, "Entry type is required"],
-        enum: ["metal-receipt", "metal-payment", "cash receipt", "cash payment"]
+        enum: ["metal-receipt", "metal-payment", "cash receipt", "cash payment" , "currency-receipt"]
     },
     voucherId: {
         type: mongoose.Schema.Types.ObjectId,
