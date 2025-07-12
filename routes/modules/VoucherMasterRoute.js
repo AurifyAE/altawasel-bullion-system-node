@@ -18,7 +18,7 @@ const router = express.Router();
 router.use(authenticateToken);
 
 // Consolidated voucher info endpoint - handles all modules and transaction types
-// GET /vouchers/info/:module?transactionType=purchase&entryType=metal receipt
+// GET /vouchers/info/:module?transactionType=purchase&entryType=metal-receipt
 router.get("/info/:module", getVoucherInfoByModule);
 
 // Voucher number generation - consolidated endpoint

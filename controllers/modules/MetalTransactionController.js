@@ -19,6 +19,7 @@ export const createMetalTransaction = async (req, res, next) => {
       totalAmountSession,
       status,
       notes,
+      voucher
     } = req.body;
     // Validation (already handled by middleware, but ensuring critical fields)
     if (
@@ -100,8 +101,10 @@ export const createMetalTransaction = async (req, res, next) => {
       },
       status: status || "draft",
       notes: notes?.trim(),
+      voucherType: voucher.voucherType,
+      voucherNumber: voucher.voucherCode
     };
-console.log("Creating Metal Transaction with data:", transactionData);
+    console.log("Creating Metal Transaction with data:", transactionData);
     const metalTransaction = await MetalTransactionService.createMetalTransaction(
       transactionData,
       req.admin.id
@@ -111,7 +114,7 @@ console.log("Creating Metal Transaction with data:", transactionData);
       // update inventory if sale happen
       await InventoryService.updateInventory(metalTransaction, true);
     } else {
-       // update inventory if Purchase happen
+      // update inventory if Purchase happen
       await InventoryService.updateInventory(metalTransaction);
     }
 

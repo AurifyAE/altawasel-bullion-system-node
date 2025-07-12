@@ -9,7 +9,8 @@ class FundTransferService {
     receiverId,
     value,
     assetType,
-    adminId
+    adminId,
+    voucher
   ) {
     try {
       const senderAccount = await AccountType.findById(senderId);
@@ -27,7 +28,8 @@ class FundTransferService {
           senderAccount,
           receiverAccount,
           value,
-          adminId
+          adminId,
+          voucher
         );
       }
       if (assetType === "GOLD") {
@@ -35,7 +37,8 @@ class FundTransferService {
           senderAccount,
           receiverAccount,
           value,
-          adminId
+          adminId,
+          voucher
         );
       }
     } catch (error) {
@@ -47,114 +50,158 @@ class FundTransferService {
     }
   }
 
-static async openingBalanceTransfer(receiverId, value, adminId, assetType) {
-  try {
-    const receiverAccount = await AccountType.findById(receiverId);
-    if (!receiverAccount) {
-      throw createAppError(
-        "Receiver account not found",
-        404,
-        "ACCOUNT_NOT_FOUND"
-      );
+  static async openingBalanceTransfer(receiverId, value, adminId, assetType, voucher) {
+    try {
+      const receiverAccount = await AccountType.findById(receiverId);
+      if (!receiverAccount) {
+        throw createAppError(
+          "Receiver account not found",
+          404,
+          "ACCOUNT_NOT_FOUND"
+        );
+      }
+  
+      // Determine if it's credit or debit
+      const isCredit = value > 0;
+      const isDebit = value < 0;
+      const absoluteValue = Math.abs(value);
+  
+      if (assetType === "CASH") {
+        // Store previous balance for tracking
+        const previousBalance = receiverAccount.balances.cashBalance.amount;
+  
+        // Update account balance (add positive, subtract negative)
+        receiverAccount.balances.cashBalance.amount += value;
+  
+        // Calculate running balance
+        const runningBalance = receiverAccount.balances.cashBalance.amount;
+  
+        const transaction = new Registry({
+          transactionId: await Registry.generateTransactionId(),
+          type: "PARTY_CASH_BALANCE",
+          description: `OPENING BALANCE FOR ${receiverAccount.customerName}`,
+          value: absoluteValue,
+          runningBalance: runningBalance,
+          previousBalance: previousBalance,
+          credit: isCredit ? absoluteValue : 0,
+          debit: isDebit ? absoluteValue : 0,
+          reference: voucher.voucherCode,
+          createdBy: adminId,
+          party: receiverAccount._id,
+        });
+  
+        const transactionForParty = new Registry({
+          transactionId: await Registry.generateTransactionId(),
+          type: "OPENING_CASH_BALANCE",
+          description: `OPENING BALANCE FOR ${receiverAccount.customerName}`,
+          value: absoluteValue,
+          runningBalance: runningBalance,
+          previousBalance: previousBalance,
+          credit: isCredit ? absoluteValue : 0,
+          debit: isDebit ? absoluteValue : 0,
+          reference: voucher.voucherCode,
+          createdBy: adminId,
+          party: receiverAccount._id,
+        });
+  
+        // Add to FundTransfer collection
+        const fundTransfer = new FundTransfer({
+          transactionId: await FundTransfer.generateTransactionId(),
+          description: `OPENING CASH BALANCE FOR ${receiverAccount.customerName}`,
+          value: absoluteValue,
+          assetType: "CASH",
+          receivingParty: {
+            party: receiverAccount._id,
+            credit: isCredit ? absoluteValue : 0,
+          },
+          sendingParty: {
+            party: null, // No sender for opening balance
+            debit: isDebit ? absoluteValue : 0,
+          },
+          voucherNumber: voucher.voucherCode,
+          voucherType: voucher.voucherType,
+          isBullion: false,
+          createdBy: adminId,
+          type:"OPENING-BALANCE"
+        });
+  
+        await receiverAccount.save();
+        await transactionForParty.save();
+        await transaction.save();
+        await fundTransfer.save();
+  
+      } else if (assetType === "GOLD") {
+        // Store previous balance for tracking
+        const previousBalance = receiverAccount.balances.goldBalance.totalGrams;
+  
+        // Update account balance (add positive, subtract negative)
+        receiverAccount.balances.goldBalance.totalGrams += value;
+  
+        // Calculate running balance
+        const runningBalance = receiverAccount.balances.goldBalance.totalGrams;
+  
+        const transaction = new Registry({
+          transactionId: await Registry.generateTransactionId(),
+          type: "PARTY_GOLD_BALANCE",
+          description: `OPENING GOLD FOR ${receiverAccount.customerName}`,
+          value: absoluteValue,
+          runningBalance: runningBalance,
+          previousBalance: previousBalance,
+          credit: isCredit ? absoluteValue : 0,
+          debit: isDebit ? absoluteValue : 0,
+          reference: voucher.voucherCode,
+          createdBy: adminId,
+          party: receiverAccount._id,
+        });
+  
+        const transactionForParty = new Registry({
+          transactionId: await Registry.generateTransactionId(),
+          type: "OPENING_GOLD_BALANCE",
+          description: `OPENING GOLD FOR ${receiverAccount.customerName}`,
+          value: absoluteValue,
+          runningBalance: runningBalance,
+          previousBalance: previousBalance,
+          credit: isCredit ? absoluteValue : 0,
+          debit: isDebit ? absoluteValue : 0,
+          reference: voucher.voucherCode,
+          createdBy: adminId,
+          party: receiverAccount._id,
+        });
+  
+        // Add to FundTransfer collection
+        const fundTransfer = new FundTransfer({
+          transactionId: await FundTransfer.generateTransactionId(),
+          description: `OPENING GOLD BALANCE FOR ${receiverAccount.customerName}`,
+          value: absoluteValue,
+          assetType: "GOLD",
+          receivingParty: {
+            party: receiverAccount._id,
+            credit: isCredit ? absoluteValue : 0,
+          },
+          sendingParty: {
+            party: null, // No sender for opening balance
+            debit: isDebit ? absoluteValue : 0,
+          },
+          voucherNumber: voucher.voucherCode,
+          voucherType: voucher.voucherType,
+          isBullion: false,
+          createdBy: adminId,
+          type:"OPENING-BALANCE"
+        });
+  
+        await receiverAccount.save();
+        await transactionForParty.save();
+        await transaction.save();
+        await fundTransfer.save();
+      }
+    } catch (error) {
+      if (error.name === "ValidationError") {
+        const messages = Object.values(error.errors).map((err) => err.message);
+        throw createAppError(messages.join(", "), 400, "VALIDATION_ERROR");
+      }
+      throw error;
     }
-
-    // Determine if it's credit or debit
-    const isCredit = value > 0;
-    const isDebit = value < 0;
-    const absoluteValue = Math.abs(value);
-    
-    if (assetType === "CASH") {
-      // Store previous balance for tracking
-      const previousBalance = receiverAccount.balances.cashBalance.amount;
-      
-      // Update account balance (add positive, subtract negative)
-      receiverAccount.balances.cashBalance.amount += value;
-      
-      // Calculate running balance
-      const runningBalance = receiverAccount.balances.cashBalance.amount;
-
-      const transaction = new Registry({
-        transactionId: await Registry.generateTransactionId(),
-        type: "PARTY_CASH_BALANCE",
-        description: `OPENING BALANCE FOR ${receiverAccount.customerName}`,
-        value: absoluteValue,
-        runningBalance: runningBalance,
-        previousBalance: previousBalance,
-        credit: isCredit ? absoluteValue : 0,
-        debit: isDebit ? absoluteValue : 0,
-        reference: `Opening balance for ${receiverAccount.customerName}`,
-        createdBy: adminId,
-        party: receiverAccount._id,
-      });
-
-      const transactionForParty = new Registry({
-        transactionId: await Registry.generateTransactionId(),
-        type: "OPENING_CASH_BALANCE",
-        description: `OPENING BALANCE FOR ${receiverAccount.customerName}`,
-        value: absoluteValue,
-        runningBalance: runningBalance,
-        previousBalance: previousBalance,
-        credit: isCredit ? absoluteValue : 0,
-        debit: isDebit ? absoluteValue : 0,
-        reference: `Opening balance for ${receiverAccount.customerName}`,
-        createdBy: adminId,
-        party: receiverAccount._id,
-      });
-
-      await receiverAccount.save();
-      await transactionForParty.save();
-      await transaction.save();
-
-    } else if (assetType === "GOLD") {
-      // Store previous balance for tracking
-      const previousBalance = receiverAccount.balances.goldBalance.totalGrams;
-      
-      // Update account balance (add positive, subtract negative)
-      receiverAccount.balances.goldBalance.totalGrams += value;
-      
-      // Calculate running balance
-      const runningBalance = receiverAccount.balances.goldBalance.totalGrams;
-
-      const transaction = new Registry({
-        transactionId: await Registry.generateTransactionId(),
-        type: "PARTY_GOLD_BALANCE",
-        description: `OPENING GOLD FOR ${receiverAccount.customerName}`,
-        value: absoluteValue,
-        runningBalance: runningBalance,
-        previousBalance: previousBalance,
-        credit: isCredit ? absoluteValue : 0,
-        debit: isDebit ? absoluteValue : 0,
-        reference: `Opening gold for ${receiverAccount.customerName}`,
-        createdBy: adminId,
-        party: receiverAccount._id,
-      });
-
-      const transactionForParty = new Registry({
-        transactionId: await Registry.generateTransactionId(),
-        type: "OPENING_GOLD_BALANCE",
-        description: `OPENING GOLD FOR ${receiverAccount.customerName}`,
-        value: absoluteValue,
-        runningBalance: runningBalance,
-        previousBalance: previousBalance,
-        credit: isCredit ? absoluteValue : 0,
-        debit: isDebit ? absoluteValue : 0,
-        reference: `Opening gold for ${receiverAccount.customerName}`,
-        createdBy: adminId,
-        party: receiverAccount._id,
-      });
-
-      await receiverAccount.save();
-      await transactionForParty.save();
-      await transaction.save();
-    }
-  } catch (error) {
-    if (error.name === "ValidationError") {
-      const messages = Object.values(error.errors).map((err) => err.message);
-      throw createAppError(messages.join(", "), 400, "VALIDATION_ERROR");
-    }
-    throw error;
   }
-}
 
   static async getFundTransfers() {
     try {
@@ -174,7 +221,8 @@ async function handleCashTransfer(
   senderAccount,
   receiverAccount,
   value,
-  adminId
+  adminId,
+  voucher
 ) {
   if (senderAccount.balances.cashBalance.amount < value) {
     throw createAppError(
@@ -229,6 +277,8 @@ async function handleCashTransfer(
       party: senderAccount._id,
       debit: value,
     },
+    voucherNumber: voucher.voucherCode,
+    voucherType: voucher.voucherType,
     isBullion: false,
     createdBy: adminId,
   });
@@ -244,7 +294,8 @@ async function handleGoldTransfer(
   senderAccount,
   receiverAccount,
   value,
-  adminId
+  adminId,
+  voucher
 ) {
   if (senderAccount.balances.goldBalance.totalGrams < value) {
     throw createAppError(
@@ -258,6 +309,9 @@ async function handleGoldTransfer(
   senderAccount.balances.goldBalance.totalGrams -= value;
   receiverAccount.balances.goldBalance.totalGrams += value;
 
+  console.log('====================================');
+  console.log("onnn coucher  ", voucher);
+  console.log('====================================');
   // Log the transaction in the registry for sender
   const transaction = new Registry({
     transactionId: await Registry.generateTransactionId(),
@@ -299,6 +353,8 @@ async function handleGoldTransfer(
       party: senderAccount._id,
       debit: value,
     },
+    voucherNumber: voucher.voucherCode,
+    voucherType: voucher.voucherType,
     isBullion: false,
     createdBy: adminId,
   });

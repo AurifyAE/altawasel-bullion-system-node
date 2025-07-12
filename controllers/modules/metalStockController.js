@@ -66,6 +66,7 @@ export const createMetalStock = async (req, res, next) => {
       brand: brand || null,
       country: country || null,
       price: price || null,
+      referenceType:"metal-stock"
     };
 
     const result = await MetalStockService.createMetalStock(metalStockData, req.admin.id);
