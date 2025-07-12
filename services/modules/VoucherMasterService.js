@@ -78,12 +78,15 @@ class VoucherMasterService {
         const validEntryTypes = ["metal-receipt", "metal-payment", "currency-receipt", "currency-payment"];
         console.log(`[getTransactionCount] validEntryTypes:`, validEntryTypes);
 
-        if (transactionType) {
+        // if (transactionType && validEntryTypes.includes(transactionType.toLowerCase())) { // commenting incase if we need
+        if (transactionType && validEntryTypes.includes(transactionType.toLowerCase())) {
           const query = {
             type: { $regex: `^${transactionType}$`, $options: "i" }
           };
+
           console.log(`[getTransactionCount] Entry Query:`, query);
           const count = await Entry.countDocuments(query);
+
           console.log(`[getTransactionCount] Entry Count:`, count);
           return count;
         }
