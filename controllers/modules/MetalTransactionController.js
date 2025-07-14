@@ -21,6 +21,7 @@ export const createMetalTransaction = async (req, res, next) => {
       notes,
       voucher
     } = req.body;
+    console.log(req.body)
     // Validation (already handled by middleware, but ensuring critical fields)
     if (
       !transactionType ||
@@ -53,9 +54,9 @@ export const createMetalTransaction = async (req, res, next) => {
       transactionType,
       fixed: isFixTransaction ? true : false,
       unfix: isUnfixTransaction ? true : false,
-      voucherType: voucherType?.trim(),
+      voucherType: voucherType,
       voucherDate: voucherDate ? new Date(voucherDate) : new Date(),
-      voucherNumber: voucherNumber?.trim(),
+      voucherNumber: voucherNumber,
       partyCode: partyCode.trim(),
       partyCurrency: partyCurrency.trim(),
       itemCurrency: itemCurrency?.trim(),
@@ -101,8 +102,8 @@ export const createMetalTransaction = async (req, res, next) => {
       },
       status: status || "draft",
       notes: notes?.trim(),
-      voucherType: voucher.voucherType,
-      voucherNumber: voucher.voucherCode
+      voucherType: voucherType,
+      voucherNumber: voucherNumber
     };
     console.log("Creating Metal Transaction with data:", transactionData);
     const metalTransaction = await MetalTransactionService.createMetalTransaction(

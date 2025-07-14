@@ -14,7 +14,7 @@ const createEntry = async (req, res) => {
       "metal-payment",
       "cash receipt",
       "cash payment",
-      "currency-receipt"
+      "currency-receipt",
     ];
     if (!validTypes.includes(type)) {
       return res.status(400).json({
@@ -93,7 +93,7 @@ const handleMetalReceipt = async (entry) => {
     // Registry entry for "stock balance"
     await Registry.create({
       transactionId,
-      type: "STOCK_BALANCE",
+      type: "GOLD_STOCK",
       description, // Use the computed description
       value: stock.purityWeight,
       runningBalance: 0,
@@ -123,7 +123,7 @@ const handleMetalReceipt = async (entry) => {
     console.log(`Created gold entry for stock: ${stock.stock}`);
   }
   const transaction = {
-    stockItems: entry.stocks.map(stock => ({
+    stockItems: entry.stocks.map((stock) => ({
       stockCode: { _id: stock.stock, code: stock.stock.toString() }, // Assuming stock.stock is the ObjectId
       pieces: 0, // Adjust if pieces are relevant; not provided in sample data
       grossWeight: stock.grossWeight,
@@ -203,13 +203,13 @@ const handleCashReceipt = async (entry) => {
         cashItem.remarks && cashItem.remarks.trim() !== ""
           ? cashItem.remarks
           : entry.remarks && entry.remarks.trim() !== ""
-            ? entry.remarks
-            : "No description",
+          ? entry.remarks
+          : "No description",
       value: requestedAmount,
       runningBalance: 0,
       previousBalance: 0,
       credit: requestedAmount,
-      reference: entry._id.toString(),
+      reference: entry.voucherCode || "",
       createdBy: entry.enteredBy,
       party: entry.party ? entry.party.toString() : null,
       isBullion: false,
@@ -225,14 +225,13 @@ const handleCashReceipt = async (entry) => {
       runningBalance: 0,
       previousBalance: 0,
       debit: requestedAmount,
-      reference: entry._id.toString(),
+      reference: entry.voucherCode || "",
       createdBy: entry.enteredBy,
       party: null,
       isBullion: true,
     });
     console.log(`Created cash entry for cashType: ${cashType._id}`);
   }
-
 };
 
 // Helper function for cash payment
@@ -303,7 +302,7 @@ const handleCashPayment = async (entry) => {
       runningBalance: 0,
       previousBalance: 0,
       debit: requestedAmount,
-      reference: entry._id.toString(),
+      reference: entry.voucherCode,
       createdBy: entry.enteredBy,
       party: entry.party ? entry.party.toString() : null,
       isBullion: false,
@@ -318,7 +317,7 @@ const handleCashPayment = async (entry) => {
       runningBalance: 0,
       previousBalance: 0,
       credit: requestedAmount,
-      reference: entry._id.toString(),
+      reference: entry.voucherCode,
       createdBy: entry.enteredBy,
       party: null,
       isBullion: true,
@@ -332,9 +331,9 @@ const handleCashPayment = async (entry) => {
 
 // Helper function for metal-payment
 const handleMetalPayment = async (entry) => {
-  console.log('====================================');
+  console.log("====================================");
   console.log(entry);
-  console.log('====================================');
+  console.log("====================================");
 
   for (const stock of entry.stocks) {
     const transactionId = await Registry.generateTransactionId();
@@ -346,7 +345,7 @@ const handleMetalPayment = async (entry) => {
     // Registry entry for "stock balance" (debit for payment)
     await Registry.create({
       transactionId,
-      type: "STOCK_BALANCE",
+      type: "GOLD_STOCK",
       description,
       value: stock.purityWeight,
       runningBalance: 0,
@@ -378,7 +377,7 @@ const handleMetalPayment = async (entry) => {
 
   // Prepare transaction data for inventory update
   const transaction = {
-    stockItems: entry.stocks.map(stock => ({
+    stockItems: entry.stocks.map((stock) => ({
       stockCode: { _id: stock.stock, code: stock.stock.toString() }, // Assuming stock.stock is the ObjectId
       pieces: 0, // Adjust if pieces are relevant; not provided in sample data
       grossWeight: stock.grossWeight,

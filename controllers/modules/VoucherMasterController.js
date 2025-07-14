@@ -92,7 +92,7 @@ export const updateVoucher = async (req, res, next) => {
 export const getAllVouchers = async (req, res, next) => {
   try {
     const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
+    const limit = parseInt(req.query.limit) || 100;
     const filters = {
       status: req.query.status,
       isActive: req.query.isActive,

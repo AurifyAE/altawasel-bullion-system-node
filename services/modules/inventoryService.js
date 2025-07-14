@@ -55,6 +55,7 @@ class InventoryService {
                 metal: metal._id,
                 pcs: metal.pcs,
                 pcsCount: metal.pcsCount,
+                pcsValue:metal.pcsValue,
                 grossWeight: 0,
                 pureWeight: 0,
                 purity: metal.karat?.standardPurity || 0,
