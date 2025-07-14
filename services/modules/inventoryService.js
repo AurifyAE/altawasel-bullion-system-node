@@ -68,7 +68,7 @@ class InventoryService {
         }
     }
 
-    static async updateInventoryByFrontendInput({ metalId, type, value, adminId }) {
+    static async updateInventoryByFrontendInput({ metalId, type, value, adminId, voucher }) {
         try {
             if (!metalId || !type || value === undefined) {
                 throw createAppError("Missing metalId, type, or value", 400, "MISSING_INPUT");
@@ -114,7 +114,6 @@ class InventoryService {
                 throw createAppError("Invalid type. Use 'pcs' or 'grams'", 400, "INVALID_TYPE");
             }
             const savedInventory = await inventory.save();
-
             await this.createRegistryEntry({
                 transactionId: await Registry.generateTransactionId(),
                 type: "GOLD_STOCK",
@@ -122,7 +121,7 @@ class InventoryService {
                 value: value,
                 isBullion: true,
                 credit: value,
-                reference: metal.code,
+                reference: voucher.voucherCode,
                 createdBy: adminId
             });
             return savedInventory
@@ -130,7 +129,7 @@ class InventoryService {
             if (error.name === "AppError") throw error;
             throw createAppError(error.message || "Inventory update failed", 500, "INVENTORY_UPDATE_ERROR");
         }
-    }
+    }ho
 
     static async updateInventory(transaction, isSale = false) {
         try {
