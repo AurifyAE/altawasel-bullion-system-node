@@ -54,8 +54,8 @@ class InventoryService {
             const inventory = new Inventory({
                 metal: metal._id,
                 pcs: metal.pcs,
-                pcsCount: metal.pcsCount,
-                pcsValue:metal.pcsValue,
+                pcsCount: 0,
+                pcsValue:metal.totalValue,
                 grossWeight: 0,
                 pureWeight: 0,
                 purity: metal.karat?.standardPurity || 0,
@@ -108,6 +108,7 @@ class InventoryService {
                     throw createAppError("Weight value must be a non-negative number", 400, "INVALID_GRAM_VALUE");
                 }
                 inventory.grossWeight += qty;
+                inventory.pcsCount = (inventory.grossWeight) / inventory.pcsValue
                 inventory.pureWeight = (inventory.grossWeight * inventory.purity) / 100;
                 description = `Inventory ${isAddition ? 'added' : 'removed'}: ${metal.code} - ${Math.abs(qty)} grams`;
                 registryValue = Math.abs(qty) * (metal.pricePerGram || 0);
