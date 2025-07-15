@@ -154,9 +154,9 @@ class InventoryService {
                 const weightDelta = factor * (item.grossWeight || 0);
 
                 // Pre-check to prevent negative values
-                if (inventory.pcsCount + pcsDelta < 0 || inventory.grossWeight + weightDelta < 0) {
-                    throw createAppError(`Insufficient stock for metal: ${item.stockCode.code}`, 400, "INSUFFICIENT_STOCK");
-                }
+                // if (inventory.pcsCount + pcsDelta < 0 || inventory.grossWeight + weightDelta < 0) {
+                //     throw createAppError(`Insufficient stock for metal: ${item.stockCode.code}`, 400, "INSUFFICIENT_STOCK");
+                // }
 
                 inventory.pcsCount += pcsDelta;
                 inventory.grossWeight += weightDelta;
