@@ -422,7 +422,12 @@ class MetalTransactionService {
           0,
           voucherDate,
           voucherNumber,
-          adminId
+          adminId,
+          {
+            grossWeight: totals.grossWeight,
+            pureWeight: totals.pureWeight, // Fixed: Reference totals.pureWeight
+            purity: totals.pureWeight / totals.grossWeight // Optional: Include purity if available
+          }
         )
       );
     }
@@ -563,7 +568,12 @@ class MetalTransactionService {
           0,
           voucherDate,
           voucherNumber,
-          adminId
+          adminId,
+          {
+            grossWeight: totals.grossWeight,
+            pureWeight: totals.pureWeight, // Fixed: Reference totals.pureWeight
+            purity: totals.pureWeight / totals.grossWeight // Optional: Include purity if available
+          }
         )
       );
     }
@@ -704,7 +714,12 @@ class MetalTransactionService {
           totals.grossWeight,
           voucherDate,
           voucherNumber,
-          adminId
+          adminId,
+          {
+            grossWeight: totals.grossWeight,
+            pureWeight: totals.pureWeight, // Fixed: Reference totals.pureWeight
+            purity: totals.pureWeight / totals.grossWeight // Optional: Include purity if available
+          }
         )
       );
     }
@@ -845,7 +860,12 @@ class MetalTransactionService {
           totals.grossWeight,
           voucherDate,
           voucherNumber,
-          adminId
+          adminId,
+          {
+            grossWeight: totals.grossWeight,
+            pureWeight: totals.pureWeight, // Fixed: Reference totals.pureWeight
+            purity: totals.pureWeight / totals.grossWeight // Optional: Include purity if available
+          }
         )
       );
     }
@@ -1062,7 +1082,12 @@ class MetalTransactionService {
           totals.grossWeight,
           voucherDate,
           voucherNumber,
-          adminId
+          adminId,
+          {
+            grossWeight: totals.grossWeight,
+            pureWeight: totals.pureWeight, // Fixed: Reference totals.pureWeight
+            purity: totals.pureWeight / totals.grossWeight // Optional: Include purity if available
+          }
         )
       );
     }
@@ -1187,6 +1212,7 @@ class MetalTransactionService {
         )
       );
     }
+    c
 
     // Gold Stock - DEBIT (company stock debited)
     if (totals.pureWeight > 0) {
@@ -1204,7 +1230,12 @@ class MetalTransactionService {
           totals.grossWeight,
           voucherDate,
           voucherNumber,
-          adminId
+          adminId,
+          {
+            grossWeight: totals.grossWeight,
+            pureWeight: totals.pureWeight, // Fixed: Reference totals.pureWeight
+            purity: totals.pureWeight / totals.grossWeight // Optional: Include purity if available
+          }
         )
       );
     }
@@ -1348,7 +1379,12 @@ class MetalTransactionService {
           0,
           voucherDate,
           voucherNumber,
-          adminId
+          adminId,
+          {
+            grossWeight: totals.grossWeight,
+            pureWeight: totals.pureWeight, // Fixed: Reference totals.pureWeight
+            purity: totals.pureWeight / totals.grossWeight // Optional: Include purity if available
+          }
         )
       );
     }
@@ -1490,7 +1526,12 @@ class MetalTransactionService {
           0,
           voucherDate,
           voucherNumber,
-          adminId
+          adminId,
+          {
+            grossWeight: totals.grossWeight,
+            pureWeight: totals.pureWeight, // Fixed: Reference totals.pureWeight
+            purity: totals.pureWeight / totals.grossWeight // Optional: Include purity if available
+          }
         )
       );
     }
@@ -1512,7 +1553,8 @@ class MetalTransactionService {
     debit,
     date,
     reference,
-    adminId
+    adminId,
+    { grossWeight, pureWeight, purity } = {}
   ) {
     if (value <= 0) return null;
 
@@ -1530,6 +1572,9 @@ class MetalTransactionService {
       reference,
       createdBy: adminId,
       createdAt: new Date(),
+      grossWeight,
+      pureWeight,
+      purity
     };
   }
 
@@ -2298,7 +2343,7 @@ class MetalTransactionService {
     const session = await mongoose.startSession();
     try {
       session.startTransaction();
-  
+
       // Fetch the existing transaction
       const transaction = await MetalTransaction.findById(transactionId).session(session);
       if (!transaction || !transaction.isActive) {
@@ -2308,15 +2353,15 @@ class MetalTransactionService {
           "TRANSACTION_NOT_FOUND"
         );
       }
-  
+
       // Store the old transaction data for reversal
       const oldPartyId = transaction.partyCode;
       const oldStockItems = [...transaction.stockItems];
       const oldSessionTotals = { ...transaction.totalAmountSession };
-  
+
       // Check if partyCode is changing
       const isPartyChanged = updateData.partyCode && transaction.partyCode.toString() !== updateData.partyCode.toString();
-  
+
       // Fetch old and new parties (if partyCode is changing)
       let oldParty = null;
       let newParty = null;
@@ -2360,23 +2405,23 @@ class MetalTransactionService {
           );
         }
       }
-  
+
       // Update transaction with new data
       Object.assign(transaction, { ...updateData, updatedBy: adminId });
-  
+
       // Recalculate session totals if stock items changed
       if (updateData.stockItems) {
         transaction.calculateSessionTotals();
       }
-  
+
       // Save the updated transaction
       await transaction.save({ session });
-  
+
       // Handle registry entries and balance updates
       if (updateData.stockItems || updateData.totalAmountSession || isPartyChanged) {
         // Step 1: Delete old registry entries
         await this.DeleteRegistryEntry(transaction);
-  
+
         // Step 2: Create new registry entries for the updated transaction
         const newRegistryEntries = this.buildRegistryEntries(
           transaction,
@@ -2386,7 +2431,7 @@ class MetalTransactionService {
         if (newRegistryEntries.length > 0) {
           await Registry.insertMany(newRegistryEntries, { session, ordered: false });
         }
-  
+
         // Step 3: Reverse balances for the old transaction (always)
         const oldTransaction = {
           ...transaction.toObject(),
@@ -2401,7 +2446,7 @@ class MetalTransactionService {
           false, // Not an update, but a reversal
           true   // Reversal flag
         );
-  
+
         // Step 4: Apply balances for the updated transaction
         await this.updateTradeDebtorsBalances(
           newParty._id,
@@ -2412,7 +2457,7 @@ class MetalTransactionService {
       } else {
         console.log(`No balance-affecting fields updated for transaction ${transactionId}`);
       }
-  
+
       await session.commitTransaction();
       return await this.getMetalTransactionById(transactionId);
     } catch (error) {
@@ -3090,13 +3135,13 @@ class MetalTransactionService {
     if (!party) {
       throw createAppError("Party not found", 404, "PARTY_NOT_FOUND");
     }
-  
+
     // Calculate balance changes using the provided transaction
     const { transactionType, stockItems, totalAmountSession, fixed, unfix } = transaction;
     const totals = this.calculateTotals(stockItems, totalAmountSession);
     const mode = this.getTransactionMode(fixed, unfix);
     const balanceChanges = this.calculateBalanceChanges(transactionType, mode, totals);
-  
+
     // Log balance update details
     console.log(`Updating balances for party ${party.customerName} (${party.accountCode})`, {
       transactionType,
@@ -3105,10 +3150,10 @@ class MetalTransactionService {
       transactionId: transaction._id,
       balanceChanges,
     });
-  
+
     // Initialize update operations
     const updateOps = { $set: {}, $inc: {} };
-  
+
     // Handle Gold Balance Updates
     if (balanceChanges.goldBalance !== 0 || balanceChanges.goldValue !== 0) {
       if (isReversal) {
@@ -3122,7 +3167,7 @@ class MetalTransactionService {
       }
       updateOps.$set["balances.goldBalance.lastUpdated"] = new Date();
     }
-  
+
     // Handle Cash Balance Updates (including making charges, premium, and discount)
     const netCashChange = balanceChanges.cashBalance + balanceChanges.premiumBalance + balanceChanges.discountBalance;
     if (netCashChange !== 0) {
@@ -3135,7 +3180,7 @@ class MetalTransactionService {
       }
       updateOps.$set["balances.cashBalance.lastUpdated"] = new Date();
     }
-  
+
     // Update last transaction date and balance summary
     updateOps.$set["balances.lastTransactionDate"] = new Date();
     updateOps.$set["balances.summary"] = {
@@ -3143,18 +3188,18 @@ class MetalTransactionService {
       goldHoldings: (party.balances.goldBalance.totalGrams || 0) + (updateOps.$inc["balances.goldBalance.totalGrams"] || 0),
       lastUpdated: new Date(),
     };
-  
+
     // Log balance before and after
     console.log(`Before balance update:`, {
       goldBalance: party.balances.goldBalance,
       cashBalance: party.balances.cashBalance,
     });
-  
+
     // Apply updates
     if (Object.keys(updateOps.$inc).length > 0 || Object.keys(updateOps.$set).length > 0) {
       await Account.findByIdAndUpdate(partyId, updateOps, { session, new: true });
     }
-  
+
     console.log(`After balance update:`, {
       goldBalance: {
         totalGrams: (party.balances.goldBalance.totalGrams || 0) + (updateOps.$inc["balances.goldBalance.totalGrams"] || 0),
@@ -3165,7 +3210,7 @@ class MetalTransactionService {
       },
       summary: updateOps.$set["balances.summary"],
     });
-  
+
     await party.save({ session });
   }
 

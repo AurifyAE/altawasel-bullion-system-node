@@ -55,7 +55,7 @@ class InventoryService {
                 metal: metal._id,
                 pcs: metal.pcs,
                 pcsCount: 0,
-                pcsValue:metal.totalValue,
+                pcsValue: metal.totalValue,
                 grossWeight: 0,
                 pureWeight: 0,
                 purity: metal.karat?.standardPurity || 0,
@@ -116,6 +116,7 @@ class InventoryService {
                 throw createAppError("Invalid type. Use 'pcs' or 'grams'", 400, "INVALID_TYPE");
             }
             const savedInventory = await inventory.save();
+            const pureWeight = value * inventory.purity
             await this.createRegistryEntry({
                 transactionId: await Registry.generateTransactionId(),
                 type: "GOLD_STOCK",
@@ -124,14 +125,17 @@ class InventoryService {
                 isBullion: true,
                 credit: value,
                 reference: voucher.voucherCode,
-                createdBy: adminId
+                createdBy: adminId,
+                purity: inventory.purity,
+                grossWeight: value,
+                pureWeight
             });
             return savedInventory
         } catch (error) {
             if (error.name === "AppError") throw error;
             throw createAppError(error.message || "Inventory update failed", 500, "INVENTORY_UPDATE_ERROR");
         }
-    }ho
+    } ho
 
     static async updateInventory(transaction, isSale = false) {
         try {
@@ -183,7 +187,10 @@ class InventoryService {
         party = null,
         isBullion = null,
         costCenter = "INVENTORY",
-        createdBy
+        createdBy,
+        purity,
+        grossWeight,
+        pureWeight
     }) {
         try {
 
@@ -199,7 +206,10 @@ class InventoryService {
                 party,
                 isBullion,
                 createdBy,
-                status: "completed"
+                status: "completed",
+                purity,
+                grossWeight,
+                pureWeight
             });
 
             return await registryEntry.save();

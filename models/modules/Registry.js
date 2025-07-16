@@ -54,6 +54,18 @@ const RegistrySchema = new mongoose.Schema(
       default: 0,
       min: [0, "Credit cannot be negative"],
     },
+    purity: {
+      type: Number,
+      default: null,
+    },
+    pureWeight: {
+      type: Number,
+      default: null,
+    },
+    grossWeight: {
+      type: Number,
+      default: null,
+    },
     runningBalance: {
       type: Number,
       default: 0,

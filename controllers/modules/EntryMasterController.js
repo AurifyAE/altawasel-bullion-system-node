@@ -82,6 +82,9 @@ const createEntry = async (req, res) => {
 
 // Helper function for metal-receipt
 const handleMetalReceipt = async (entry) => {
+  console.log('====================================');
+  console.log(entry);
+  console.log('====================================');
   for (const stock of entry.stocks) {
     const transactionId = await Registry.generateTransactionId();
     // Use consistent description logic
@@ -103,6 +106,9 @@ const handleMetalReceipt = async (entry) => {
       createdBy: entry.enteredBy,
       party: null,
       isBullion: true,
+      purity: stock.purity,
+      grossWeight: stock.purityWeight,
+      pureWeight: stock.purityWeight
     });
     console.log(`Created stock balance entry for stock: ${stock.stock}`);
 
@@ -203,8 +209,8 @@ const handleCashReceipt = async (entry) => {
         cashItem.remarks && cashItem.remarks.trim() !== ""
           ? cashItem.remarks
           : entry.remarks && entry.remarks.trim() !== ""
-          ? entry.remarks
-          : "No description",
+            ? entry.remarks
+            : "No description",
       value: requestedAmount,
       runningBalance: 0,
       previousBalance: 0,
@@ -355,6 +361,9 @@ const handleMetalPayment = async (entry) => {
       createdBy: entry.enteredBy,
       party: null,
       isBullion: true,
+      purity: stock.purity,
+      grossWeight: stock.purityWeight,
+      pureWeight: stock.purityWeight
     });
     console.log(`Created stock balance entry for stock: ${stock.stock}`);
 

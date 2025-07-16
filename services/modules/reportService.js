@@ -27,6 +27,30 @@ export class ReportService {
       throw new Error(`Failed to generate metal stock ledger report: ${error.message}`);
     }
   }
+  async getStockMovementReport(filters) {
+    try {
+      // Validate and format filters
+      const validatedFilters = this.validateFilters(filters);
+
+      // Build aggregation pipeline
+      const pipeline = this.buildStockLedgerPipeline(validatedFilters);
+
+      // Execute aggregation
+      const reportData = await Registry.aggregate(pipeline);
+
+      // Format response
+      const formattedData = this.formatReportData(reportData, validatedFilters);
+
+      return {
+        success: true,
+        data: formattedData,
+        filters: validatedFilters,
+        totalRecords: reportData.length,
+      };
+    } catch (error) {
+      throw new Error(`Failed to generate metal stock ledger report: ${error.message}`);
+    }
+  }
 
   validateFilters(filters) {
     const {
@@ -37,9 +61,21 @@ export class ReportService {
       stock = [],
       karat = [],
       accountType = [],
+      categoryCode = [],
+      type = [],
+      supplierRef = [],
+      countryDetails = [],
+      supplier = [],
+      purchaseRef = [],
       grossWeight = false,
       pureWeight = false,
       showPcs = false,
+      showMetalValue = false,
+      showPurchaseSales = false,
+      showMoved = false,
+      showNetMovement = false,
+      showPicture = false,
+      groupBy = [],
     } = filters;
 
     // Validate date range

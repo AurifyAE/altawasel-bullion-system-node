@@ -690,7 +690,7 @@ class RegistryService {
         .sort({ transactionDate: -1 })
         .skip(skip)
         .limit(limit)
-       
+
 
       const totalPages = Math.ceil(totalItems / limit);
 
