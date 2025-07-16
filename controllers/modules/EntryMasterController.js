@@ -108,7 +108,7 @@ const handleMetalReceipt = async (entry) => {
       isBullion: true,
       purity: stock.purity,
       grossWeight: stock.purityWeight,
-      pureWeight: stock.purityWeight
+      pureWeight: stock.purityWeight/stock.purity
     });
     console.log(`Created stock balance entry for stock: ${stock.stock}`);
 
