@@ -87,6 +87,9 @@ const handleMetalReceipt = async (entry) => {
   console.log('====================================');
   for (const stock of entry.stocks) {
     const transactionId = await Registry.generateTransactionId();
+    console.log('====================================');
+    console.log(stock);
+    console.log('====================================');
     // Use consistent description logic
     const description =
       stock.remarks && stock.remarks.trim() !== ""
@@ -98,17 +101,17 @@ const handleMetalReceipt = async (entry) => {
       transactionId,
       type: "GOLD_STOCK",
       description, // Use the computed description
-      value: stock.purityWeight,
+      value: stock.grossWeight,
       runningBalance: 0,
       previousBalance: 0,
-      credit: stock.purityWeight,
+      credit: stock.grossWeight,
       reference: entry.voucherCode || "",
       createdBy: entry.enteredBy,
       party: null,
       isBullion: true,
       purity: stock.purity,
-      grossWeight: stock.purityWeight,
-      pureWeight: stock.purityWeight/stock.purity
+      grossWeight: stock.grossWeight,
+      pureWeight: stock.purityWeight
     });
     console.log(`Created stock balance entry for stock: ${stock.stock}`);
 
