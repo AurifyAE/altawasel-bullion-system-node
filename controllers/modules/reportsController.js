@@ -6,13 +6,13 @@ export const getMetalStockLedgerReport = async (req, res) => {
   try {
     const filters = req.body;
     // Validate required fields
-    if (!filters.fromDate || !filters.toDate) {
-      return res.status(400).json({
-        success: false,
-        message: "From date and to date are required",
-        error: "MISSING_REQUIRED_FIELDS"
-      });
-    }
+    // if (!filters.fromDate || !filters.toDate) {
+    //   return res.status(400).json({
+    //     success: false,
+    //     message: "From date and to date are required",
+    //     error: "MISSING_REQUIRED_FIELDS"
+    //   });
+    // }
 
     // Call service to get report data
     const reportData = await reportService.getMetalStockLedgerReport(filters);

@@ -80,15 +80,17 @@ export class ReportService {
     } = filters;
 
     // Validate date range
-    if (!fromDate || !toDate) {
-      throw new Error("From date and to date are required");
-    }
+    // if (!fromDate || !toDate) {
+    //   throw new Error("From date and to date are required");
+    // }
 
     const startDate = moment(fromDate).startOf("day").toDate();
     const endDate = moment(toDate).endOf("day").toDate();
 
-    if (startDate > endDate) {
-      throw new Error("From date cannot be greater than to date");
+    if (startDate && endDate) {
+      if (startDate > endDate) {
+        throw new Error("From date cannot be greater than to date");
+      }
     }
 
     // Convert string arrays to ObjectIds
@@ -115,17 +117,28 @@ export class ReportService {
   buildStockLedgerPipeline(filters) {
     const pipeline = [];
 
-    // Stage 1: Match Registry records by date and type
-    const matchStage = {
-      $match: {
-        transactionDate: {
-          $gte: new Date(filters.startDate),
-          $lte: new Date(filters.endDate),
-        },
-        type: "GOLD_STOCK",
-        isActive: true,
-      },
+    const matchConditions = {
+      type: "GOLD_STOCK",
+      isActive: true,
     };
+
+    // Add dynamic date conditions if provided
+    if (filters.startDate || filters.endDate) {
+      matchConditions.transactionDate = {};
+
+      if (filters.startDate) {
+        matchConditions.transactionDate.$gte = new Date(filters.startDate);
+      }
+
+      if (filters.endDate) {
+        matchConditions.transactionDate.$lte = new Date(filters.endDate);
+      }
+    }
+
+    const matchStage = {
+      $match: matchConditions,
+    };
+
     pipeline.push(matchStage);
 
     // Stage 2: Lookup MetalTransaction details using transactionId
@@ -241,7 +254,7 @@ export class ReportService {
       },
     });
 
-    
+
 
     pipeline.push({
       $lookup: {
@@ -259,7 +272,7 @@ export class ReportService {
         as: "partyDetails",
       },
     });
-    
+
     // Stage 13: Project final output with required fields
     pipeline.push({
       $project: {
