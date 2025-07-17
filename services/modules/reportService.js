@@ -14,9 +14,6 @@ export class ReportService {
 
       // aggregate the pipeline
       const reportData = await Registry.aggregate(pipeline);
-      console.log('====================================');
-      console.log(JSON.stringify(reportData, null, 2));
-      console.log('====================================');
 
       // Format response
       const formattedData = this.formatReportData(reportData, validatedFilters);
