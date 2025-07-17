@@ -2,20 +2,26 @@ import mongoose from "mongoose";
 import Registry from "../../models/modules/Registry.js";
 import moment from "moment";
 
+// ReportService class to handle stock ledger and movement reports
 export class ReportService {
+  /**
+   * Generates a metal stock ledger report based on provided filters
+   * @param {Object} filters - Report filter parameters
+   * @returns {Object} Formatted report data with success status
+   */
   async getMetalStockLedgerReport(filters) {
     try {
-      // Validate and format filters
+ 
+      // Validate and format input filters
       const validatedFilters = this.validateFilters(filters);
-
-
-      // Build aggregation pipeline
+      
+      // Construct MongoDB aggregation pipeline
       const pipeline = this.buildStockLedgerPipeline(validatedFilters);
 
-      // aggregate the pipeline
+      // Execute aggregation query
       const reportData = await Registry.aggregate(pipeline);
 
-      // Format response
+      // Format the retrieved data for response
       const formattedData = this.formatReportData(reportData, validatedFilters);
 
       return {
@@ -28,18 +34,24 @@ export class ReportService {
       throw new Error(`Failed to generate metal stock ledger report: ${error.message}`);
     }
   }
+
+  /**
+   * Generates a stock movement report based on provided filters
+   * @param {Object} filters - Report filter parameters
+   * @returns {Object} Formatted report data with success status
+   */
   async getStockMovementReport(filters) {
     try {
-      // Validate and format filters
+      // Validate and format input filters
       const validatedFilters = this.validateFilters(filters);
 
-      // Build aggregation pipeline
+      // Construct MongoDB aggregation pipeline
       const pipeline = this.buildStockLedgerPipeline(validatedFilters);
 
-      // Execute aggregation
+      // Execute aggregation query
       const reportData = await Registry.aggregate(pipeline);
 
-      // Format response
+      // Format the retrieved data for response
       const formattedData = this.formatReportData(reportData, validatedFilters);
 
       return {
@@ -49,10 +61,15 @@ export class ReportService {
         totalRecords: reportData.length,
       };
     } catch (error) {
-      throw new Error(`Failed to generate metal stock ledger report: ${error.message}`);
+      throw new Error(`Failed to generate stock movement report: ${error.message}`);
     }
   }
 
+  /**
+   * Validates and formats input filters for report generation
+   * @param {Object} filters - Raw filter parameters
+   * @returns {Object} Validated and formatted filters
+   */
   validateFilters(filters) {
     const {
       fromDate,
@@ -104,7 +121,7 @@ export class ReportService {
       startDate,
       endDate,
       division: formatObjectIds(division),
-      voucher: formatObjectIds(voucher),
+      voucher,
       stock: formatObjectIds(stock),
       karat: formatObjectIds(karat),
       accountType: formatObjectIds(accountType),
@@ -113,35 +130,35 @@ export class ReportService {
       showPcs,
     };
   }
-
+  /**
+   * Builds MongoDB aggregation pipeline for stock ledger reports
+   * @param {Object} filters - Validated filter parameters
+   * @returns {Array} MongoDB aggregation pipeline stages
+   */
   buildStockLedgerPipeline(filters) {
     const pipeline = [];
 
+    // Base match conditions
     const matchConditions = {
       type: "GOLD_STOCK",
       isActive: true,
     };
 
-    // Add dynamic date conditions if provided
+    // Add date range filter if provided
     if (filters.startDate || filters.endDate) {
       matchConditions.transactionDate = {};
-
       if (filters.startDate) {
         matchConditions.transactionDate.$gte = new Date(filters.startDate);
       }
-
       if (filters.endDate) {
         matchConditions.transactionDate.$lte = new Date(filters.endDate);
       }
     }
 
-    const matchStage = {
-      $match: matchConditions,
-    };
+    // Stage 1: Initial filtering
+    pipeline.push({ $match: matchConditions });
 
-    pipeline.push(matchStage);
-
-    // Stage 2: Lookup MetalTransaction details using transactionId
+    // Stage 2: Join with metaltransactions collection
     pipeline.push({
       $lookup: {
         from: "metaltransactions",
@@ -151,13 +168,14 @@ export class ReportService {
       },
     });
 
-    // Stage 3: Unwind metalTransaction
+    // Stage 3: Unwind metalTransaction array
     pipeline.push({
       $unwind: {
         path: "$metalTransaction",
         preserveNullAndEmptyArrays: false,
       },
     });
+    
 
     // Stage 4: Filter by voucher if provided
     if (filters.voucher.length > 0) {
@@ -171,17 +189,14 @@ export class ReportService {
       });
     }
 
-    // Stage 5: Filter by account type (partyCode) if provided
+    // Stage 5: Filter by account type if provided
     if (filters.accountType.length > 0) {
       pipeline.push({
         $match: {
-          "metalTransaction.partyCode": {
-            $in: filters.accountType,
-          },
+          "metalTransaction.partyCode": { $in: filters.accountType },
         },
       });
     }
-
 
     // Stage 6: Unwind stock items
     pipeline.push({
@@ -191,8 +206,7 @@ export class ReportService {
       },
     });
 
-    // return pipeline
-    // Stage 7: Lookup MetalStock details
+    // Stage 7: Join with metalstocks collection
     pipeline.push({
       $lookup: {
         from: "metalstocks",
@@ -202,7 +216,7 @@ export class ReportService {
       },
     });
 
-    // Stage 8: Unwind stockDetails
+    // Stage 8: Unwind stockDetails array
     pipeline.push({
       $unwind: {
         path: "$stockDetails",
@@ -214,21 +228,16 @@ export class ReportService {
     if (filters.stock.length > 0) {
       pipeline.push({
         $match: {
-          "stockDetails._id": {
-            $in: filters.stock,
-          },
+          "stockDetails._id": { $in: filters.stock },
         },
       });
     }
-
 
     // Stage 10: Filter by karat if provided
     if (filters.karat.length > 0) {
       pipeline.push({
         $match: {
-          "stockDetails.karat": {
-            $in: filters.karat,
-          },
+          "stockDetails.karat": { $in: filters.karat },
         },
       });
     }
@@ -237,14 +246,12 @@ export class ReportService {
     if (filters.division.length > 0) {
       pipeline.push({
         $match: {
-          "stockDetails.metalType": {
-            $in: filters.division,
-          },
+          "stockDetails.metalType": { $in: filters.division },
         },
       });
     }
 
-    // Stage 12: Lookup additional details for display
+    // Stage 12: Join with additional details for display
     pipeline.push({
       $lookup: {
         from: "karatmasters",
@@ -254,8 +261,6 @@ export class ReportService {
       },
     });
 
-
-
     pipeline.push({
       $lookup: {
         from: "divisionmasters",
@@ -264,6 +269,7 @@ export class ReportService {
         as: "divisionDetails",
       },
     });
+
     pipeline.push({
       $lookup: {
         from: "accounts",
@@ -273,7 +279,7 @@ export class ReportService {
       },
     });
 
-    // Stage 13: Project final output with required fields
+    // Stage 13: Project required fields
     pipeline.push({
       $project: {
         date: "$transactionDate",
@@ -281,21 +287,21 @@ export class ReportService {
         partyName: { $arrayElemAt: ["$partyDetails.customerName", 0] },
         grossWeight: {
           $cond: {
-            if: { $literal: filters.grossWeight },
+            if: filters.grossWeight,
             then: "$metalTransaction.stockItems.grossWeight",
             else: null,
           },
         },
         pureWeight: {
           $cond: {
-            if: { $literal: filters.pureWeight },
+            if: filters.pureWeight,
             then: "$metalTransaction.stockItems.pureWeight",
             else: null,
           },
         },
         pcs: {
           $cond: {
-            if: { $literal: filters.showPcs },
+            if: filters.showPcs,
             then: "$metalTransaction.stockItems.pieces",
             else: null,
           },
@@ -306,7 +312,7 @@ export class ReportService {
       },
     });
 
-    // Stage 14: Sort by transaction date (newest first)
+    // Stage 14: Sort by date (descending)
     pipeline.push({
       $sort: {
         date: -1,
@@ -317,6 +323,12 @@ export class ReportService {
     return pipeline;
   }
 
+  /**
+   * Formats raw report data into structured response
+   * @param {Array} reportData - Raw aggregation results
+   * @param {Object} filters - Validated filter parameters
+   * @returns {Object} Formatted report with transactions and summary
+   */
   formatReportData(reportData, filters) {
     if (!reportData || reportData.length === 0) {
       return {
@@ -326,15 +338,15 @@ export class ReportService {
           totalDebit: 0,
           totalCredit: 0,
           totalGrossWeight: 0,
+          totalPcs: 0,
           totalPureWeight: 0,
-          totalPieces: 0,
           totalValue: 0,
         },
         appliedFilters: this.getAppliedFiltersInfo(filters),
       };
     }
 
-    // Calculate summary
+    // Calculate summary statistics
     const summary = reportData.reduce(
       (acc, item) => {
         acc.totalTransactions += 1;
@@ -347,7 +359,7 @@ export class ReportService {
           acc.totalPureWeight += item.pureWeight;
         }
         if (filters.showPcs && item.pcs) {
-          acc.totalPieces += item.pcs;
+          acc.totalPcs += item.pcs;
         }
         acc.totalValue += item.value || 0;
         return acc;
@@ -358,12 +370,12 @@ export class ReportService {
         totalCredit: 0,
         totalGrossWeight: 0,
         totalPureWeight: 0,
-        totalPieces: 0,
+        totalPcs: 0,
         totalValue: 0,
       }
     );
 
-    // Format transactions
+    // Format individual transactions
     const transactions = reportData.map((item) => {
       const transaction = {
         date: moment(item.date).format("DD/MM/YYYY"),
@@ -374,7 +386,7 @@ export class ReportService {
         value: item.value || 0,
       };
 
-      // Conditionally add fields based on filters
+      // Add conditional fields based on filters
       if (filters.grossWeight && item.grossWeight !== null) {
         transaction.grossWeight = item.grossWeight;
       }
@@ -395,11 +407,16 @@ export class ReportService {
     };
   }
 
+  /**
+   * Generates information about applied filters
+   * @param {Object} filters - Validated filter parameters
+   * @returns {Object} Summary of applied filters
+   */
   getAppliedFiltersInfo(filters) {
     return {
-      dateRange: `${moment(filters.startDate).format("DD/MM/YYYY")} to ${moment(
-        filters.endDate
-      ).format("DD/MM/YYYY")}`,
+      dateRange: filters.startDate && filters.endDate 
+        ? `${moment(filters.startDate).format("DD/MM/YYYY")} to ${moment(filters.endDate).format("DD/MM/YYYY")}`
+        : "All dates",
       hasStockFilter: filters.stock.length > 0,
       hasKaratFilter: filters.karat.length > 0,
       hasDivisionFilter: filters.division.length > 0,
