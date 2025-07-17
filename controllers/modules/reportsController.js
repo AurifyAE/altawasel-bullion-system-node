@@ -5,7 +5,6 @@ const reportService = new ReportService();
 export const getMetalStockLedgerReport = async (req, res) => {
   try {
     const filters = req.body;
-    console.log(filters)
     // Validate required fields
     if (!filters.fromDate || !filters.toDate) {
       return res.status(400).json({
@@ -17,6 +16,7 @@ export const getMetalStockLedgerReport = async (req, res) => {
 
     // Call service to get report data
     const reportData = await reportService.getMetalStockLedgerReport(filters);
+
 
     // Return success response (even if no data found)
     res.status(200).json({

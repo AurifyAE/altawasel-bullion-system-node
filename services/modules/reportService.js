@@ -8,11 +8,15 @@ export class ReportService {
       // Validate and format filters
       const validatedFilters = this.validateFilters(filters);
 
+
       // Build aggregation pipeline
       const pipeline = this.buildStockLedgerPipeline(validatedFilters);
 
-      // Execute aggregation
+      // aggregate the pipeline
       const reportData = await Registry.aggregate(pipeline);
+      console.log('====================================');
+      console.log(JSON.stringify(reportData, null, 2));
+      console.log('====================================');
 
       // Format response
       const formattedData = this.formatReportData(reportData, validatedFilters);
@@ -118,8 +122,8 @@ export class ReportService {
     const matchStage = {
       $match: {
         transactionDate: {
-          $gte: filters.startDate,
-          $lte: filters.endDate,
+          $gte: new Date(filters.startDate),
+          $lte: new Date(filters.endDate),
         },
         type: "GOLD_STOCK",
         isActive: true,
@@ -131,7 +135,7 @@ export class ReportService {
     pipeline.push({
       $lookup: {
         from: "metaltransactions",
-        localField: "transactionId",
+        localField: "metalTransactionId",
         foreignField: "_id",
         as: "metalTransaction",
       },
@@ -150,7 +154,7 @@ export class ReportService {
       pipeline.push({
         $match: {
           $or: [
-            { "metalTransaction.voucherNumber": { $in: filters.voucher } },
+            { "metalTransaction.voucherType": { $in: filters.voucher } },
             { reference: { $in: filters.voucher.map((id) => id.toString()) } },
           ],
         },
@@ -168,6 +172,7 @@ export class ReportService {
       });
     }
 
+
     // Stage 6: Unwind stock items
     pipeline.push({
       $unwind: {
@@ -176,6 +181,7 @@ export class ReportService {
       },
     });
 
+    // return pipeline
     // Stage 7: Lookup MetalStock details
     pipeline.push({
       $lookup: {
@@ -204,6 +210,7 @@ export class ReportService {
         },
       });
     }
+
 
     // Stage 10: Filter by karat if provided
     if (filters.karat.length > 0) {
@@ -237,6 +244,8 @@ export class ReportService {
       },
     });
 
+    
+
     pipeline.push({
       $lookup: {
         from: "divisionmasters",
@@ -245,7 +254,6 @@ export class ReportService {
         as: "divisionDetails",
       },
     });
-
     pipeline.push({
       $lookup: {
         from: "accounts",
@@ -254,7 +262,7 @@ export class ReportService {
         as: "partyDetails",
       },
     });
-
+    
     // Stage 13: Project final output with required fields
     pipeline.push({
       $project: {

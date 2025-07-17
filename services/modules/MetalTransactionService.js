@@ -1212,7 +1212,7 @@ class MetalTransactionService {
         )
       );
     }
-    c
+    
 
     // Gold Stock - DEBIT (company stock debited)
     if (totals.pureWeight > 0) {
