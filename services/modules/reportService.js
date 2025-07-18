@@ -1,25 +1,26 @@
 import mongoose from "mongoose";
 import Registry from "../../models/modules/Registry.js";
 import moment from "moment";
+import { log } from "console";
 
 // ReportService class to handle stock ledger and movement reports
 export class ReportService {
-  /**
-   * Generates a metal stock ledger report based on provided filters
-   * @param {Object} filters - Report filter parameters
-   * @returns {Object} Formatted report data with success status
-   */
+
   async getMetalStockLedgerReport(filters) {
     try {
- 
+      console.log(filters);
+
       // Validate and format input filters
       const validatedFilters = this.validateFilters(filters);
-      
+
       // Construct MongoDB aggregation pipeline
       const pipeline = this.buildStockLedgerPipeline(validatedFilters);
 
-      // Execute aggregation query
+
+      // Execute aggregation query  
       const reportData = await Registry.aggregate(pipeline);
+      console.log(reportData);
+
 
       // Format the retrieved data for response
       const formattedData = this.formatReportData(reportData, validatedFilters);
@@ -35,11 +36,7 @@ export class ReportService {
     }
   }
 
-  /**
-   * Generates a stock movement report based on provided filters
-   * @param {Object} filters - Report filter parameters
-   * @returns {Object} Formatted report data with success status
-   */
+
   async getStockMovementReport(filters) {
     try {
       // Validate and format input filters
@@ -65,76 +62,94 @@ export class ReportService {
     }
   }
 
-  /**
-   * Validates and formats input filters for report generation
-   * @param {Object} filters - Raw filter parameters
-   * @returns {Object} Validated and formatted filters
-   */
+
   validateFilters(filters) {
+    // Destructure with comprehensive defaults
     const {
       fromDate,
       toDate,
+      transactionType,
       division = [],
       voucher = [],
       stock = [],
       karat = [],
       accountType = [],
-      categoryCode = [],
-      type = [],
-      supplierRef = [],
-      countryDetails = [],
-      supplier = [],
-      purchaseRef = [],
       grossWeight = false,
       pureWeight = false,
       showPcs = false,
-      showMetalValue = false,
-      showPurchaseSales = false,
       showMoved = false,
       showNetMovement = false,
+      showMetalValue = false,
+      showPurchaseSales = false,
       showPicture = false,
+      showVatReports = false,
+      showSummaryOnly = false,
+      showWastage = false,
+      withoutSap = false,
+      showRfnDetails = false,
+      showRetails = false,
+      showCostIn = false,
       groupBy = [],
     } = filters;
 
-    // Validate date range
-    // if (!fromDate || !toDate) {
-    //   throw new Error("From date and to date are required");
-    // }
+    // Initialize dates
+    let startDate = null;
+    let endDate = null;
 
-    const startDate = moment(fromDate).startOf("day").toDate();
-    const endDate = moment(toDate).endOf("day").toDate();
-
-    if (startDate && endDate) {
-      if (startDate > endDate) {
-        throw new Error("From date cannot be greater than to date");
-      }
+    // Handle date parsing and validation
+    if (fromDate) {
+      startDate = moment(fromDate).startOf("day").toDate();
+    }
+    if (toDate) {
+      endDate = moment(toDate).endOf("day").toDate();
+    }
+    if (startDate && endDate && startDate > endDate) {
+      throw new Error("From date cannot be greater than to date");
     }
 
-    // Convert string arrays to ObjectIds
-    const formatObjectIds = (arr) => {
-      return arr
+    // Convert string arrays to ObjectIds (only for arrays that should contain ObjectIds)
+    const formatObjectIds = (arr) =>
+      arr
         .filter((id) => mongoose.Types.ObjectId.isValid(id))
         .map((id) => new mongoose.Types.ObjectId(id));
-    };
 
-    return {
-      startDate,
-      endDate,
+    // Construct the final filter object
+    const result = {
+      // Always include arrays (even if empty) to prevent undefined errors
       division: formatObjectIds(division),
-      voucher,
+      voucher: voucher, // Keep as strings - don't convert to ObjectIds
       stock: formatObjectIds(stock),
       karat: formatObjectIds(karat),
       accountType: formatObjectIds(accountType),
+      groupBy: groupBy, // Keep as strings array
+
+      // Boolean flags - always include with their values
       grossWeight,
       pureWeight,
       showPcs,
+      showMoved,
+      showNetMovement,
+      showMetalValue,
+      showPurchaseSales,
+      showPicture,
+      showVatReports,
+      showSummaryOnly,
+      showWastage,
+      withoutSap,
+      showRfnDetails,
+      showRetails,
+      showCostIn,
     };
+
+    // Only include optional properties if they exist
+    if (startDate) result.startDate = startDate;
+    if (endDate) result.endDate = endDate;
+    if (transactionType) result.transactionType = transactionType;
+
+    return result;
   }
-  /**
-   * Builds MongoDB aggregation pipeline for stock ledger reports
-   * @param {Object} filters - Validated filter parameters
-   * @returns {Array} MongoDB aggregation pipeline stages
-   */
+
+
   buildStockLedgerPipeline(filters) {
     const pipeline = [];
 
@@ -154,6 +169,8 @@ export class ReportService {
         matchConditions.transactionDate.$lte = new Date(filters.endDate);
       }
     }
+
+
 
     // Stage 1: Initial filtering
     pipeline.push({ $match: matchConditions });
@@ -175,7 +192,17 @@ export class ReportService {
         preserveNullAndEmptyArrays: false,
       },
     });
-    
+
+
+    // Conditionally filter based on transactionType
+    if (filters.transactionType) {
+      pipeline.push({
+        $match: {
+          "metalTransaction.transactionType": filters.transactionType,
+        },
+      });
+    }
+
 
     // Stage 4: Filter by voucher if provided
     if (filters.voucher.length > 0) {
@@ -189,6 +216,8 @@ export class ReportService {
       });
     }
 
+
+
     // Stage 5: Filter by account type if provided
     if (filters.accountType.length > 0) {
       pipeline.push({
@@ -197,6 +226,7 @@ export class ReportService {
         },
       });
     }
+    
 
     // Stage 6: Unwind stock items
     pipeline.push({
@@ -205,6 +235,7 @@ export class ReportService {
         preserveNullAndEmptyArrays: false,
       },
     });
+
 
     // Stage 7: Join with metalstocks collection
     pipeline.push({
@@ -414,7 +445,7 @@ export class ReportService {
    */
   getAppliedFiltersInfo(filters) {
     return {
-      dateRange: filters.startDate && filters.endDate 
+      dateRange: filters.startDate && filters.endDate
         ? `${moment(filters.startDate).format("DD/MM/YYYY")} to ${moment(filters.endDate).format("DD/MM/YYYY")}`
         : "All dates",
       hasStockFilter: filters.stock.length > 0,
