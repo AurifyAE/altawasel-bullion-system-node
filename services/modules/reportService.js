@@ -8,10 +8,11 @@ export class ReportService {
 
   async getMetalStockLedgerReport(filters) {
     try {
-      console.log(filters);
 
       // Validate and format input filters
       const validatedFilters = this.validateFilters(filters);
+
+
 
       // Construct MongoDB aggregation pipeline
       const pipeline = this.buildStockLedgerPipeline(validatedFilters);
@@ -41,6 +42,8 @@ export class ReportService {
     try {
       // Validate and format input filters
       const validatedFilters = this.validateFilters(filters);
+      console.log(validatedFilters);
+
 
       // Construct MongoDB aggregation pipeline
       const pipeline = this.buildStockLedgerPipeline(validatedFilters);
@@ -64,7 +67,6 @@ export class ReportService {
 
 
   validateFilters(filters) {
-    // Destructure with comprehensive defaults
     const {
       fromDate,
       toDate,
@@ -90,40 +92,39 @@ export class ReportService {
       showRetails = false,
       showCostIn = false,
       groupBy = [],
+      groupByRange = {
+        stockCode: [],
+        categoryCode: [],
+        karat: [],
+        type: [],
+        supplier: [],
+        purchaseRef: [],
+      },
     } = filters;
 
     // Initialize dates
     let startDate = null;
     let endDate = null;
 
-    // Handle date parsing and validation
-    if (fromDate) {
-      startDate = moment(fromDate).startOf("day").toDate();
-    }
-    if (toDate) {
-      endDate = moment(toDate).endOf("day").toDate();
-    }
+    if (fromDate) startDate = moment(fromDate).startOf("day").toDate();
+    if (toDate) endDate = moment(toDate).endOf("day").toDate();
     if (startDate && endDate && startDate > endDate) {
       throw new Error("From date cannot be greater than to date");
     }
 
-    // Convert string arrays to ObjectIds (only for arrays that should contain ObjectIds)
     const formatObjectIds = (arr) =>
       arr
         .filter((id) => mongoose.Types.ObjectId.isValid(id))
         .map((id) => new mongoose.Types.ObjectId(id));
 
-    // Construct the final filter object
     const result = {
-      // Always include arrays (even if empty) to prevent undefined errors
       division: formatObjectIds(division),
-      voucher: voucher, // Keep as strings - don't convert to ObjectIds
+      voucher,
       stock: formatObjectIds(stock),
       karat: formatObjectIds(karat),
       accountType: formatObjectIds(accountType),
-      groupBy: groupBy, // Keep as strings array
+      groupBy,
 
-      // Boolean flags - always include with their values
       grossWeight,
       pureWeight,
       showPcs,
@@ -141,13 +142,27 @@ export class ReportService {
       showCostIn,
     };
 
-    // Only include optional properties if they exist
     if (startDate) result.startDate = startDate;
     if (endDate) result.endDate = endDate;
     if (transactionType) result.transactionType = transactionType;
 
+    // ✅ Conditionally add groupByRange if it has any non-empty array
+    const hasGroupByRangeValues = Object.values(groupByRange).some(
+      (arr) => Array.isArray(arr) && arr.length > 0
+    );
+
+    if (hasGroupByRangeValues) {
+      // Optionally, convert IDs to ObjectIds if needed
+      const formattedGroupByRange = {};
+      for (const [key, value] of Object.entries(groupByRange)) {
+        formattedGroupByRange[key] = formatObjectIds(value);
+      }
+      result.groupByRange = formattedGroupByRange;
+    }
+
     return result;
   }
+
 
 
   buildStockLedgerPipeline(filters) {
@@ -169,8 +184,6 @@ export class ReportService {
         matchConditions.transactionDate.$lte = new Date(filters.endDate);
       }
     }
-
-
 
     // Stage 1: Initial filtering
     pipeline.push({ $match: matchConditions });
@@ -226,7 +239,7 @@ export class ReportService {
         },
       });
     }
-    
+
 
     // Stage 6: Unwind stock items
     pipeline.push({
@@ -281,6 +294,32 @@ export class ReportService {
         },
       });
     }
+
+    // Stage 11.1: Apply groupByRange filters if present
+    if (filters.groupByRange && typeof filters.groupByRange === 'object') {
+      const groupByMap = {
+        stockCode: "stockDetails._id",
+        categoryCode: "stockDetails.categoryCode",
+        karat: "stockDetails.karat",
+        type: "stockDetails.type",
+        supplierRef: "stockDetails.supplierRef",
+        countryDetails: "stockDetails.countryDetails",
+        supplier: "stockDetails.supplier",
+        purchaseRef: "stockDetails.purchaseRef",
+      };
+
+      for (const [key, path] of Object.entries(groupByMap)) {
+        const values = filters.groupByRange[key];
+        if (Array.isArray(values) && values.length > 0) {
+          pipeline.push({
+            $match: {
+              [path]: { $in: values },
+            },
+          });
+        }
+      }
+    }
+
 
     // Stage 12: Join with additional details for display
     pipeline.push({

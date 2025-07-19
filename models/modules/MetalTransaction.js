@@ -46,6 +46,22 @@ const StockItemSchema = new mongoose.Schema(
       required: [true, "Weight in Oz is required"],
       min: [0, "Weight in Oz cannot be negative"],
     },
+    cashDebit: {
+      type: Number,
+      default: 0
+    },
+    cashCredit: {
+      type: Number,
+      default: 0
+    },
+    goldDebit: {
+      type: Number,
+      default: 0
+    },
+    goldCredit: {
+      type: Number,
+      default: 0
+    },
     // Individual metal rate for this stock item
     metalRate: {
       type: mongoose.Schema.Types.ObjectId,
@@ -144,7 +160,7 @@ const MetalTransactionSchema = new mongoose.Schema(
     // Transaction Type - Key field to differentiate between purchase and sale
     transactionType: {
       type: String,
-      enum: ["purchase", "sale","purchaseReturn" , "saleReturn"],
+      enum: ["purchase", "sale", "purchaseReturn", "saleReturn"],
       required: [true, "Transaction type is required"],
       index: true,
     },

@@ -314,6 +314,10 @@ class MetalTransactionService {
           false,
           totals.totalAmount,
           0,
+          0, // gold credit
+          totals.grossWeight, // gold debit
+          totals.goldValue, // cash credit 
+          0, // cash debit
           totals.totalAmount,
           voucherDate,
           voucherNumber,
@@ -335,6 +339,10 @@ class MetalTransactionService {
           false,
           totals.makingCharges,
           0,
+          0, // gold credit
+          totals.grossWeight, // gold debit
+          totals.goldValue, // cash credit 
+          0, // cash debit
           totals.makingCharges,
           voucherDate,
           voucherNumber,
@@ -356,6 +364,10 @@ class MetalTransactionService {
           false,
           totals.premium,
           0,
+          0, // gold credit
+          totals.grossWeight, // gold debit
+          totals.goldValue, // cash credit 
+          0, // cash debit
           totals.premium,
           voucherDate,
           voucherNumber,
@@ -378,6 +390,10 @@ class MetalTransactionService {
           totals.discount,
           totals.discount,
           0,
+          0, // gold credit
+          totals.grossWeight, // gold debit
+          totals.goldValue, // cash credit 
+          0, // cash debit
           voucherDate,
           voucherNumber,
           adminId
@@ -399,6 +415,10 @@ class MetalTransactionService {
           totals.pureWeight,
           totals.pureWeight,
           0,
+          0, // gold credit
+          totals.grossWeight, // gold debit
+          totals.goldValue, // cash credit 
+          0, // cash debit
           voucherDate,
           voucherNumber,
           adminId
@@ -420,6 +440,10 @@ class MetalTransactionService {
           totals.grossWeight,
           totals.grossWeight,
           0,
+          0, // gold credit
+          totals.grossWeight, // gold debit
+          totals.goldValue, // cash credit 
+          0, // cash debit
           voucherDate,
           voucherNumber,
           adminId,
@@ -606,6 +630,10 @@ class MetalTransactionService {
           false,
           totals.totalAmount,
           totals.totalAmount,
+          totals.grossWeight, // gold credit
+          0, // gold debit
+          0, // cash credit 
+          totals.goldValue, // cash debit
           0,
           voucherDate,
           voucherNumber,
@@ -627,6 +655,10 @@ class MetalTransactionService {
           false,
           totals.makingCharges,
           totals.makingCharges,
+          totals.grossWeight, // gold credit
+          0, // gold debit
+          0, // cash credit 
+          totals.goldValue, // cash debit
           0,
           voucherDate,
           voucherNumber,
@@ -648,6 +680,10 @@ class MetalTransactionService {
           false,
           totals.premium,
           totals.premium,
+          totals.grossWeight, // gold credit
+          0, // gold debit
+          0, // cash credit 
+          totals.goldValue, // cash debit
           0,
           voucherDate,
           voucherNumber,
@@ -669,6 +705,10 @@ class MetalTransactionService {
           false,
           totals.discount,
           0,
+          totals.grossWeight, // gold credit
+          0, // gold debit
+          0, // cash credit 
+          totals.goldValue, // cash debit
           totals.discount,
           voucherDate,
           voucherNumber,
@@ -690,6 +730,10 @@ class MetalTransactionService {
           true,
           totals.pureWeight,
           0,
+          totals.grossWeight, // gold credit
+          0, // gold debit
+          0, // cash credit 
+          totals.goldValue, // cash debit
           totals.pureWeight,
           voucherDate,
           voucherNumber,
@@ -711,6 +755,10 @@ class MetalTransactionService {
           true,
           totals.grossWeight,
           0,
+          totals.grossWeight, // gold credit
+          0, // gold debit
+          0, // cash credit 
+          totals.goldValue, // cash debit
           totals.grossWeight,
           voucherDate,
           voucherNumber,
@@ -1107,9 +1155,11 @@ class MetalTransactionService {
   ) {
     const entries = [];
     const partyName = party.customerName || party.accountCode;
+    console.log(totals);
 
     // Party Cash Balance - CREDIT (total amount only)
     if (totals.goldValue > 0) {
+
       entries.push(
         this.createRegistryEntry(
           baseTransactionId,
@@ -1121,6 +1171,10 @@ class MetalTransactionService {
           false,
           totals.goldValue,
           totals.goldValue,
+          totals.grossWeight, //gold credit
+          0, // gold debit
+          0, // cash credit
+          totals.goldValue, // cash Debit
           0,
           voucherDate,
           voucherNumber,
@@ -1142,6 +1196,10 @@ class MetalTransactionService {
           false,
           totals.makingCharges,
           totals.makingCharges,
+          totals.grossWeight, // g-c
+          0, //g-d
+          0, // c-c
+          totals.goldValue, // c-d
           0,
           voucherDate,
           voucherNumber,
@@ -1161,8 +1219,12 @@ class MetalTransactionService {
           `Purchase Fix - Premium credited:  ${totals.premium}`,
           party._id,
           false,
-          totals.premium,
-          totals.premium,
+          totals.premium, // value
+          totals.premium, // credit
+          totals.grossWeight, // gold credit
+          0, // gold debit
+          0, // cash credit 
+          totals.goldValue, // cash debit
           0,
           voucherDate,
           voucherNumber,
@@ -1182,9 +1244,13 @@ class MetalTransactionService {
           `Purchase Fix - Discount debited:  ${totals.discount}`,
           party._id,
           false,
-          totals.discount,
-          0,
-          totals.discount,
+          totals.discount, //value
+          0, // credit 
+          totals.grossWeight, // gold credit
+          0, // gold debit
+          0, // cash credit 
+          totals.goldValue, // cash debit
+          totals.discount, // debit
           voucherDate,
           voucherNumber,
           adminId
@@ -1203,16 +1269,19 @@ class MetalTransactionService {
           `Purchase Fix - Gold inventory debited: ${totals.pureWeight}g`,
           party._id,
           true,
-          totals.pureWeight,
-          0,
-          totals.pureWeight,
+          totals.pureWeight,// value
+          totals.grossWeight, // gold credit
+          0, // gold debit
+          0, // cash credit 
+          totals.goldValue, // cash debit
+          totals.pureWeight, // debit
           voucherDate,
           voucherNumber,
           adminId
         )
       );
     }
-    
+
 
     // Gold Stock - DEBIT (company stock debited)
     if (totals.pureWeight > 0) {
@@ -1227,6 +1296,10 @@ class MetalTransactionService {
           true,
           totals.grossWeight,
           0,
+          totals.grossWeight, // gold credit
+          0, // gold debit
+          0, // cash credit 
+          totals.goldValue, // cash debit
           totals.grossWeight,
           voucherDate,
           voucherNumber,
@@ -1416,9 +1489,13 @@ class MetalTransactionService {
           `Sale Fix - Cash balance debited for ${partyName}: AED ${totals.totalAmount}`,
           party._id,
           false,
-          totals.totalAmount,
-          0,
-          totals.totalAmount,
+          totals.totalAmount, // value
+          0, // credit
+          0, // gold credit
+          totals.grossWeight, // gold debit
+          totals.goldValue, // cash credit 
+          0, // cash debit
+          totals.totalAmount, // debit
           voucherDate,
           voucherNumber,
           adminId
@@ -1439,6 +1516,10 @@ class MetalTransactionService {
           false,
           totals.makingCharges,
           0,
+          0, // gold credit
+          totals.grossWeight, // gold debit
+          totals.goldValue, // cash credit 
+          0, // cash debit
           totals.makingCharges,
           voucherDate,
           voucherNumber,
@@ -1460,6 +1541,10 @@ class MetalTransactionService {
           false,
           totals.premium,
           0,
+          0, // gold credit
+          totals.grossWeight, // gold debit
+          totals.goldValue, // cash credit 
+          0, // cash debit
           totals.premium,
           voucherDate,
           voucherNumber,
@@ -1482,6 +1567,10 @@ class MetalTransactionService {
           totals.discount,
           totals.discount,
           0,
+          0, // gold credit
+          totals.grossWeight, // gold debit
+          totals.goldValue, // cash credit 
+          0, // cash debit
           voucherDate,
           voucherNumber,
           adminId
@@ -1503,6 +1592,10 @@ class MetalTransactionService {
           totals.pureWeight,
           totals.pureWeight,
           0,
+          0, // gold credit
+          totals.grossWeight, // gold debit
+          totals.goldValue, // cash credit 
+          0, // cash debit
           voucherDate,
           voucherNumber,
           adminId
@@ -1511,6 +1604,8 @@ class MetalTransactionService {
     }
 
     // Gold Stock - CREDIT (company stock credited - reverse of purchase fix)
+    console.log("Onn totals", totals);
+
     if (totals.pureWeight > 0) {
       entries.push(
         this.createRegistryEntry(
@@ -1521,8 +1616,12 @@ class MetalTransactionService {
           `Sale Fix - Gold stock credited: ${totals.grossWeight}g`,
           null,
           true,
-          totals.grossWeight,
-          totals.grossWeight,
+          totals.grossWeight, // value
+          totals.grossWeight, // credit
+          totals.grossWeight, // goldCredit
+          0, // gold debit
+          0,// cash Credit
+          totals.goldValue, // cash Debit
           0,
           voucherDate,
           voucherNumber,
@@ -1550,6 +1649,10 @@ class MetalTransactionService {
     isBullion,
     value,
     credit,
+    goldCredit,
+    goldDebit,
+    cashCredit,
+    cashDebit,
     debit,
     date,
     reference,
@@ -1567,6 +1670,10 @@ class MetalTransactionService {
       isBullion,
       value: parseFloat(value),
       credit: parseFloat(credit),
+      cashDebit: parseFloat(cashDebit),
+      goldCredit: parseFloat(goldCredit),
+      cashCredit: parseFloat(cashCredit),
+      goldDebit: parseFloat(goldDebit),
       debit: parseFloat(debit),
       transactionDate: date,
       reference,

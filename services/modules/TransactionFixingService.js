@@ -6,13 +6,10 @@ import mongoose from "mongoose";
 
 export const TransactionFixingService = {
   // Create Transaction with Registry Integration
- createTransaction: async (transactionData, adminId) => {
+  createTransaction: async (transactionData, adminId) => {
     const session = await mongoose.startSession();
     session.startTransaction();
 
-    console.log('====================================');
-    console.log(transactionData , "Trans");
-    console.log('====================================');
     try {
       // Validate party ID
       if (!mongoose.Types.ObjectId.isValid(transactionData.partyId)) {
@@ -92,9 +89,7 @@ export const TransactionFixingService = {
         throw createAppError("Account not found", 404, "ACCOUNT_NOT_FOUND");
       }
 
-      console.log('====================================');
-      console.log(transactionData);
-      console.log('====================================');
+
       // Create the main transaction
       const transaction = new TransactionFixing({
         transactionId: transactionId, // Use the generated ID
@@ -116,13 +111,31 @@ export const TransactionFixingService = {
         const partyGoldBalanceEntry = new Registry({
           transactionId: `${registryTransactionId}-PARTY-GOLD`,
           type: "PARTY_GOLD_BALANCE",
-          description: `Party gold balance - Purchase from ${
-            account.customerName || account.accountCode
-          }`,
+          description: `Party gold balance - Purchase from ${account.customerName || account.accountCode
+            }`,
           party: transactionData.partyId,
-          isBullion:false,
+          isBullion: false,
           value: transactionData.quantityGm,
           debit: transactionData.quantityGm, // Party gives gold (debit from party perspective)
+          goldCredit: transactionData.quantityGm,
+          cashDebit: transactionData.price,
+          credit: 0,
+          transactionDate: transactionData.transactionDate || new Date(),
+          reference: transaction.voucherNumber,
+          createdBy: adminId,
+        });
+
+        const partyGoldBalanceEntryFIX = new Registry({
+          transactionId: `${registryTransactionId}-PARTY-GOLD`,
+          type: "purchase-fixing",
+          description: `Party gold balance - Purchase from ${account.customerName || account.accountCode
+            }`,
+          party: transactionData.partyId,
+          isBullion: false,
+          value: transactionData.quantityGm,
+          debit: transactionData.quantityGm, // Party gives gold (debit from party perspective)
+          goldCredit: transactionData.quantityGm,
+          cashDebit: transactionData.price,
           credit: 0,
           transactionDate: transactionData.transactionDate || new Date(),
           reference: transaction.voucherNumber,
@@ -133,13 +146,14 @@ export const TransactionFixingService = {
         const partyCashBalanceEntry = new Registry({
           transactionId: `${registryTransactionId}-PARTY-CASH`,
           type: "PARTY_CASH_BALANCE",
-          description: `Party cash balance - Payment for gold purchase from ${
-            account.customerName || account.accountCode
-          }`,
+          description: `Party cash balance - Payment for gold purchase from ${account.customerName || account.accountCode
+            }`,
           party: transactionData.partyId,
-          isBullion:false,
+          isBullion: false,
           value: totalValue,
           debit: 0,
+          goldCredit: transactionData.quantityGm,
+          cashDebit: transactionData.price,
           credit: totalValue, // We pay cash to party (credit to party)
           transactionDate: transactionData.transactionDate || new Date(),
           reference: transaction.voucherNumber,
@@ -150,6 +164,7 @@ export const TransactionFixingService = {
         await Promise.all([
           partyGoldBalanceEntry.save({ session }),
           partyCashBalanceEntry.save({ session }),
+          partyGoldBalanceEntryFIX.save({ session }),
         ]);
 
         // Update account balances - FIXED
@@ -171,7 +186,7 @@ export const TransactionFixingService = {
         // Update cash balance - FIXED: Update the amount property, not the entire object
         account.balances.cashBalance.amount = newCashBalance;
         account.balances.cashBalance.lastUpdated = new Date();
-        
+
         // Update overall balance tracking
         account.balances.lastBalanceUpdate = new Date();
 
@@ -183,13 +198,32 @@ export const TransactionFixingService = {
         const partyGoldBalanceEntry = new Registry({
           transactionId: `${registryTransactionId}-PARTY-GOLD`,
           type: "PARTY_GOLD_BALANCE",
-          description: `Party gold balance - Sale to ${
-            account.customerName || account.accountCode
-          }`,
+          description: `Party gold balance - Purchase from ${account.customerName || account.accountCode
+            }`,
           party: transactionData.partyId,
+          isBullion: false,
           value: transactionData.quantityGm,
-          debit: 0,
-          credit: transactionData.quantityGm, // Party receives gold (credit to party)
+          debit: transactionData.quantityGm, // Party gives gold (debit from party perspective)
+          goldCredit: transactionData.quantityGm,
+          cashDebit: transactionData.price,
+          credit: 0,
+          transactionDate: transactionData.transactionDate || new Date(),
+          reference: transaction.voucherNumber,
+          createdBy: adminId,
+        });
+
+        const partyGoldBalanceEntryFIX = new Registry({
+          transactionId: `${registryTransactionId}-PARTY-GOLD`,
+          type: "sales-fixing",
+          description: `Party gold balance - Purchase from ${account.customerName || account.accountCode
+            }`,
+          party: transactionData.partyId,
+          isBullion: false,
+          value: 0,
+          debit: 0, // Party gives gold (debit from party perspective)
+          goldCredit: transactionData.quantityGm,
+          cashDebit: transactionData.price,
+          credit: 0,
           transactionDate: transactionData.transactionDate || new Date(),
           reference: transaction.voucherNumber,
           createdBy: adminId,
@@ -199,13 +233,14 @@ export const TransactionFixingService = {
         const partyCashBalanceEntry = new Registry({
           transactionId: `${registryTransactionId}-PARTY-CASH`,
           type: "PARTY_CASH_BALANCE",
-          description: `Party cash balance - Payment for gold sale to ${
-            account.customerName || account.accountCode
-          }`,
+          description: `Party cash balance - Payment for gold sale to ${account.customerName || account.accountCode
+            }`,
           party: transactionData.partyId,
           value: totalValue,
           debit: totalValue, // Party pays cas  h (debit from party)
           credit: 0,
+          goldDebit: transactionData.quantityGm,
+          cashCredit: transactionData.price,
           transactionDate: transactionData.transactionDate || new Date(),
           reference: transaction.voucherNumber,
           createdBy: adminId,
@@ -215,6 +250,7 @@ export const TransactionFixingService = {
         await Promise.all([
           partyGoldBalanceEntry.save({ session }),
           partyCashBalanceEntry.save({ session }),
+          partyGoldBalanceEntryFIX.save({ session }),
         ]);
 
         // Update account balances - FIXED
@@ -236,7 +272,7 @@ export const TransactionFixingService = {
         // Update cash balance - FIXED: Update the amount property, not the entire object
         account.balances.cashBalance.amount = newCashBalance;
         account.balances.cashBalance.lastUpdated = new Date();
-        
+
         // Update overall balance tracking
         account.balances.lastBalanceUpdate = new Date();
       }

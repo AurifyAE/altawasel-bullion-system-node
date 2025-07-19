@@ -8,6 +8,7 @@ const router = express.Router();
 router.use(authenticateToken);
 router.post("/metal-stock-ledger", getMetalStockLedgerReport);
 router.post("/stock-analysis", stockAnalysis);
+router.post("/stock-movement", stockAnalysis);
 router.post("/stcok-movement", getStockMovementReport);
 
 export default router;
