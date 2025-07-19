@@ -58,17 +58,17 @@ const RegistrySchema = new mongoose.Schema(
     value: {
       type: Number,
       required: [true, "Transaction value is required"],
-      min: [0, "Value cannot be negative"],
+      // min: [0, "Value cannot be negative"],
     },
     debit: {
       type: Number,
       default: 0,
-      min: [0, "Debit cannot be negative"],
+      // min: [0, "Debit cannot be negative"],
     },
     credit: {
       type: Number,
       default: 0,
-      min: [0, "Credit cannot be negative"],
+      // min: [0, "Credit cannot be negative"],
     },
     purity: {
       type: Number,

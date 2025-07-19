@@ -125,6 +125,23 @@ export const TransactionFixingService = {
           createdBy: adminId,
         });
 
+        const partyGoldBalanceEntryFIX = new Registry({
+          transactionId: `${registryTransactionId}-PARTY-GOLD`,
+          type: "purchase-fixing",
+          description: `Party gold balance - Purchase from ${account.customerName || account.accountCode
+            }`,
+          party: transactionData.partyId,
+          isBullion: false,
+          value: transactionData.quantityGm,
+          debit: transactionData.quantityGm, // Party gives gold (debit from party perspective)
+          goldCredit: transactionData.quantityGm,
+          cashDebit: transactionData.price,
+          credit: 0,
+          transactionDate: transactionData.transactionDate || new Date(),
+          reference: transaction.voucherNumber,
+          createdBy: adminId,
+        });
+
         // 4. PARTY_CASH_BALANCE - Credit (we pay cash to party)
         const partyCashBalanceEntry = new Registry({
           transactionId: `${registryTransactionId}-PARTY-CASH`,
@@ -147,6 +164,7 @@ export const TransactionFixingService = {
         await Promise.all([
           partyGoldBalanceEntry.save({ session }),
           partyCashBalanceEntry.save({ session }),
+          partyGoldBalanceEntryFIX.save({ session }),
         ]);
 
         // Update account balances - FIXED
@@ -180,14 +198,32 @@ export const TransactionFixingService = {
         const partyGoldBalanceEntry = new Registry({
           transactionId: `${registryTransactionId}-PARTY-GOLD`,
           type: "PARTY_GOLD_BALANCE",
-          description: `Party gold balance - Sale to ${account.customerName || account.accountCode
+          description: `Party gold balance - Purchase from ${account.customerName || account.accountCode
             }`,
           party: transactionData.partyId,
+          isBullion: false,
           value: transactionData.quantityGm,
-          debit: 0,
-          goldDebit: transactionData.quantityGm,
-          cashCredit: transactionData.price,
-          credit: transactionData.quantityGm, // Party receives gold (credit to party)
+          debit: transactionData.quantityGm, // Party gives gold (debit from party perspective)
+          goldCredit: transactionData.quantityGm,
+          cashDebit: transactionData.price,
+          credit: 0,
+          transactionDate: transactionData.transactionDate || new Date(),
+          reference: transaction.voucherNumber,
+          createdBy: adminId,
+        });
+
+        const partyGoldBalanceEntryFIX = new Registry({
+          transactionId: `${registryTransactionId}-PARTY-GOLD`,
+          type: "sales-fixing",
+          description: `Party gold balance - Purchase from ${account.customerName || account.accountCode
+            }`,
+          party: transactionData.partyId,
+          isBullion: false,
+          value: 0,
+          debit: 0, // Party gives gold (debit from party perspective)
+          goldCredit: transactionData.quantityGm,
+          cashDebit: transactionData.price,
+          credit: 0,
           transactionDate: transactionData.transactionDate || new Date(),
           reference: transaction.voucherNumber,
           createdBy: adminId,
@@ -214,6 +250,7 @@ export const TransactionFixingService = {
         await Promise.all([
           partyGoldBalanceEntry.save({ session }),
           partyCashBalanceEntry.save({ session }),
+          partyGoldBalanceEntryFIX.save({ session }),
         ]);
 
         // Update account balances - FIXED
