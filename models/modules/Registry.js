@@ -39,6 +39,22 @@ const RegistrySchema = new mongoose.Schema(
       type: Boolean,
       default: null,
     },
+    cashDebit: {
+      type: Number,
+      default: 0
+    },
+    cashCredit: {
+      type: Number,
+      default: 0
+    },
+    goldDebit: {
+      type: Number,
+      default: 0
+    },
+    goldCredit: {
+      type: Number,
+      default: 0
+    },
     value: {
       type: Number,
       required: [true, "Transaction value is required"],
