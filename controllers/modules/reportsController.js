@@ -5,10 +5,10 @@ const reportService = new ReportService();
 export const getMetalStockLedgerReport = async (req, res) => {
   try {
     const filters = req.body;
-
+    console.log(filters);
+    
     // Call service to get report data
     const reportData = await reportService.getMetalStockLedgerReport(filters);
-    console.log(reportData);
     // Return success response (even if no data found)
     res.status(200).json({
       success: true,
@@ -54,11 +54,9 @@ export const stockAnalysis = async (req, res) => {
     const filters = req.body;
     console.log(filters);
 
-
     // Call service to get report data
     const reportData = await reportService.getMetalStockLedgerReport(filters);
-    console.log(reportData);
-    
+
     // Return success response (even if no data found)
     res.status(200).json({
       success: true,

@@ -12,16 +12,11 @@ export class ReportService {
       // Validate and format input filters
       const validatedFilters = this.validateFilters(filters);
 
-
-
       // Construct MongoDB aggregation pipeline
       const pipeline = this.buildStockLedgerPipeline(validatedFilters);
 
-
       // Execute aggregation query  
       const reportData = await Registry.aggregate(pipeline);
-      console.log(reportData);
-
 
       // Format the retrieved data for response
       const formattedData = this.formatReportData(reportData, validatedFilters);
@@ -68,6 +63,7 @@ export class ReportService {
 
   validateFilters(filters) {
     const {
+      type,
       fromDate,
       toDate,
       transactionType,
@@ -124,7 +120,7 @@ export class ReportService {
       karat: formatObjectIds(karat),
       accountType: formatObjectIds(accountType),
       groupBy,
-
+      type,
       grossWeight,
       pureWeight,
       showPcs,
@@ -168,12 +164,15 @@ export class ReportService {
   buildStockLedgerPipeline(filters) {
     const pipeline = [];
 
-    // Base match conditions
     const matchConditions = {
-      type: "GOLD_STOCK",
       isActive: true,
     };
-
+    
+    // Make `type` dynamic if provided
+    if (filters.type) {
+      matchConditions.type = filters.type;
+    }
+    
     // Add date range filter if provided
     if (filters.startDate || filters.endDate) {
       matchConditions.transactionDate = {};
@@ -184,9 +183,10 @@ export class ReportService {
         matchConditions.transactionDate.$lte = new Date(filters.endDate);
       }
     }
-
+    
     // Stage 1: Initial filtering
     pipeline.push({ $match: matchConditions });
+    
 
     // Stage 2: Join with metaltransactions collection
     pipeline.push({
