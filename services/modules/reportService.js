@@ -129,14 +129,14 @@ export class ReportService {
     try {
 
       // Validate and format input filters
-      const validatedFilters = this.validateFilters(filters);
+      const validatedFilters = this.validateFilters(filters, true);
 
       // Construct MongoDB aggregation pipeline
       const pipeline = this.buildStockPipeline(validatedFilters);
 
       // Execute aggregation query  
       const reportData = await Registry.aggregate(pipeline);
-
+  
       // Format the retrieved data for response
       const formattedData = this.formatReportData(reportData, validatedFilters);
 
@@ -152,7 +152,7 @@ export class ReportService {
   }
 
 
-  validateFilters(filters) {
+  validateFilters(filters, isStock) {
     const {
       type,
       fromDate,
@@ -240,14 +240,30 @@ export class ReportService {
       (arr) => Array.isArray(arr) && arr.length > 0
     );
 
-    if (hasGroupByRangeValues) {
-      // Optionally, convert IDs to ObjectIds if needed
-      const formattedGroupByRange = {};
-      for (const [key, value] of Object.entries(groupByRange)) {
-        formattedGroupByRange[key] = formatObjectIds(value);
+    if (isStock) {
+      if (hasGroupByRangeValues) {
+        const formattedGroupByRange = {};
+        for (const [key, value] of Object.entries(groupByRange)) {
+          if (["karat", "categoryCode", "supplier", "type", "brand"].includes(key)) {
+            formattedGroupByRange[key] = formatObjectIds(value);
+          } else {
+            // For stockCode, size, color — keep them as-is (string arrays)
+            formattedGroupByRange[key] = value;
+          }
+        }
+        result.groupByRange = formattedGroupByRange;
       }
-      result.groupByRange = formattedGroupByRange;
+    } else {
+      if (hasGroupByRangeValues) {
+        // Optionally, convert IDs to ObjectIds if needed
+        const formattedGroupByRange = {};
+        for (const [key, value] of Object.entries(groupByRange)) {
+          formattedGroupByRange[key] = formatObjectIds(value);
+        }
+        result.groupByRange = formattedGroupByRange;
+      }
     }
+
 
     return result;
   }
@@ -534,6 +550,22 @@ export class ReportService {
         }
       });
     }
+
+    console.log("hello");
+    console.log('====================================');
+    console.log(filters.groupByRange);
+    console.log('====================================');
+    if (filters.groupByRange?.stockCode?.length > 0) {
+      console.log("Hyyy");
+      pipeline.push({
+        $match: {
+          "metalInfo.code": { $in: filters.groupByRange.stockCode }
+        }
+      });
+    }
+
+    return pipeline
+
 
     pipeline.push({
       $group: {
