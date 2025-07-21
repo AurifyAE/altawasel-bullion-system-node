@@ -44,10 +44,12 @@ export class ReportService {
 
       // Execute aggregation query  
       const reportData = await Registry.aggregate(pipeline);
-      
+      console.log('====================================');
+      console.log(reportData);
+      console.log('====================================');
       // Format the retrieved data for response
       const formattedData = this.formatReportData(reportData, validatedFilters);
-      
+
       return {
         success: false,
         data: reportData,
@@ -164,7 +166,9 @@ export class ReportService {
 
       // Execute aggregation query  
       const reportData = await Registry.aggregate(pipeline);
-
+      console.log('====================================');
+      console.log(reportData);
+      console.log('====================================');
       // Format the retrieved data for response
       const formattedData = this.formatReportData(reportData, validatedFilters);
 
@@ -1011,26 +1015,15 @@ export class ReportService {
   buildStockPipeline(filters) {
     const pipeline = [];
 
+    // Base filter
     const matchConditions = {
       isActive: true,
-      costCenter: "INVENTORY",
+      type: "GOLD_STOCK",
     };
 
-    // Add date range filter if provided
-    if (filters.startDate || filters.endDate) {
-      matchConditions.transactionDate = {};
-      if (filters.startDate) {
-        matchConditions.transactionDate.$gte = new Date(filters.startDate);
-      }
-      if (filters.endDate) {
-        matchConditions.transactionDate.$lte = new Date(filters.endDate);
-      }
-    }
-
-    // Stage 1: Initial filtering
     pipeline.push({ $match: matchConditions });
 
-    // Stage 2: Join with metalID collection
+    // Join metalInfo (for inventory)
     pipeline.push({
       $lookup: {
         from: "metalstocks",
@@ -1040,13 +1033,97 @@ export class ReportService {
       },
     });
 
-    // Stage 3: Unwind metalTransaction array
+    // Join metalTxnInfo (for purchase)
     pipeline.push({
-      $unwind: {
-        path: "$metalInfo",
-        preserveNullAndEmptyArrays: false,
+      $lookup: {
+        from: "metaltransactions",
+        localField: "metalTransactionId",
+        foreignField: "_id",
+        as: "metalTxnInfo",
       },
     });
+
+    pipeline.push({ $unwind: { path: "$metalInfo", preserveNullAndEmptyArrays: true } });
+    pipeline.push({ $unwind: { path: "$metalTxnInfo", preserveNullAndEmptyArrays: true } });
+    pipeline.push({
+      $unwind: {
+        path: "$metalTxnInfo.stockItems",
+        preserveNullAndEmptyArrays: true,
+      },
+    });
+
+    pipeline.push({
+      $lookup: {
+        from: "karatmasters",
+        localField: "metalInfo.karat",
+        foreignField: "_id",
+        as: "karatDetails",
+      },
+    });
+
+    pipeline.push({
+      $unwind: {
+        path: "$karatDetails",
+        preserveNullAndEmptyArrays: true,
+      },
+    });
+
+
+
+    // pipeline.push({
+    //   $lookup: {
+    //     from: "metalstock",
+    //     localField: "metalInfo.stockItem.stockCode",
+    //     foreignField: "_id",
+    //     as: "MetalStock",
+    //   },
+    // });
+
+
+
+    // Project merged structure
+    pipeline.push({
+      $project: {
+        grossWeight: 1,
+        pureWeight: 1,
+        pcs: {
+          $ifNull: ["$metalInfo.pcsCount", "$metalTxnInfo.stockItems.pcsCount"],
+        },
+        code: {
+          $ifNull: ["$metalInfo.code", "$metalTxnInfo.stockItems.metal.code"],
+        },
+        description: {
+          $ifNull: ["$metalInfo.description", "$metalTxnInfo.stockItems.metal.description"],
+        },
+      },
+    });
+
+
+    // Grouping total by code + description
+    pipeline.push({
+      $group: {
+        _id: {
+          code: "$code",
+          description: "$description",
+        },
+        totalGrossWeight: { $sum: "$grossWeight" },
+        totalPureWeight: { $sum: "$pureWeight" },
+        totalPcs: { $sum: { $ifNull: ["$pcs", 0] } },
+      },
+    });
+
+    // Rename _id fields
+    pipeline.push({
+      $project: {
+        _id: 0,
+        code: "$_id.code",
+        description: "$_id.description",
+        totalGrossWeight: 1,
+        totalPureWeight: 1,
+        totalPcs: 1,
+      },
+    });
+    return pipeline
 
     if (filters.division.length > 0) {
       pipeline.push({
