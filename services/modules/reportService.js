@@ -6,6 +6,34 @@ import { log } from "console";
 // ReportService class to handle stock ledger and movement reports
 export class ReportService {
 
+  async getReportsData(filters) {
+    try {
+
+      // Validate and format input filters
+      const validatedFilters = this.validateFilters(filters);
+      console.log('====================================');
+      console.log("Validated filters", validatedFilters);
+      console.log('====================================');
+      // Construct MongoDB aggregation pipeline
+      const pipeline = this.buildStockLedgerPipeline(validatedFilters);
+
+      // Execute aggregation query  
+      const reportData = await Registry.aggregate(pipeline);
+
+      // Format the retrieved data for response
+      const formattedData = this.formatReportData(reportData, validatedFilters);
+
+      return {
+        success: true,
+        data: formattedData,
+        filters: validatedFilters,
+        totalRecords: reportData.length,
+      };
+    } catch (error) {
+      throw new Error(`Failed to generate metal stock ledger report: ${error.message}`);
+    }
+  }
+
   async getMetalStockLedgerReport(filters) {
     try {
 
@@ -167,12 +195,12 @@ export class ReportService {
     const matchConditions = {
       isActive: true,
     };
-    
+
     // Make `type` dynamic if provided
     if (filters.type) {
       matchConditions.type = filters.type;
     }
-    
+
     // Add date range filter if provided
     if (filters.startDate || filters.endDate) {
       matchConditions.transactionDate = {};
@@ -183,10 +211,10 @@ export class ReportService {
         matchConditions.transactionDate.$lte = new Date(filters.endDate);
       }
     }
-    
+
     // Stage 1: Initial filtering
     pipeline.push({ $match: matchConditions });
-    
+
 
     // Stage 2: Join with metaltransactions collection
     pipeline.push({
