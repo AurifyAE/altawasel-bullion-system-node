@@ -133,10 +133,10 @@ export const TransactionFixingService = {
           party: transactionData.partyId,
           isBullion: false,
           value: transactionData.quantityGm,
-          debit: transactionData.quantityGm, // Party gives gold (debit from party perspective)
+          debit: 0, // Party gives gold (debit from party perspective)
           goldCredit: transactionData.quantityGm,
           cashDebit: transactionData.price,
-          credit: 0,
+          credit: transactionData.quantityGm,
           transactionDate: transactionData.transactionDate || new Date(),
           reference: transaction.voucherNumber,
           createdBy: adminId,
@@ -220,9 +220,9 @@ export const TransactionFixingService = {
           party: transactionData.partyId,
           isBullion: false,
           value: 0,
-          debit: 0, // Party gives gold (debit from party perspective)
-          goldCredit: transactionData.quantityGm,
-          cashDebit: transactionData.price,
+          debit: transactionData.quantityGm, // Party gives gold (debit from party perspective)
+          goldDebit: transactionData.quantityGm,
+          cashCredit: transactionData.price,
           credit: 0,
           transactionDate: transactionData.transactionDate || new Date(),
           reference: transaction.voucherNumber,
