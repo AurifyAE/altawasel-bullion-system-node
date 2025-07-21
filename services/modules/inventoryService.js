@@ -116,9 +116,18 @@ class InventoryService {
                 throw createAppError("Invalid type. Use 'pcs' or 'grams'", 400, "INVALID_TYPE");
             }
             const savedInventory = await inventory.save();
-            const pureWeight = value * inventory.purity
+            let pureWeight
+
+            if (type == "pcs") {
+                value = savedInventory.pcsValue * value
+                pureWeight = value * savedInventory.purity
+            } else {
+                pureWeight = value * savedInventory.purity
+            }
+
             await this.createRegistryEntry({
                 transactionId: await Registry.generateTransactionId(),
+                metalId: metalId, // this is not Transaction id this is MetalID
                 type: "GOLD_STOCK",
                 description: `OPENING STOCK FOR ${metal.code}`,
                 value: value,
@@ -178,6 +187,7 @@ class InventoryService {
     }
     static async createRegistryEntry({
         transactionId,
+        metalId,
         type,
         description,
         value,
@@ -196,6 +206,7 @@ class InventoryService {
 
             const registryEntry = new Registry({
                 transactionId,
+                metalId,
                 costCenter,
                 type,
                 description,

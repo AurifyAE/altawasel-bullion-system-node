@@ -70,6 +70,10 @@ const RegistrySchema = new mongoose.Schema(
       default: 0,
       // min: [0, "Credit cannot be negative"],
     },
+    metalId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'MetalStock', // Reference to metal master for inv update
+    },
     purity: {
       type: Number,
       default: null,

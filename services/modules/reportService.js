@@ -2,6 +2,7 @@ import mongoose from "mongoose";
 import Registry from "../../models/modules/Registry.js";
 import moment from "moment";
 import { log } from "console";
+import Inventory from "../../models/modules/inventory.js";
 
 // ReportService class to handle stock ledger and movement reports
 export class ReportService {
@@ -11,9 +12,37 @@ export class ReportService {
 
       // Validate and format input filters
       const validatedFilters = this.validateFilters(filters);
+
+      // Construct MongoDB aggregation pipeline
+      const pipeline = this.buildStockLedgerPipeline(validatedFilters);
+
+      // Execute aggregation query  
+      const reportData = await Registry.aggregate(pipeline);
+
+      // Format the retrieved data for response
+      const formattedData = this.formatReportData(reportData, validatedFilters);
+
+      return {
+        success: true,
+        data: formattedData,
+        filters: validatedFilters,
+        totalRecords: reportData.length,
+      };
+    } catch (error) {
+      throw new Error(`Failed to generate metal stock ledger report: ${error.message}`);
+    }
+  }
+
+  async getPurchaseMetalReport(filters) {
+    try {
+
       console.log('====================================');
-      console.log("Validated filters", validatedFilters);
+      console.log("On the Purchase");
       console.log('====================================');
+
+      // Validate and format input filters
+      const validatedFilters = this.validateFilters(filters);
+
       // Construct MongoDB aggregation pipeline
       const pipeline = this.buildStockLedgerPipeline(validatedFilters);
 
@@ -63,19 +92,27 @@ export class ReportService {
 
   async getStockMovementReport(filters) {
     try {
+
       // Validate and format input filters
       const validatedFilters = this.validateFilters(filters);
-      console.log(validatedFilters);
-
 
       // Construct MongoDB aggregation pipeline
       const pipeline = this.buildStockLedgerPipeline(validatedFilters);
 
+
       // Execute aggregation query
       const reportData = await Registry.aggregate(pipeline);
+      console.log('====================================');
+      console.log("On heeeeeeeeeeee");
+
+      console.log(reportData);
+      console.log('====================================');
 
       // Format the retrieved data for response
       const formattedData = this.formatReportData(reportData, validatedFilters);
+      console.log('====================================');
+      console.log(formattedData);
+      console.log('====================================');
 
       return {
         success: true,
@@ -85,6 +122,32 @@ export class ReportService {
       };
     } catch (error) {
       throw new Error(`Failed to generate stock movement report: ${error.message}`);
+    }
+  }
+
+  async getStockBalanceReport(filters) {
+    try {
+
+      // Validate and format input filters
+      const validatedFilters = this.validateFilters(filters);
+
+      // Construct MongoDB aggregation pipeline
+      const pipeline = this.buildStockPipeline(validatedFilters);
+
+      // Execute aggregation query  
+      const reportData = await Registry.aggregate(pipeline);
+
+      // Format the retrieved data for response
+      const formattedData = this.formatReportData(reportData, validatedFilters);
+
+      return {
+        success: true,
+        data: reportData,
+        filters: validatedFilters,
+        totalRecords: reportData.length,
+      };
+    } catch (error) {
+      throw new Error(`Failed to generate metal stock ledger report: ${error.message}`);
     }
   }
 
@@ -124,6 +187,7 @@ export class ReportService {
         supplier: [],
         purchaseRef: [],
       },
+      costCenter
     } = filters;
 
     // Initialize dates
@@ -164,6 +228,7 @@ export class ReportService {
       showRfnDetails,
       showRetails,
       showCostIn,
+      costCenter
     };
 
     if (startDate) result.startDate = startDate;
@@ -215,7 +280,6 @@ export class ReportService {
     // Stage 1: Initial filtering
     pipeline.push({ $match: matchConditions });
 
-
     // Stage 2: Join with metaltransactions collection
     pipeline.push({
       $lookup: {
@@ -234,7 +298,6 @@ export class ReportService {
       },
     });
 
-
     // Conditionally filter based on transactionType
     if (filters.transactionType) {
       pipeline.push({
@@ -243,6 +306,8 @@ export class ReportService {
         },
       });
     }
+
+
 
 
     // Stage 4: Filter by voucher if provided
@@ -421,6 +486,267 @@ export class ReportService {
     return pipeline;
   }
 
+
+  buildStockPipeline(filters) {
+    const pipeline = [];
+
+    const matchConditions = {
+      isActive: true,
+      costCenter: "INVENTORY",
+    };
+
+    // Add date range filter if provided
+    if (filters.startDate || filters.endDate) {
+      matchConditions.transactionDate = {};
+      if (filters.startDate) {
+        matchConditions.transactionDate.$gte = new Date(filters.startDate);
+      }
+      if (filters.endDate) {
+        matchConditions.transactionDate.$lte = new Date(filters.endDate);
+      }
+    }
+
+    // Stage 1: Initial filtering
+    pipeline.push({ $match: matchConditions });
+
+    // Stage 2: Join with metalID collection
+    pipeline.push({
+      $lookup: {
+        from: "metalstocks",
+        localField: "metalId",
+        foreignField: "_id",
+        as: "metalInfo",
+      },
+    });
+
+    // Stage 3: Unwind metalTransaction array
+    pipeline.push({
+      $unwind: {
+        path: "$metalInfo",
+        preserveNullAndEmptyArrays: false,
+      },
+    });
+
+    if (filters.division.length > 0) {
+      pipeline.push({
+        $match: {
+          "metalInfo.metalType": { $in: filters.division }
+        }
+      });
+    }
+
+    pipeline.push({
+      $group: {
+        _id: {
+          metalId: "$metalId",
+          code: "$metalInfo.code",
+          description: "$metalInfo.description",
+          metalType: "$metalInfo.metalType",
+          purity: "$purity"
+        },
+        metalName: { $first: "$metalInfo.code" },
+        totalGrossWeight: { $sum: "$grossWeight" },
+        totalPureWeight: { $sum: "$pureWeight" },
+
+        totalCredit: { $sum: "$credit" },
+        totalDebit: { $sum: "$debit" },
+
+        // Smart pcsCount computation
+        totalPcsCount: {
+          $sum: {
+            $cond: [
+              { $eq: ["$metalInfo.pcs", true] },
+              { $round: [{ $divide: ["$grossWeight", "$metalInfo.totalValue"] }, 0] },
+              0
+            ]
+          }
+        },
+        logs: { $push: "$$ROOT" }
+      }
+    });
+
+
+    // Conditionally filter based on transactionType
+    if (filters.transactionType) {
+      pipeline.push({
+        $project: {
+          metalId: "$_id.metalId",
+          code: "$_id.code",
+          description: "$_id.description",
+          metalType: "$_id.metalType",
+          purity: "$_id.purity",
+          totalPcsCount: 1,
+          totalGrossWeight: 1,
+          totalPureWeight: 1,
+          totalValue: 1,
+          _id: 0
+        }
+      });
+    }
+    return pipeline
+
+
+    // Stage 5: Filter by account type if provided
+    if (filters.accountType.length > 0) {
+      pipeline.push({
+        $match: {
+          "metalTransaction.partyCode": { $in: filters.accountType },
+        },
+      });
+    }
+
+
+    // Stage 6: Unwind stock items
+    pipeline.push({
+      $unwind: {
+        path: "$metalTransaction.stockItems",
+        preserveNullAndEmptyArrays: false,
+      },
+    });
+
+
+    // Stage 7: Join with metalstocks collection
+    pipeline.push({
+      $lookup: {
+        from: "metalstocks",
+        localField: "metalTransaction.stockItems.stockCode",
+        foreignField: "_id",
+        as: "stockDetails",
+      },
+    });
+
+    // Stage 8: Unwind stockDetails array
+    pipeline.push({
+      $unwind: {
+        path: "$stockDetails",
+        preserveNullAndEmptyArrays: false,
+      },
+    });
+
+    // Stage 9: Filter by stock if provided
+    if (filters.stock.length > 0) {
+      pipeline.push({
+        $match: {
+          "stockDetails._id": { $in: filters.stock },
+        },
+      });
+    }
+
+    // Stage 10: Filter by karat if provided
+    if (filters.karat.length > 0) {
+      pipeline.push({
+        $match: {
+          "stockDetails.karat": { $in: filters.karat },
+        },
+      });
+    }
+
+    // Stage 11: Filter by division if provided
+    if (filters.division.length > 0) {
+      pipeline.push({
+        $match: {
+          "stockDetails.metalType": { $in: filters.division },
+        },
+      });
+    }
+
+    // Stage 11.1: Apply groupByRange filters if present
+    if (filters.groupByRange && typeof filters.groupByRange === 'object') {
+      const groupByMap = {
+        stockCode: "stockDetails._id",
+        categoryCode: "stockDetails.categoryCode",
+        karat: "stockDetails.karat",
+        type: "stockDetails.type",
+        supplierRef: "stockDetails.supplierRef",
+        countryDetails: "stockDetails.countryDetails",
+        supplier: "stockDetails.supplier",
+        purchaseRef: "stockDetails.purchaseRef",
+      };
+
+      for (const [key, path] of Object.entries(groupByMap)) {
+        const values = filters.groupByRange[key];
+        if (Array.isArray(values) && values.length > 0) {
+          pipeline.push({
+            $match: {
+              [path]: { $in: values },
+            },
+          });
+        }
+      }
+    }
+
+
+    // Stage 12: Join with additional details for display
+    pipeline.push({
+      $lookup: {
+        from: "karatmasters",
+        localField: "stockDetails.karat",
+        foreignField: "_id",
+        as: "karatDetails",
+      },
+    });
+
+    pipeline.push({
+      $lookup: {
+        from: "divisionmasters",
+        localField: "stockDetails.metalType",
+        foreignField: "_id",
+        as: "divisionDetails",
+      },
+    });
+
+    pipeline.push({
+      $lookup: {
+        from: "accounts",
+        localField: "metalTransaction.partyCode",
+        foreignField: "_id",
+        as: "partyDetails",
+      },
+    });
+
+    // Stage 13: Project required fields
+    pipeline.push({
+      $project: {
+        date: "$transactionDate",
+        voucherNumber: "$metalTransaction.voucherNumber",
+        partyName: { $arrayElemAt: ["$partyDetails.customerName", 0] },
+        grossWeight: {
+          $cond: {
+            if: filters.grossWeight,
+            then: "$metalTransaction.stockItems.grossWeight",
+            else: null,
+          },
+        },
+        pureWeight: {
+          $cond: {
+            if: filters.pureWeight,
+            then: "$metalTransaction.stockItems.pureWeight",
+            else: null,
+          },
+        },
+        pcs: {
+          $cond: {
+            if: filters.showPcs,
+            then: "$metalTransaction.stockItems.pieces",
+            else: null,
+          },
+        },
+        debit: "$debit",
+        credit: "$credit",
+        value: "$metalTransaction.stockItems.itemTotal.itemTotalAmount",
+      },
+    });
+
+    // Stage 14: Sort by date (descending)
+    pipeline.push({
+      $sort: {
+        date: -1,
+        createdAt: -1,
+      },
+    });
+
+    return pipeline;
+  }
   /**
    * Formats raw report data into structured response
    * @param {Array} reportData - Raw aggregation results
