@@ -1,5 +1,5 @@
 import express from "express";
-import { getReports, getStockBalance, getStockMovement,getStockAnalysis } from "../../controllers/modules/reportsController.js";
+import { getReports, getStockBalance, getStockMovement, getStockAnalysis, getTransactionSummary } from "../../controllers/modules/reportsController.js";
 
 import { authenticateToken } from "../../middleware/authMiddleware.js";
 
@@ -10,5 +10,6 @@ router.post("/", getReports);
 router.post("/stock-movement", getStockMovement);
 router.post("/stock-balance", getStockBalance);
 router.post("/stock-analysis", getStockAnalysis);
+router.post("/transaction-summary", getTransactionSummary);
 
 export default router;

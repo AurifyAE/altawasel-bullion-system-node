@@ -44,9 +44,7 @@ export class ReportService {
 
       // Execute aggregation query  
       const reportData = await Registry.aggregate(pipeline);
-      console.log('====================================');
-      console.log(reportData);
-      console.log('====================================');
+
       // Format the retrieved data for response
       const formattedData = this.formatReportData(reportData, validatedFilters);
 
@@ -60,8 +58,6 @@ export class ReportService {
       throw new Error(`Failed to generate metal stock ledger report: ${error.message}`);
     }
   }
-
-
 
   async getPurchaseMetalReport(filters) {
     try {
@@ -119,7 +115,6 @@ export class ReportService {
     }
   }
 
-
   async getStockMovementReport(filters) {
     try {
 
@@ -128,7 +123,6 @@ export class ReportService {
 
       // Construct MongoDB aggregation pipeline
       const pipeline = this.buildStockMovementPipeline(validatedFilters);
-
 
       // Execute aggregation query
       const reportData = await Registry.aggregate(pipeline);
@@ -178,6 +172,36 @@ export class ReportService {
       throw new Error(`Failed to generate metal stock ledger report: ${error.message}`);
     }
   }
+
+  async getTransactionSummary(filters) {
+    try {
+
+      // Validate and format input filters
+      const validatedFilters = this.validateFilters(filters);
+
+      // Construct MongoDB aggregation pipeline
+      const pipeline = this.buildTransactionSummaryPipeline(validatedFilters);
+
+      // Execute aggregation query  
+      const reportData = await Registry.aggregate(pipeline);
+      console.log('====================================');
+      console.log(reportData);
+      console.log('====================================');
+
+      // Format the retrieved data for response
+      const formattedData = this.formatReportData(reportData, validatedFilters);
+
+      return {
+        success: true,
+        data: reportData,
+        filters: validatedFilters,
+        totalRecords: reportData.length,
+      };
+    } catch (error) {
+      throw new Error(`Failed to generate metal stock ledger report: ${error.message}`);
+    }
+  }
+
 
 
   validateFilters(filters, isStock) {
@@ -783,6 +807,17 @@ export class ReportService {
       isActive: true,
       type: "GOLD_STOCK",
     };
+
+    if (filters.startDate || filters.endDate) {
+      matchConditions.transactionDate = {};
+      if (filters.startDate) {
+        matchConditions.transactionDate.$gte = new Date(filters.startDate);
+      }
+      if (filters.endDate) {
+        matchConditions.transactionDate.$lte = new Date(filters.endDate);
+      }
+    }
+
     pipeline.push({ $match: matchConditions });
   
     // 2. Join metalInfo (inventory details)
@@ -1187,6 +1222,239 @@ export class ReportService {
 
     pipeline.push({ $unwind: { path: "$metalInfo", preserveNullAndEmptyArrays: true } });
     pipeline.push({ $unwind: { path: "$metalTxnInfo", preserveNullAndEmptyArrays: true } });
+    pipeline.push({
+      $unwind: {
+        path: "$metalTxnInfo.stockItems",
+        preserveNullAndEmptyArrays: true,
+      },
+    });
+
+    pipeline.push({
+      $lookup: {
+        from: "karatmasters",
+        localField: "metalInfo.karat",
+        foreignField: "_id",
+        as: "karatDetails",
+      },
+    });
+
+    pipeline.push({
+      $unwind: {
+        path: "$karatDetails",
+        preserveNullAndEmptyArrays: true,
+      },
+    });
+
+
+
+    pipeline.push({
+      $lookup: {
+        from: "metalstocks",
+        localField: "metalTxnInfo.stockItems.stockCode",
+        foreignField: "_id",
+        as: "metaldetail",
+      },
+    })
+
+    pipeline.push({ $unwind: { path: "$metaldetail", preserveNullAndEmptyArrays: true } });
+
+
+
+    // Project merged structure
+    pipeline.push({
+      $project: {
+        grossWeight: 1,
+        pureWeight: 1,
+        pcs: {
+          $ifNull: ["$metalInfo.pcsCount", "$metalTxnInfo.stockItems.pcsCount"],
+        },
+        code: {
+          $ifNull: ["$metalInfo.code", "$metaldetail.code"],
+        },
+        description: {
+          $ifNull: ["$metalInfo.description", "$metaldetail.description"],
+        },
+      },
+    });
+
+
+    // Grouping total by code + description
+    pipeline.push({
+      $group: {
+        _id: {
+          code: "$code",
+          description: "$description",
+        },
+        totalGrossWeight: { $sum: "$grossWeight" },
+        totalPureWeight: { $sum: "$pureWeight" },
+        totalPcs: { $sum: { $ifNull: ["$pcs", 0] } },
+      },
+    });
+
+    // Rename _id fields
+    pipeline.push({
+      $project: {
+        _id: 0,
+        code: "$_id.code",
+        description: "$_id.description",
+        totalGrossWeight: 1,
+        totalPureWeight: 1,
+        totalPcs: 1,
+      },
+    });
+    return pipeline
+
+    if (filters.division.length > 0) {
+      pipeline.push({
+        $match: {
+          "metalInfo.metalType": { $in: filters.division }
+        }
+      });
+    }
+
+    const groupByMatch = {};
+
+    // Dynamically add conditions based on non-empty arrays
+    if (filters.groupByRange?.stockCode?.length > 0) {
+      groupByMatch["metalInfo.code"] = { $in: filters.groupByRange.stockCode };
+    }
+
+    if (filters.groupByRange?.categoryCode?.length > 0) {
+      groupByMatch["metalInfo.category"] = { $in: filters.groupByRange.categoryCode };
+    }
+
+    if (filters.groupByRange?.karat?.length > 0) {
+      groupByMatch["metalInfo.karat"] = { $in: filters.groupByRange.karat };
+    }
+
+    if (filters.groupByRange?.type?.length > 0) {
+      groupByMatch["metalInfo.type"] = { $in: filters.groupByRange.type };
+    }
+
+    if (filters.groupByRange?.size?.length > 0) {
+      groupByMatch["metalInfo.size"] = { $in: filters.groupByRange.size };
+    }
+
+    if (filters.groupByRange?.color?.length > 0) {
+      groupByMatch["metalInfo.color"] = { $in: filters.groupByRange.color };
+    }
+
+    if (filters.groupByRange?.brand?.length > 0) {
+      groupByMatch["metalInfo.brand"] = { $in: filters.groupByRange.brand };
+    }
+
+    // Only push $match if any filter was added
+    if (Object.keys(groupByMatch).length > 0) {
+      pipeline.push({ $match: groupByMatch });
+    }
+    pipeline.push({
+      $lookup: {
+        from: "karatmasters",
+        localField: "metalInfo.karat",
+        foreignField: "_id",
+        as: "karatDetails",
+      },
+    });
+
+    pipeline.push({
+      $group: {
+        _id: {
+          metalId: "$metalId",
+          code: "$metalInfo.code",
+          description: "$metalInfo.description",
+          metalType: "$metalInfo.metalType",
+          purity: "$purity"
+        },
+        metalName: { $first: "$metalInfo.code" },
+        totalGrossWeight: { $sum: "$grossWeight" },
+        totalPureWeight: { $sum: "$pureWeight" },
+
+        totalCredit: { $sum: "$credit" },
+        totalDebit: { $sum: "$debit" },
+
+        // Smart pcsCount computation
+        totalPcsCount: {
+          $sum: {
+            $cond: [
+              { $eq: ["$metalInfo.pcs", true] },
+              { $round: [{ $divide: ["$grossWeight", "$metalInfo.totalValue"] }, 0] },
+              0
+            ]
+          }
+        },
+        logs: { $push: "$$ROOT" }
+      }
+    });
+
+
+    // Conditionally filter based on transactionType
+    if (filters.transactionType) {
+      pipeline.push({
+        $project: {
+          metalId: "$_id.metalId",
+          code: "$_id.code",
+          description: "$_id.description",
+          metalType: "$_id.metalType",
+          purity: "$_id.purity",
+          totalPcsCount: 1,
+          totalGrossWeight: 1,
+          totalPureWeight: 1,
+          totalValue: 1,
+          _id: 0
+        }
+      });
+    }
+    return pipeline
+  }
+
+  buildTransactionSummaryPipeline(filters) {
+    const pipeline = [];
+
+    // Base filter
+    const matchConditions = {
+      isActive: true,
+    };
+
+    if (filters.startDate || filters.endDate) {
+      matchConditions.transactionDate = {};
+      if (filters.startDate) {
+        matchConditions.transactionDate.$gte = new Date(filters.startDate);
+      }
+      if (filters.endDate) {
+        matchConditions.transactionDate.$lte = new Date(filters.endDate);
+      }
+    }
+
+
+    pipeline.push({ $match: matchConditions });
+
+    return pipeline
+
+    // Join metalInfo (for inventory)
+    pipeline.push({
+      $lookup: {
+        from: "metalstocks",
+        localField: "metalId",
+        foreignField: "_id",
+        as: "metalInfo",
+      },
+    });
+    
+
+    // Join metalTxnInfo (for purchase)
+    pipeline.push({
+      $lookup: {
+        from: "metaltransactions",
+        localField: "metalTransactionId",
+        foreignField: "_id",
+        as: "metalTxnInfo",
+      },
+    });
+
+    pipeline.push({ $unwind: { path: "$metalInfo", preserveNullAndEmptyArrays: true } });
+    pipeline.push({ $unwind: { path: "$metalTxnInfo", preserveNullAndEmptyArrays: true } });
+
+    
     pipeline.push({
       $unwind: {
         path: "$metalTxnInfo.stockItems",
