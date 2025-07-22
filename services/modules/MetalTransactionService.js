@@ -488,7 +488,7 @@ class MetalTransactionService {
           false,
           totals.pureWeight,
           totals.pureWeight,
-          { debit: totals.pureWeight },
+          { debit: 0 },
           voucherDate,
           voucherNumber,
           adminId
@@ -508,7 +508,7 @@ class MetalTransactionService {
           false,
           totals.makingCharges,
           totals.makingCharges,
-          { debit: totals.makingCharges },
+          { debit: 0 },
           voucherDate,
           voucherNumber,
           adminId
@@ -528,7 +528,7 @@ class MetalTransactionService {
           false,
           totals.premium,
           totals.premium,
-          { debit: totals.premium },
+          { debit: 0 },
           voucherDate,
           voucherNumber,
           adminId
