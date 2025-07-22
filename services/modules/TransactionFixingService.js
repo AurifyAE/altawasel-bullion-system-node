@@ -203,10 +203,10 @@ export const TransactionFixingService = {
           party: transactionData.partyId,
           isBullion: false,
           value: transactionData.quantityGm,
-          debit: transactionData.quantityGm, // Party gives gold (debit from party perspective)
+          debit: 0, // Party gives gold (debit from party perspective)
           goldCredit: transactionData.quantityGm,
           cashDebit: transactionData.price,
-          credit: 0,
+          credit: transactionData.quantityGm,
           transactionDate: transactionData.transactionDate || new Date(),
           reference: transaction.voucherNumber,
           createdBy: adminId,
