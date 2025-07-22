@@ -13,6 +13,14 @@ const RegistrySchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "MetalTransaction",
     },
+    EntryTransactionId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Entry",
+    },
+    TransferTransactionId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "FundTransfer",
+    },
     costCenter: {
       type: String,
       ref: "CostCenterMaster",

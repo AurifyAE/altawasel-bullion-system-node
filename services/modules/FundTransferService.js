@@ -76,35 +76,7 @@ class FundTransferService {
         // Calculate running balance
         const runningBalance = receiverAccount.balances.cashBalance.amount;
   
-        const transaction = new Registry({
-          transactionId: await Registry.generateTransactionId(),
-          type: "PARTY_CASH_BALANCE",
-          description: `OPENING BALANCE FOR ${receiverAccount.customerName}`,
-          value: absoluteValue,
-          runningBalance: runningBalance,
-          previousBalance: previousBalance,
-          credit: isCredit ? absoluteValue : 0,
-          debit: isDebit ? absoluteValue : 0,
-          reference: voucher.voucherCode,
-          createdBy: adminId,
-          party: receiverAccount._id,
-        });
-  
-        const transactionForParty = new Registry({
-          transactionId: await Registry.generateTransactionId(),
-          type: "OPENING_CASH_BALANCE",
-          description: `OPENING BALANCE FOR ${receiverAccount.customerName}`,
-          value: absoluteValue,
-          runningBalance: runningBalance,
-          previousBalance: previousBalance,
-          credit: isCredit ? absoluteValue : 0,
-          debit: isDebit ? absoluteValue : 0,
-          reference: voucher.voucherCode,
-          createdBy: adminId,
-          party: receiverAccount._id,
-        });
-  
-        // Add to FundTransfer collection
+        // Create fund transfer first to get its ID
         const fundTransfer = new FundTransfer({
           transactionId: await FundTransfer.generateTransactionId(),
           description: `OPENING CASH BALANCE FOR ${receiverAccount.customerName}`,
@@ -122,13 +94,43 @@ class FundTransferService {
           voucherType: voucher.voucherType,
           isBullion: false,
           createdBy: adminId,
-          type:"OPENING-BALANCE"
+          type: "OPENING-BALANCE"
+        });
+  
+        const transaction = new Registry({
+          transactionId: await Registry.generateTransactionId(),
+          type: "PARTY_CASH_BALANCE",
+          description: `OPENING BALANCE FOR ${receiverAccount.customerName}`,
+          value: absoluteValue,
+          runningBalance: runningBalance,
+          previousBalance: previousBalance,
+          credit: isCredit ? absoluteValue : 0,
+          debit: isDebit ? absoluteValue : 0,
+          reference: voucher.voucherCode,
+          createdBy: adminId,
+          party: receiverAccount._id,
+          TransferTransactionId: fundTransfer._id, // Reference to FundTransfer
+        });
+  
+        const transactionForParty = new Registry({
+          transactionId: await Registry.generateTransactionId(),
+          type: "OPENING_CASH_BALANCE",
+          description: `OPENING BALANCE FOR ${receiverAccount.customerName}`,
+          value: absoluteValue,
+          runningBalance: runningBalance,
+          previousBalance: previousBalance,
+          credit: isCredit ? absoluteValue : 0,
+          debit: isDebit ? absoluteValue : 0,
+          reference: voucher.voucherCode,
+          createdBy: adminId,
+          party: receiverAccount._id,
+          TransferTransactionId: fundTransfer._id, // Reference to FundTransfer
         });
   
         await receiverAccount.save();
+        await fundTransfer.save();
         await transactionForParty.save();
         await transaction.save();
-        await fundTransfer.save();
   
       } else if (assetType === "GOLD") {
         // Store previous balance for tracking
@@ -140,35 +142,7 @@ class FundTransferService {
         // Calculate running balance
         const runningBalance = receiverAccount.balances.goldBalance.totalGrams;
   
-        const transaction = new Registry({
-          transactionId: await Registry.generateTransactionId(),
-          type: "PARTY_GOLD_BALANCE",
-          description: `OPENING GOLD FOR ${receiverAccount.customerName}`,
-          value: absoluteValue,
-          runningBalance: runningBalance,
-          previousBalance: previousBalance,
-          credit: isCredit ? absoluteValue : 0,
-          debit: isDebit ? absoluteValue : 0,
-          reference: voucher.voucherCode,
-          createdBy: adminId,
-          party: receiverAccount._id,
-        });
-  
-        const transactionForParty = new Registry({
-          transactionId: await Registry.generateTransactionId(),
-          type: "OPENING_GOLD_BALANCE",
-          description: `OPENING GOLD FOR ${receiverAccount.customerName}`,
-          value: absoluteValue,
-          runningBalance: runningBalance,
-          previousBalance: previousBalance,
-          credit: isCredit ? absoluteValue : 0,
-          debit: isDebit ? absoluteValue : 0,
-          reference: voucher.voucherCode,
-          createdBy: adminId,
-          party: receiverAccount._id,
-        });
-  
-        // Add to FundTransfer collection
+        // Create fund transfer first to get its ID
         const fundTransfer = new FundTransfer({
           transactionId: await FundTransfer.generateTransactionId(),
           description: `OPENING GOLD BALANCE FOR ${receiverAccount.customerName}`,
@@ -186,13 +160,43 @@ class FundTransferService {
           voucherType: voucher.voucherType,
           isBullion: false,
           createdBy: adminId,
-          type:"OPENING-BALANCE"
+          type: "OPENING-BALANCE"
+        });
+  
+        const transaction = new Registry({
+          transactionId: await Registry.generateTransactionId(),
+          type: "PARTY_GOLD_BALANCE",
+          description: `OPENING GOLD FOR ${receiverAccount.customerName}`,
+          value: absoluteValue,
+          runningBalance: runningBalance,
+          previousBalance: previousBalance,
+          credit: isCredit ? absoluteValue : 0,
+          debit: isDebit ? absoluteValue : 0,
+          reference: voucher.voucherCode,
+          createdBy: adminId,
+          party: receiverAccount._id,
+          TransferTransactionId: fundTransfer._id, // Reference to FundTransfer
+        });
+  
+        const transactionForParty = new Registry({
+          transactionId: await Registry.generateTransactionId(),
+          type: "OPENING_GOLD_BALANCE",
+          description: `OPENING GOLD FOR ${receiverAccount.customerName}`,
+          value: absoluteValue,
+          runningBalance: runningBalance,
+          previousBalance: previousBalance,
+          credit: isCredit ? absoluteValue : 0,
+          debit: isDebit ? absoluteValue : 0,
+          reference: voucher.voucherCode,
+          createdBy: adminId,
+          party: receiverAccount._id,
+          TransferTransactionId: fundTransfer._id, // Reference to FundTransfer
         });
   
         await receiverAccount.save();
+        await fundTransfer.save();
         await transactionForParty.save();
         await transaction.save();
-        await fundTransfer.save();
       }
     } catch (error) {
       if (error.name === "ValidationError") {
@@ -236,34 +240,7 @@ async function handleCashTransfer(
   senderAccount.balances.cashBalance.amount -= value;
   receiverAccount.balances.cashBalance.amount += value;
 
-  // Log the transaction in the registry for sender
-  const transaction = new Registry({
-    transactionId: await Registry.generateTransactionId(),
-    type: "PARTY_CASH_BALANCE",
-    description: `FUND TRANSFER FROM ${senderAccount.customerName} TO ${receiverAccount.customerName}`,
-    value: value,
-    runningBalance: 0,
-    previousBalance: 0,
-    debit: value,
-    reference: `Transfer to ${receiverAccount.customerName}`,
-    createdBy: adminId,
-    party: senderAccount._id,
-  });
-
-  // Log the transaction in the registry for receiver
-  const receiverTransaction = new Registry({
-    transactionId: await Registry.generateTransactionId(),
-    type: "PARTY_CASH_BALANCE",
-    description: `FUND TRANSFER TO ${receiverAccount.customerName} FROM ${senderAccount.customerName}`,
-    value: value,
-    runningBalance: 0,
-    previousBalance: 0,
-    credit: value,
-    reference: `Transfer from ${senderAccount.customerName}`,
-    createdBy: adminId,
-    party: receiverAccount._id,
-  });
-
+  // Create fund transfer first to get its ID
   const fundTransfer = new FundTransfer({
     transactionId: await FundTransfer.generateTransactionId(),
     description: `CASH TRANSFER FROM ${senderAccount.customerName} TO ${receiverAccount.customerName}`,
@@ -283,11 +260,41 @@ async function handleCashTransfer(
     createdBy: adminId,
   });
 
+  // Log the transaction in the registry for sender
+  const transaction = new Registry({
+    transactionId: await Registry.generateTransactionId(),
+    type: "PARTY_CASH_BALANCE",
+    description: `FUND TRANSFER FROM ${senderAccount.customerName} TO ${receiverAccount.customerName}`,
+    value: value,
+    runningBalance: senderAccount.balances.cashBalance.amount,
+    previousBalance: senderAccount.balances.cashBalance.amount + value,
+    debit: value,
+    reference: voucher.voucherCode,
+    createdBy: adminId,
+    party: senderAccount._id,
+    TransferTransactionId: fundTransfer._id, // Reference to FundTransfer
+  });
+
+  // Log the transaction in the registry for receiver
+  const receiverTransaction = new Registry({
+    transactionId: await Registry.generateTransactionId(),
+    type: "PARTY_CASH_BALANCE",
+    description: `FUND TRANSFER TO ${receiverAccount.customerName} FROM ${senderAccount.customerName}`,
+    value: value,
+    runningBalance: receiverAccount.balances.cashBalance.amount,
+    previousBalance: receiverAccount.balances.cashBalance.amount - value,
+    credit: value,
+    reference: voucher.voucherCode,
+    createdBy: adminId,
+    party: receiverAccount._id,
+    TransferTransactionId: fundTransfer._id, // Reference to FundTransfer
+  });
+
   await receiverAccount.save();
   await senderAccount.save();
+  await fundTransfer.save();
   await transaction.save();
   await receiverTransaction.save();
-  await fundTransfer.save();
 }
 
 async function handleGoldTransfer(
@@ -309,37 +316,7 @@ async function handleGoldTransfer(
   senderAccount.balances.goldBalance.totalGrams -= value;
   receiverAccount.balances.goldBalance.totalGrams += value;
 
-  console.log('====================================');
-  console.log("onnn coucher  ", voucher);
-  console.log('====================================');
-  // Log the transaction in the registry for sender
-  const transaction = new Registry({
-    transactionId: await Registry.generateTransactionId(),
-    type: "PARTY_GOLD_BALANCE",
-    description: `GOLD TRANSFER FROM ${senderAccount.customerName} TO ${receiverAccount.customerName}`,
-    value: value,
-    runningBalance: 0,
-    previousBalance: 0,
-    debit: value,
-    reference: `Transfer to ${receiverAccount.customerName}`,
-    createdBy: adminId,
-    party: senderAccount._id,
-  });
-
-  // Log the transaction in the registry for receiver
-  const receiverTransaction = new Registry({
-    transactionId: await Registry.generateTransactionId(),
-    type: "PARTY_GOLD_BALANCE",
-    description: `GOLD TRANSFER TO ${receiverAccount.customerName} FROM ${senderAccount.customerName}`,
-    value: value,
-    runningBalance: 0,
-    previousBalance: 0,
-    credit: value,
-    reference: `Transfer from ${senderAccount.customerName}`,
-    createdBy: adminId,
-    party: receiverAccount._id,
-  });
-
+  // Create fund transfer first to get its ID
   const fundTransfer = new FundTransfer({
     transactionId: await FundTransfer.generateTransactionId(),
     description: `GOLD TRANSFER FROM ${senderAccount.customerName} TO ${receiverAccount.customerName}`,
@@ -359,11 +336,45 @@ async function handleGoldTransfer(
     createdBy: adminId,
   });
 
+  // Log the transaction in the registry for sender
+  const transaction = new Registry({
+    transactionId: await Registry.generateTransactionId(),
+    type: "PARTY_GOLD_BALANCE",
+    description: `GOLD TRANSFER FROM ${senderAccount.customerName} TO ${receiverAccount.customerName}`,
+    value: value,
+    runningBalance: senderAccount.balances.goldBalance.totalGrams,
+    previousBalance: senderAccount.balances.goldBalance.totalGrams + value,
+    debit: value,
+    reference: voucher.voucherCode,
+    createdBy: adminId,
+    party: senderAccount._id,
+    TransferTransactionId: fundTransfer._id, // Reference to FundTransfer
+  });
+
+  console.log('====================================');
+  console.log(transaction);
+  console.log('====================================');
+
+  // Log the transaction in the registry for receiver
+  const receiverTransaction = new Registry({
+    transactionId: await Registry.generateTransactionId(),
+    type: "PARTY_GOLD_BALANCE",
+    description: `GOLD TRANSFER TO ${receiverAccount.customerName} FROM ${senderAccount.customerName}`,
+    value: value,
+    runningBalance: receiverAccount.balances.goldBalance.totalGrams,
+    previousBalance: receiverAccount.balances.goldBalance.totalGrams - value,
+    credit: value,
+    reference: voucher.voucherCode,
+    createdBy: adminId,
+    party: receiverAccount._id,
+    TransferTransactionId: fundTransfer._id, // Reference to FundTransfer
+  });
+
   await receiverAccount.save();
   await senderAccount.save();
+  await fundTransfer.save();
   await transaction.save();
   await receiverTransaction.save();
-  await fundTransfer.save();
 }
 
 export default FundTransferService;

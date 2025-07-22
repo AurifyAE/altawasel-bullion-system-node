@@ -9,6 +9,10 @@ const FundTransferSchema = new mongoose.Schema(
       uppercase: true,
 
     },
+    metalId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'MetalStock', // Reference to metal master for inv update
+    },
     assetType: {
       type: String,
       enum: ["CASH", "GOLD"],

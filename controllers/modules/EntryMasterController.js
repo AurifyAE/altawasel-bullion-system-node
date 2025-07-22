@@ -99,6 +99,7 @@ const handleMetalReceipt = async (entry) => {
     // Registry entry for "stock balance"
     await Registry.create({
       transactionId,
+      EntryTransactionId:entry._id,
       type: "GOLD_STOCK",
       description, // Use the computed description
       value: stock.grossWeight,
@@ -118,6 +119,7 @@ const handleMetalReceipt = async (entry) => {
     // Registry entry for "gold"
     await Registry.create({
       transactionId: await Registry.generateTransactionId(),
+      EntryTransactionId:entry._id,
       type: "GOLD",
       description, // Use the same computed description
       value: stock.purityWeight,
@@ -354,6 +356,7 @@ const handleMetalPayment = async (entry) => {
     // Registry entry for "stock balance" (debit for payment)
     await Registry.create({
       transactionId,
+      EntryTransactionId:entry._id,
       type: "GOLD_STOCK",
       description,
       value: stock.purityWeight,
@@ -373,6 +376,7 @@ const handleMetalPayment = async (entry) => {
     // Registry entry for "gold" (credit for payment)
     await Registry.create({
       transactionId: await Registry.generateTransactionId(),
+      EntryTransactionId:entry._id,
       type: "GOLD",
       description,
       value: stock.purityWeight,

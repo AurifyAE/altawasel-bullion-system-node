@@ -62,7 +62,6 @@ exports.createEntry = async (data) => {
 
 // Helper function for metal-receipt
 const handleMetalReceipt = async (entry , reference) => {
-  log
   for (const stock of entry.stocks) {
     const transactionId = await Registry.generateTransactionId();
 
@@ -73,6 +72,7 @@ const handleMetalReceipt = async (entry , reference) => {
     // Registry entry for "stock balance"
     await Registry.create({
       transactionId,
+      EntryTransactionId:entry._id,
       type: "STOCK_BALANCE",
       description,
       value: stock.purityWeight,
@@ -88,6 +88,7 @@ const handleMetalReceipt = async (entry , reference) => {
     // Registry entry for "gold"
     await Registry.create({
       transactionId: await Registry.generateTransactionId(),
+      EntryTransactionId:entry._id,
       type: "GOLD",
       description: stock.remarks || "",
       value: stock.purityWeight,
@@ -156,6 +157,7 @@ const handleCashReceipt = async (entry) => {
     // Registry entry for "cash balance"
     await Registry.create({
       transactionId,
+      EntryTransactionId:entry._id,
       type: "PARTY_CASH_BALANCE",
       description: cashItem.remarks || entry.remarks || "",
       value: requestedAmount,
@@ -171,6 +173,7 @@ const handleCashReceipt = async (entry) => {
     // Registry entry for "cash"
     await Registry.create({
       transactionId: await Registry.generateTransactionId(),
+      EntryTransactionId:entry._id,
       type: "CASH",
       description: cashItem.remarks || entry.remarks || "",
       value: requestedAmount,
@@ -252,6 +255,7 @@ const handleCashPayment = async (entry) => {
     // Registry entry for "cash balance" (debit for payment)
     await Registry.create({
       transactionId,
+      EntryTransactionId:entry._id,
       type: "PARTY_CASH_BALANCE",
       description: cashItem.remarks || entry.remarks || "",
       value: requestedAmount,
@@ -267,6 +271,7 @@ const handleCashPayment = async (entry) => {
     // Registry entry for "cash" (credit for payment)
     await Registry.create({
       transactionId: await Registry.generateTransactionId(),
+      EntryTransactionId:entry._id,
       type: "CASH",
       description: cashItem.remarks || entry.remarks || "",
       value: requestedAmount,
@@ -292,6 +297,7 @@ const handleMetalPayment = async (entry) => {
     // Registry entry for "stock balance" (debit for payment)
     await Registry.create({
       transactionId,
+      EntryTransactionId:entry._id,
       type: "STOCK_BALANCE",
       description: stock.remarks || "",
       value: stock.purityWeight,
@@ -307,6 +313,7 @@ const handleMetalPayment = async (entry) => {
     // Registry entry for "gold" (credit for payment)
     await Registry.create({
       transactionId: await Registry.generateTransactionId(),
+      EntryTransactionId:entry._id,
       type: "GOLD",
       description: stock.remarks || "",
       value: stock.purityWeight,

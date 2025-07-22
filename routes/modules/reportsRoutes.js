@@ -11,5 +11,6 @@ router.post("/stock-movement", getStockMovement);
 router.post("/stock-balance", getStockBalance);
 router.post("/stock-analysis", getStockAnalysis);
 router.post("/transaction-summary", getTransactionSummary);
+router.post("/own-stock", getTransactionSummary);
 
 export default router;
