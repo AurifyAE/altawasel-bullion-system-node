@@ -1406,14 +1406,13 @@ export class ReportService {
   }
 
   buildTransactionSummaryPipeline(filters) {
-
     const pipeline = [];
 
     // Step 1: Base match condition
     const matchConditions = {
       isActive: true,
     };
-    
+
     // Step 2: Add date filters if present
     if (filters.startDate || filters.endDate) {
       matchConditions.transactionDate = {};
@@ -1424,19 +1423,18 @@ export class ReportService {
         matchConditions.transactionDate.$lte = new Date(filters.endDate);
       }
     }
-    
+
     // Step 3: Include documents where at least one type of transaction exists
     matchConditions.$or = [
       { metalTransactionId: { $exists: true, $ne: null } },
       { EntryTransactionId: { $exists: true, $ne: null } },
       { TransferTransactionId: { $exists: true, $ne: null } },
     ];
-    
+
     // Step 4: Apply the match
     pipeline.push({ $match: matchConditions });
-    
     // Step 5: Lookup related collections
-    
+
     // 5a: Lookup metalTransaction data
     pipeline.push({
       $lookup: {
@@ -1446,7 +1444,7 @@ export class ReportService {
         as: "metaltransactions",
       },
     });
-    
+
     // 5b: Lookup entries (e.g., purchase or manual entry records)
     pipeline.push({
       $lookup: {
@@ -1456,7 +1454,7 @@ export class ReportService {
         as: "entries",
       },
     });
-    
+
     // 5c: Lookup fund transfers
     pipeline.push({
       $lookup: {
@@ -1466,12 +1464,12 @@ export class ReportService {
         as: "fundtransfers",
       },
     });
-    
+
     // Step 6: Unwind joined data (preserve null for optional relationships)
     pipeline.push({ $unwind: { path: "$metaltransactions", preserveNullAndEmptyArrays: true } });
     pipeline.push({ $unwind: { path: "$entries", preserveNullAndEmptyArrays: true } });
     pipeline.push({ $unwind: { path: "$fundtransfers", preserveNullAndEmptyArrays: true } });
-    
+
     // Step 7: Filter by transactionType if provided
     if (filters.transactionType) {
       pipeline.push({
@@ -1480,7 +1478,7 @@ export class ReportService {
         },
       });
     }
-    
+
     // Step 8: Unwind stockItems from metaltransactions
     pipeline.push({
       $unwind: {
@@ -1488,7 +1486,7 @@ export class ReportService {
         preserveNullAndEmptyArrays: true,
       },
     });
-    
+
     // Step 9: Lookup metalstocks for stock details
     pipeline.push({
       $lookup: {
@@ -1498,7 +1496,7 @@ export class ReportService {
         as: "metaldetail",
       },
     });
-    
+
     // Step 10: Unwind metaldetail
     pipeline.push({
       $unwind: {
@@ -1506,7 +1504,7 @@ export class ReportService {
         preserveNullAndEmptyArrays: true,
       },
     });
-    
+
     // Step 11: Lookup karat details (optional, as purity is available in stockItems)
     pipeline.push({
       $lookup: {
@@ -1516,7 +1514,7 @@ export class ReportService {
         as: "karatDetails",
       },
     });
-    
+
     // Step 12: Unwind karatDetails
     pipeline.push({
       $unwind: {
@@ -1524,7 +1522,8 @@ export class ReportService {
         preserveNullAndEmptyArrays: true,
       },
     });
-    
+
+
     // Step 13: Project the required fields
     pipeline.push({
       $project: {
@@ -1541,7 +1540,7 @@ export class ReportService {
         _id: 0,
       },
     });
-    
+
     // Step 14: Group to calculate totals
     pipeline.push({
       $group: {
@@ -1569,7 +1568,7 @@ export class ReportService {
         totalMakingCharge: { $sum: "$makingCharge" },
       },
     });
-    
+
     // Step 15: Project the final output
     pipeline.push({
       $project: {
@@ -1589,49 +1588,7 @@ export class ReportService {
 
     return pipeline
 
-    // Project merged structure
-    pipeline.push({
-      $project: {
-        grossWeight: 1,
-        pureWeight: 1,
-        pcs: {
-          $ifNull: ["$metalInfo.pcsCount", "$metalTxnInfo.stockItems.pcsCount"],
-        },
-        code: {
-          $ifNull: ["$metalInfo.code", "$metaldetail.code"],
-        },
-        description: {
-          $ifNull: ["$metalInfo.description", "$metaldetail.description"],
-        },
-      },
-    });
 
-
-    // Grouping total by code + description
-    pipeline.push({
-      $group: {
-        _id: {
-          code: "$code",
-          description: "$description",
-        },
-        totalGrossWeight: { $sum: "$grossWeight" },
-        totalPureWeight: { $sum: "$pureWeight" },
-        totalPcs: { $sum: { $ifNull: ["$pcs", 0] } },
-      },
-    });
-
-    // Rename _id fields
-    pipeline.push({
-      $project: {
-        _id: 0,
-        code: "$_id.code",
-        description: "$_id.description",
-        totalGrossWeight: 1,
-        totalPureWeight: 1,
-        totalPcs: 1,
-      },
-    });
-    return pipeline
 
     if (filters.division.length > 0) {
       pipeline.push({
@@ -1641,7 +1598,6 @@ export class ReportService {
       });
     }
 
-    const groupByMatch = {};
 
     // Dynamically add conditions based on non-empty arrays
     if (filters.groupByRange?.stockCode?.length > 0) {
