@@ -156,9 +156,7 @@ export class ReportService {
 
       // Execute aggregation query  
       const reportData = await Registry.aggregate(pipeline);
-      console.log('====================================');
-      console.log(reportData);
-      console.log('====================================');
+
       // Format the retrieved data for response
       const formattedData = this.formatReportData(reportData, validatedFilters);
 
@@ -184,6 +182,9 @@ export class ReportService {
 
       // Execute aggregation query  
       const reportData = await Registry.aggregate(pipeline);
+      console.log('====================================');
+      console.log(reportData);
+      console.log('====================================');
 
 
       // Format the retrieved data for response
@@ -1308,18 +1309,18 @@ export class ReportService {
     };
 
     // Add date range filter if provided
-    if (filters.fromDate && filters.toDate) {
+    if (filters.startDate && filters.endDate) {
       matchConditions.transactionDate = {
-        $gte: new Date(filters.fromDate),
-        $lte: new Date(filters.toDate)
+        $gte: new Date(filters.startDate),
+        $lte: new Date(filters.endDate)
       };
-    } else if (filters.fromDate) {
+    } else if (filters.startDate) {
       matchConditions.transactionDate = {
         $gte: new Date(filters.fromDate)
       };
-    } else if (filters.toDate) {
+    } else if (filters.endDate) {
       matchConditions.transactionDate = {
-        $lte: new Date(filters.toDate)
+        $lte: new Date(filters.endDate)
       };
     }
 
@@ -1471,6 +1472,7 @@ export class ReportService {
         as: "karatDetails",
       },
     });
+   
 
     pipeline.push({
       $unwind: {
@@ -2068,6 +2070,13 @@ export class ReportService {
         matchConditions.transactionDate.$lte = new Date(filters.endDate);
       }
     }
+    if (filters.voucher && filters.voucher.length > 0) {
+      matchConditions.reference = {
+        $regex: `^(${filters.voucher.join('|')})`, // Starts with any value in the array
+        $options: 'i' // case-insensitive (optional)
+      };
+    }
+    
 
     // Step 3: Include documents where at least one type of transaction exists
     matchConditions.$or = [
