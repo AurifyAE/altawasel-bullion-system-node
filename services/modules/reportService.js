@@ -1472,7 +1472,7 @@ export class ReportService {
         as: "karatDetails",
       },
     });
-   
+
 
     pipeline.push({
       $unwind: {
@@ -2076,7 +2076,7 @@ export class ReportService {
         $options: 'i' // case-insensitive (optional)
       };
     }
-    
+
 
     // Step 3: Include documents where at least one type of transaction exists
     matchConditions.$or = [
@@ -2119,19 +2119,63 @@ export class ReportService {
       },
     });
 
+    pipeline.push({
+      $lookup: {
+        from: "metalstocks",
+        localField: "metaltransactions.stockItems.stockCode",
+        foreignField: "_id",
+        as: "MetalTransactionMetalStock",
+      },
+    });
+
+    pipeline.push({
+      $lookup: {
+        from: "metalstocks",
+        localField: "entries.stocks.stock",
+        foreignField: "_id",
+        as: "entriesMetalStock",
+      },
+    });
+
     // Step 6: Unwind joined data (preserve null for optional relationships)
     pipeline.push({ $unwind: { path: "$metaltransactions", preserveNullAndEmptyArrays: true } });
     pipeline.push({ $unwind: { path: "$entries", preserveNullAndEmptyArrays: true } });
     pipeline.push({ $unwind: { path: "$fundtransfers", preserveNullAndEmptyArrays: true } });
 
     // Step 7: Filter by transactionType if provided
-    if (filters.transactionType) {
+    if (filters.transactionType && filters.transactionType !== "all") {
       pipeline.push({
         $match: {
           "metaltransactions.transactionType": filters.transactionType,
         },
       });
     }
+
+    if (filters.groupByRange?.stockCode?.length > 0) {
+      pipeline.push({
+        $match: {
+          $or: [
+            { "entries.stocks.stock": { $in: filters.groupByRange.stockCode } },
+            { "metaltransactions.stockItems.stockCode": { $in: filters.groupByRange.stockCode } }
+          ]
+        }
+      });
+    }
+    console.log('====================================');
+    console.log("Fil" , filters);
+    console.log('====================================');
+
+    if (filters.groupByRange?.karat?.length > 0) {
+      pipeline.push({
+        $match: {
+          $or: [
+            { "metalInfo._id": { $in: filters.groupByRange.stockCode } },
+            { "metalTxnInfo.stockItems.stockCode": { $in: filters.groupByRange.stockCode } }
+          ]
+        }
+      });
+    }
+
 
     // Step 8: Unwind stockItems from metaltransactions
     pipeline.push({
