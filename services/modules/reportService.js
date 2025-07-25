@@ -402,8 +402,6 @@ export class ReportService {
     }
 
 
-
-
     // Stage 4: Filter by voucher if provided
     if (filters.voucher.length > 0) {
       pipeline.push({
@@ -415,7 +413,6 @@ export class ReportService {
         },
       });
     }
-
 
 
     // Stage 5: Filter by account type if provided
@@ -542,6 +539,7 @@ export class ReportService {
         date: "$transactionDate",
         voucherNumber: "$metalTransaction.voucherNumber",
         partyName: { $arrayElemAt: ["$partyDetails.customerName", 0] },
+        stockCode: "$stockDetails.code",
         grossWeight: {
           $cond: {
             if: filters.grossWeight,
@@ -2911,6 +2909,7 @@ buildStockAnalysis(filters) {
         debit: item.debit || 0,
         credit: item.credit || 0,
         value: item.value || 0,
+        stcok:item.stockCode||"N/A"
       };
 
       // Add conditional fields based on filters
