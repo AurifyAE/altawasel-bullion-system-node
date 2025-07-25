@@ -2909,7 +2909,7 @@ buildStockAnalysis(filters) {
         debit: item.debit || 0,
         credit: item.credit || 0,
         value: item.value || 0,
-        stcok:item.stockCode||"N/A"
+        stock:item.stockCode||"N/A"
       };
 
       // Add conditional fields based on filters
