@@ -190,7 +190,8 @@ export const getStockMovement = async (req, res) => {
 export const getStockBalance = async (req, res) => {
   try {
     const filters = req.body;
-    console.log("stock Balance");
+    
+    console.log("on: stock Balance");
     // Call service to get report data
 
     const reportData = await reportService.getStockBalanceReport(filters);

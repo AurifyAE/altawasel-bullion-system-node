@@ -5,6 +5,7 @@ import Entry from "../../models/modules/EntryModel.js";
 import { createAppError } from "../../utils/errorHandler.js";
 import FundTransfer from "../../models/modules/FundTransfer.js";
 import MetalStock from "../../models/modules/MetalStock.js";
+import Registry from "../../models/modules/Registry.js";
 
 class VoucherMasterService {
   // Cache for voucher configurations to reduce DB queries
@@ -61,104 +62,122 @@ class VoucherMasterService {
 
   // Optimized transaction count method
   static async getTransactionCount(module, transactionType) {
-  const moduleLC = module.toLowerCase();
-  console.log(`[getTransactionCount] INPUT: module="${module}", transactionType="${transactionType}"`);
+    const moduleLC = module.toLowerCase();
+    console.log(`[getTransactionCount] INPUT: module="${module}", transactionType="${transactionType}"`);
 
-  try {
-    // Entry-based modules
-    const entryModules = ["metal-payment", "metal-receipt", "currency-payment", "currency-receipt", "entry"];
-    if (entryModules.includes(moduleLC)) {
-      console.log(`[getTransactionCount] Using model: Entry`);
+    try {
+      // Entry-based modules
+      const entryModules = ["metal-payment", "metal-receipt", "currency-payment", "currency-receipt", "entry"];
+      if (entryModules.includes(moduleLC)) {
+        console.log(`[getTransactionCount] Using model: Entry`);
 
-      const query = transactionType
-        ? { type: { $regex: `^${transactionType}$`, $options: "i" } }
-        : {};
+        const query = transactionType
+          ? { type: { $regex: `^${transactionType}$`, $options: "i" } }
+          : {};
 
-      console.log(`[getTransactionCount] Entry Query:`, query);
-      const count = await Entry.countDocuments(query);
-      console.log(`[getTransactionCount] Entry Count:`, count);
-      return count;
+        console.log(`[getTransactionCount] Entry Query:`, query);
+        const count = await Entry.countDocuments(query);
+        console.log(`[getTransactionCount] Entry Count:`, count);
+        return count;
+      }
+
+      // MetalTransaction-based modules
+      const metalTxnModules = ["metal-purchase", "metal-sale", "purchase-return", "sales-return"];
+      if (metalTxnModules.includes(moduleLC)) {
+        console.log(`[getTransactionCount] Using model: MetalTransaction`);
+
+        const query = transactionType
+          ? { transactionType: { $regex: `^${transactionType}$`, $options: "i" } }
+          : {};
+
+        console.log(`[getTransactionCount] MetalTransaction Query:`, query);
+        const count = await MetalTransaction.countDocuments(query);
+        console.log(`[getTransactionCount] MetalTransaction Count:`, count);
+        return count;
+      }
+
+      // TransactionFix-based modules
+      const fixModules = ["sales-fixing", "purchase-fixing"];
+      if (fixModules.includes(moduleLC)) {
+        console.log(`[getTransactionCount] Using model: TransactionFix`);
+
+        const query = transactionType
+          ? { type: { $regex: `^${transactionType}$`, $options: "i" } }
+          : {};
+
+        console.log(`[getTransactionCount] TransactionFix Query:`, query);
+        const count = await TransactionFix.countDocuments(query);
+        console.log(`[getTransactionCount] TransactionFix Count:`, count);
+        return count;
+      }
+
+      // Transfer module
+      if (moduleLC === "transfer") {
+        console.log(`[getTransactionCount] Using model: FundTransfer`);
+
+        const query = transactionType
+          ? { type: { $regex: `^${transactionType}$`, $options: "i" } }
+          : {};
+
+        console.log(`[getTransactionCount] FundTransfer Query:`, query);
+        const count = await FundTransfer.countDocuments(query);
+        console.log(`[getTransactionCount] FundTransfer Count:`, count);
+        return count;
+      }
+
+      // Opening Balance
+      if (moduleLC === "opening-balance") {
+        console.log(`[getTransactionCount] Using model: FundTransfer`);
+
+        const query = transactionType
+          ? { type: { $regex: `^${transactionType}$`, $options: "i" } }
+          : {};
+
+        console.log(`[getTransactionCount] FundTransfer Query:`, query);
+        const count = await FundTransfer.countDocuments(query);
+        console.log(`[getTransactionCount] FundTransfer Count:`, count);
+        return count;
+      }
+
+      // Metal Stock
+      if (moduleLC === "metal-stock") {
+        console.log(`[getTransactionCount] Using model: MetalStock`);
+
+        const query = transactionType
+          ? { referenceType: { $regex: `^${transactionType}$`, $options: "i" } }
+          : {};
+
+        console.log(`[getTransactionCount] MetalStock Query:`, query);
+        const count = await MetalStock.countDocuments(query);
+        console.log(`[getTransactionCount] MetalStock Count:`, count);
+        return count;
+      }
+      if (moduleLC === "opening-stock-balance") {
+        console.log(`[getTransactionCount] Using model: registry`);
+
+        const query = {
+          $or: [
+            { costCenter: "INVENTORY" },
+            { reference: { $regex: "^OSB", $options: "i" } },
+          ],
+        };
+
+        console.log(`[getTransactionCount] Registry Query:`, query);
+
+        const count = await Registry.countDocuments(query);
+        console.log(`[getTransactionCount] Registry Count:`, count);
+
+        return count;
+      }
+
+
+      console.warn(`[getTransactionCount] No matching model for module="${module}". Returning 0.`);
+      return 0;
+    } catch (error) {
+      console.error(`[getTransactionCount] ERROR for module="${module}":`, error);
+      return 0;
     }
-
-    // MetalTransaction-based modules
-    const metalTxnModules = ["metal-purchase", "metal-sale", "purchase-return", "sales-return"];
-    if (metalTxnModules.includes(moduleLC)) {
-      console.log(`[getTransactionCount] Using model: MetalTransaction`);
-
-      const query = transactionType
-        ? { transactionType: { $regex: `^${transactionType}$`, $options: "i" } }
-        : {};
-
-      console.log(`[getTransactionCount] MetalTransaction Query:`, query);
-      const count = await MetalTransaction.countDocuments(query);
-      console.log(`[getTransactionCount] MetalTransaction Count:`, count);
-      return count;
-    }
-
-    // TransactionFix-based modules
-    const fixModules = ["sales-fixing", "purchase-fixing"];
-    if (fixModules.includes(moduleLC)) {
-      console.log(`[getTransactionCount] Using model: TransactionFix`);
-
-      const query = transactionType
-        ? { type: { $regex: `^${transactionType}$`, $options: "i" } }
-        : {};
-
-      console.log(`[getTransactionCount] TransactionFix Query:`, query);
-      const count = await TransactionFix.countDocuments(query);
-      console.log(`[getTransactionCount] TransactionFix Count:`, count);
-      return count;
-    }
-
-    // Transfer module
-    if (moduleLC === "transfer") {
-      console.log(`[getTransactionCount] Using model: FundTransfer`);
-
-      const query = transactionType
-        ? { type: { $regex: `^${transactionType}$`, $options: "i" } }
-        : {};
-
-      console.log(`[getTransactionCount] FundTransfer Query:`, query);
-      const count = await FundTransfer.countDocuments(query);
-      console.log(`[getTransactionCount] FundTransfer Count:`, count);
-      return count;
-    }
-
-    // Opening Balance
-    if (moduleLC === "opening-balance") {
-      console.log(`[getTransactionCount] Using model: FundTransfer`);
-
-      const query = transactionType
-        ? { type: { $regex: `^${transactionType}$`, $options: "i" } }
-        : {};
-
-      console.log(`[getTransactionCount] FundTransfer Query:`, query);
-      const count = await FundTransfer.countDocuments(query);
-      console.log(`[getTransactionCount] FundTransfer Count:`, count);
-      return count;
-    }
-
-    // Metal Stock
-    if (moduleLC === "metal-stock") {
-      console.log(`[getTransactionCount] Using model: MetalStock`);
-
-      const query = transactionType
-        ? { referenceType: { $regex: `^${transactionType}$`, $options: "i" } }
-        : {};
-
-      console.log(`[getTransactionCount] MetalStock Query:`, query);
-      const count = await MetalStock.countDocuments(query);
-      console.log(`[getTransactionCount] MetalStock Count:`, count);
-      return count;
-    }
-
-    console.warn(`[getTransactionCount] No matching model for module="${module}". Returning 0.`);
-    return 0;
-  } catch (error) {
-    console.error(`[getTransactionCount] ERROR for module="${module}":`, error);
-    return 0;
   }
-}
 
 
   // Format date based on voucher date format

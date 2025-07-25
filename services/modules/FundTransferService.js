@@ -51,6 +51,9 @@ class FundTransferService {
   }
 
   static async openingBalanceTransfer(receiverId, value, adminId, assetType, voucher) {
+    console.log('====================================');
+    console.log(receiverId , value , adminId , assetType , voucher);
+    console.log('====================================');
     try {
       const receiverAccount = await AccountType.findById(receiverId);
       if (!receiverAccount) {
@@ -133,6 +136,8 @@ class FundTransferService {
         await transaction.save();
   
       } else if (assetType === "GOLD") {
+
+        
         // Store previous balance for tracking
         const previousBalance = receiverAccount.balances.goldBalance.totalGrams;
   

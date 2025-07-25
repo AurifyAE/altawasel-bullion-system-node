@@ -59,7 +59,7 @@ export class ReportService {
     }
   }
 
-    async getSalesAnalysis(filters) {
+  async getSalesAnalysis(filters) {
     try {
 
       // Validate and format input filters
@@ -579,447 +579,447 @@ export class ReportService {
   }
 
 
- buildSalesAnalysis(filters) {
-  const pipeline = [];
+  buildSalesAnalysis(filters) {
+    const pipeline = [];
 
-  // Base match conditions for Registry
-  const matchConditions = {
-    isActive: true,
-  };
-
-  // Add date range filter with fallback for future dates
-  const currentDate = new Date();
-  let fromDate = filters.fromDate ? new Date(filters.fromDate) : new Date(currentDate.getFullYear() - 1, 0, 1);
-  let toDate = filters.toDate ? new Date(filters.toDate) : currentDate;
-
-  // Ensure dates are not in the future beyond today
-  if (fromDate > currentDate) fromDate = new Date(currentDate.getFullYear() - 1, 0, 1);
-  if (toDate > currentDate) toDate = currentDate;
-
-  matchConditions.transactionDate = {
-    $gte: fromDate,
-    $lte: toDate
-  };
-
-  // Add voucher filter with flexible regex (substring match)
-  if (filters.voucher && filters.voucher.length > 0) {
-    matchConditions.$or = filters.voucher.map(voucher => ({
-      reference: { $regex: voucher, $options: 'i' } // Substring match, case-insensitive
-    }));
-  }
-
-  // Add division filter (convert to ObjectId)
-  if (filters.division && filters.division.length > 0) {
-    matchConditions.costCenter = { 
-      $in: filters.division.map(id => {
-        try {
-          return new mongoose.Types.ObjectId(id);
-        } catch (e) {
-          console.warn(`Invalid ObjectId for costCenter: ${id}`);
-          return id; // Fallback to string if conversion fails
-        }
-      })
+    // Base match conditions for Registry
+    const matchConditions = {
+      isActive: true,
     };
-  }
 
-  // Initial filtering from Registry
-  pipeline.push({ $match: matchConditions });
+    // Add date range filter with fallback for future dates
+    const currentDate = new Date();
+    let fromDate = filters.fromDate ? new Date(filters.fromDate) : new Date(currentDate.getFullYear() - 1, 0, 1);
+    let toDate = filters.toDate ? new Date(filters.toDate) : currentDate;
 
-  // Debugging: Inspect initial matches
-  // pipeline.push({ $limit: 10 });
-  // pipeline.push({ $project: { reference: 1, transactionDate: 1, costCenter: 1, metalTransactionId: 1 } });
+    // Ensure dates are not in the future beyond today
+    if (fromDate > currentDate) fromDate = new Date(currentDate.getFullYear() - 1, 0, 1);
+    if (toDate > currentDate) toDate = currentDate;
 
-  // Join with metaltransactions
-  pipeline.push({
-    $lookup: {
-      from: "metaltransactions",
-      localField: "metalTransactionId",
-      foreignField: "_id",
-      as: "metalTxnInfo",
-    },
-  });
-  pipeline.push({ $unwind: { path: "$metalTxnInfo", preserveNullAndEmptyArrays: true } });
+    matchConditions.transactionDate = {
+      $gte: fromDate,
+      $lte: toDate
+    };
 
-  // Filter sales transactions
-  pipeline.push({
-    $match: {
-      "metalTxnInfo.transactionType": "sale",
-      "metalTxnInfo.isActive": true,
-      "metalTxnInfo.status": { $in: ["confirmed", "completed"] }
+    // Add voucher filter with flexible regex (substring match)
+    if (filters.voucher && filters.voucher.length > 0) {
+      matchConditions.$or = filters.voucher.map(voucher => ({
+        reference: { $regex: voucher, $options: 'i' } // Substring match, case-insensitive
+      }));
     }
-  });
 
-  // Debugging: Inspect after metaltransactions join
-  // pipeline.push({ $limit: 10 });
-  // pipeline.push({ $project: { "metalTxnInfo.transactionType": 1, "metalTxnInfo.status": 1 } });
-
-  // Unwind stockItems
-  pipeline.push({
-    $unwind: {
-      path: "$metalTxnInfo.stockItems",
-      preserveNullAndEmptyArrays: true,
-    },
-  });
-
-  // Join with metalstocks
-  pipeline.push({
-    $lookup: {
-      from: "metalstocks",
-      localField: "metalTxnInfo.stockItems.stockCode",
-      foreignField: "_id",
-      as: "stockDetails",
-    },
-  });
-  pipeline.push({ $unwind: { path: "$stockDetails", preserveNullAndEmptyArrays: true } });
-
-  // Apply groupByRange filters
-  const groupByRangeMatch = {};
-  if (filters.groupByRange) {
-    if (filters.groupByRange.stockCode && filters.groupByRange.stockCode.length > 0) {
-      groupByRangeMatch["stockDetails._id"] = {
-        $in: filters.groupByRange.stockCode.map(id => {
+    // Add division filter (convert to ObjectId)
+    if (filters.division && filters.division.length > 0) {
+      matchConditions.costCenter = {
+        $in: filters.division.map(id => {
           try {
             return new mongoose.Types.ObjectId(id);
           } catch (e) {
-            console.warn(`Invalid ObjectId for stockCode: ${id}`);
-            return id;
+            console.warn(`Invalid ObjectId for costCenter: ${id}`);
+            return id; // Fallback to string if conversion fails
           }
         })
       };
     }
-    if (filters.groupByRange.karat && filters.groupByRange.karat.length > 0) {
-      groupByRangeMatch["stockDetails.karat"] = {
-        $in: filters.groupByRange.karat.map(id => {
-          try {
-            return new mongoose.Types.ObjectId(id);
-          } catch (e) {
-            console.warn(`Invalid ObjectId for karat: ${id}`);
-            return id;
-          }
-        })
-      };
-    }
-    if (filters.groupByRange.categoryCode && filters.groupByRange.categoryCode.length > 0) {
-      groupByRangeMatch["stockDetails.categoryCode"] = {
-        $in: filters.groupByRange.categoryCode.map(id => new mongoose.Types.ObjectId(id))
-      };
-    }
-    if (filters.groupByRange.type && filters.groupByRange.type.length > 0) {
-      groupByRangeMatch["stockDetails.type"] = {
-        $in: filters.groupByRange.type.map(id => new mongoose.Types.ObjectId(id))
-      };
-    }
-    if (filters.groupByRange.size && filters.groupByRange.size.length > 0) {
-      groupByRangeMatch["stockDetails.size"] = {
-        $in: filters.groupByRange.size.map(id => new mongoose.Types.ObjectId(id))
-      };
-    }
-    if (filters.groupByRange.color && filters.groupByRange.color.length > 0) {
-      groupByRangeMatch["stockDetails.color"] = {
-        $in: filters.groupByRange.color.map(id => new mongoose.Types.ObjectId(id))
-      };
-    }
-    if (filters.groupByRange.brand && filters.groupByRange.brand.length > 0) {
-      groupByRangeMatch["stockDetails.brand"] = {
-        $in: filters.groupByRange.brand.map(id => new mongoose.Types.ObjectId(id))
-      };
-    }
-  }
-  if (Object.keys(groupByRangeMatch).length > 0) {
-    pipeline.push({ $match: groupByRangeMatch });
-  }
 
-  // Debugging: Inspect after groupByRange
-  // pipeline.push({ $limit: 10 });
-  // pipeline.push({ $project: { "stockDetails._id": 1, "stockDetails.karat": 1 } });
+    // Initial filtering from Registry
+    pipeline.push({ $match: matchConditions });
 
-  // Join with karatmasters
-  pipeline.push({
-    $lookup: {
-      from: "karatmasters",
-      localField: "stockDetails.karat",
-      foreignField: "_id",
-      as: "karatDetails",
-    },
-  });
-  pipeline.push({ $unwind: { path: "$karatDetails", preserveNullAndEmptyArrays: true } });
+    // Debugging: Inspect initial matches
+    // pipeline.push({ $limit: 10 });
+    // pipeline.push({ $project: { reference: 1, transactionDate: 1, costCenter: 1, metalTransactionId: 1 } });
 
-  // Grouping
-  const groupFields = { _id: {} };
-  const projectFields = {};
-  if (filters.groupBy && filters.groupBy.includes('stockCode')) {
-    groupFields._id.stockCode = "$stockDetails.code";
-    groupFields._id.stockId = "$stockDetails._id";
-    groupFields._id.description = "$stockDetails.description";
-    projectFields.CODE = "$_id.stockCode";
-    projectFields.DESCRIPTION = "$_id.description";
-  }
-  if (filters.groupBy && filters.groupBy.includes('karat')) {
-    groupFields._id.karatCode = "$karatDetails.code";
-    groupFields._id.karatDescription = "$karatDetails.description";
-    if (!projectFields.CODE) {
-      projectFields.CODE = "$_id.karatCode";
-      projectFields.DESCRIPTION = "$_id.karatDescription";
-    }
-  }
+    // Join with metaltransactions
+    pipeline.push({
+      $lookup: {
+        from: "metaltransactions",
+        localField: "metalTransactionId",
+        foreignField: "_id",
+        as: "metalTxnInfo",
+      },
+    });
+    pipeline.push({ $unwind: { path: "$metalTxnInfo", preserveNullAndEmptyArrays: true } });
 
-  groupFields.salesMkgValue = {
-    $sum: { $ifNull: ["$metalTxnInfo.stockItems.makingCharges.amount", 0] }
-  };
-  groupFields.salesGrossQty = {
-    $sum: {
-      $cond: {
-        if: {
-          $and: [
-            { $eq: ["$stockDetails.isPcs", true] },
-            { $gt: [{ $ifNull: ["$stockDetails.totalValue", 0] }, 0] }
-          ]
-        },
-        then: {
-          $divide: [
-            { $ifNull: ["$metalTxnInfo.stockItems.grossWeight", 0] },
-            { $ifNull: ["$stockDetails.totalValue", 1] }
-          ]
-        },
-        else: { $ifNull: ["$metalTxnInfo.stockItems.grossWeight", 0] }
+    // Filter sales transactions
+    pipeline.push({
+      $match: {
+        "metalTxnInfo.transactionType": "sale",
+        "metalTxnInfo.isActive": true,
+        "metalTxnInfo.status": { $in: ["confirmed", "completed"] }
+      }
+    });
+
+    // Debugging: Inspect after metaltransactions join
+    // pipeline.push({ $limit: 10 });
+    // pipeline.push({ $project: { "metalTxnInfo.transactionType": 1, "metalTxnInfo.status": 1 } });
+
+    // Unwind stockItems
+    pipeline.push({
+      $unwind: {
+        path: "$metalTxnInfo.stockItems",
+        preserveNullAndEmptyArrays: true,
+      },
+    });
+
+    // Join with metalstocks
+    pipeline.push({
+      $lookup: {
+        from: "metalstocks",
+        localField: "metalTxnInfo.stockItems.stockCode",
+        foreignField: "_id",
+        as: "stockDetails",
+      },
+    });
+    pipeline.push({ $unwind: { path: "$stockDetails", preserveNullAndEmptyArrays: true } });
+
+    // Apply groupByRange filters
+    const groupByRangeMatch = {};
+    if (filters.groupByRange) {
+      if (filters.groupByRange.stockCode && filters.groupByRange.stockCode.length > 0) {
+        groupByRangeMatch["stockDetails._id"] = {
+          $in: filters.groupByRange.stockCode.map(id => {
+            try {
+              return new mongoose.Types.ObjectId(id);
+            } catch (e) {
+              console.warn(`Invalid ObjectId for stockCode: ${id}`);
+              return id;
+            }
+          })
+        };
+      }
+      if (filters.groupByRange.karat && filters.groupByRange.karat.length > 0) {
+        groupByRangeMatch["stockDetails.karat"] = {
+          $in: filters.groupByRange.karat.map(id => {
+            try {
+              return new mongoose.Types.ObjectId(id);
+            } catch (e) {
+              console.warn(`Invalid ObjectId for karat: ${id}`);
+              return id;
+            }
+          })
+        };
+      }
+      if (filters.groupByRange.categoryCode && filters.groupByRange.categoryCode.length > 0) {
+        groupByRangeMatch["stockDetails.categoryCode"] = {
+          $in: filters.groupByRange.categoryCode.map(id => new mongoose.Types.ObjectId(id))
+        };
+      }
+      if (filters.groupByRange.type && filters.groupByRange.type.length > 0) {
+        groupByRangeMatch["stockDetails.type"] = {
+          $in: filters.groupByRange.type.map(id => new mongoose.Types.ObjectId(id))
+        };
+      }
+      if (filters.groupByRange.size && filters.groupByRange.size.length > 0) {
+        groupByRangeMatch["stockDetails.size"] = {
+          $in: filters.groupByRange.size.map(id => new mongoose.Types.ObjectId(id))
+        };
+      }
+      if (filters.groupByRange.color && filters.groupByRange.color.length > 0) {
+        groupByRangeMatch["stockDetails.color"] = {
+          $in: filters.groupByRange.color.map(id => new mongoose.Types.ObjectId(id))
+        };
+      }
+      if (filters.groupByRange.brand && filters.groupByRange.brand.length > 0) {
+        groupByRangeMatch["stockDetails.brand"] = {
+          $in: filters.groupByRange.brand.map(id => new mongoose.Types.ObjectId(id))
+        };
       }
     }
-  };
-  groupFields.salesPcs = {
-    $sum: {
-      $cond: {
-        if: { $eq: ["$stockDetails.isPcs", true] },
-        then: { $ifNull: ["$metalTxnInfo.stockItems.pieces", 0] },
-        else: 0
+    if (Object.keys(groupByRangeMatch).length > 0) {
+      pipeline.push({ $match: groupByRangeMatch });
+    }
+
+    // Debugging: Inspect after groupByRange
+    // pipeline.push({ $limit: 10 });
+    // pipeline.push({ $project: { "stockDetails._id": 1, "stockDetails.karat": 1 } });
+
+    // Join with karatmasters
+    pipeline.push({
+      $lookup: {
+        from: "karatmasters",
+        localField: "stockDetails.karat",
+        foreignField: "_id",
+        as: "karatDetails",
+      },
+    });
+    pipeline.push({ $unwind: { path: "$karatDetails", preserveNullAndEmptyArrays: true } });
+
+    // Grouping
+    const groupFields = { _id: {} };
+    const projectFields = {};
+    if (filters.groupBy && filters.groupBy.includes('stockCode')) {
+      groupFields._id.stockCode = "$stockDetails.code";
+      groupFields._id.stockId = "$stockDetails._id";
+      groupFields._id.description = "$stockDetails.description";
+      projectFields.CODE = "$_id.stockCode";
+      projectFields.DESCRIPTION = "$_id.description";
+    }
+    if (filters.groupBy && filters.groupBy.includes('karat')) {
+      groupFields._id.karatCode = "$karatDetails.code";
+      groupFields._id.karatDescription = "$karatDetails.description";
+      if (!projectFields.CODE) {
+        projectFields.CODE = "$_id.karatCode";
+        projectFields.DESCRIPTION = "$_id.karatDescription";
       }
     }
-  };
-  pipeline.push({ $group: groupFields });
 
-  // Cost calculation
-  const currentYear = currentDate.getFullYear();
-  const financialYearStart = new Date(currentYear, 5, 1);
-  if (currentDate.getMonth() < 5) {
-    financialYearStart.setFullYear(currentYear - 1);
-  }
-
-  pipeline.push({
-    $lookup: {
-      from: "metaltransactions",
-      pipeline: [
-        {
-          $match: {
-            transactionType: "purchase",
-            isActive: true,
-            status: { $in: ["confirmed", "completed"] }
-          }
-        },
-        { $unwind: { path: "$stockItems", preserveNullAndEmptyArrays: true } },
-        {
-          $lookup: {
-            from: "metalstocks",
-            localField: "stockItems.stockCode",
-            foreignField: "_id",
-            as: "purchaseStockDetails"
-          }
-        },
-        { $unwind: { path: "$purchaseStockDetails", preserveNullAndEmptyArrays: true } },
-        ...(filters.groupByRange?.stockCode && filters.groupByRange.stockCode.length > 0 ? [{
-          $match: {
-            "purchaseStockDetails._id": {
-              $in: filters.groupByRange.stockCode.map(id => new mongoose.Types.ObjectId(id))
-            }
-          }
-        }] : []),
-        ...(filters.groupByRange?.karat && filters.groupByRange.karat.length > 0 ? [{
-          $match: {
-            "purchaseStockDetails.karat": {
-              $in: filters.groupByRange.karat.map(id => new mongoose.Types.ObjectId(id))
-            }
-          }
-        }] : []),
-        ...(filters.groupByRange?.categoryCode && filters.groupByRange.categoryCode.length > 0 ? [{
-          $match: {
-            "purchaseStockDetails.categoryCode": {
-              $in: filters.groupByRange.categoryCode.map(id => new mongoose.Types.ObjectId(id))
-            }
-          }
-        }] : []),
-        ...(filters.groupByRange?.type && filters.groupByRange.type.length > 0 ? [{
-          $match: {
-            "purchaseStockDetails.type": {
-              $in: filters.groupByRange.type.map(id => new mongoose.Types.ObjectId(id))
-            }
-          }
-        }] : []),
-        ...(filters.groupByRange?.size && filters.groupByRange.size.length > 0 ? [{
-          $match: {
-            "purchaseStockDetails.size": {
-              $in: filters.groupByRange.size.map(id => new mongoose.Types.ObjectId(id))
-            }
-          }
-        }] : []),
-        ...(filters.groupByRange?.color && filters.groupByRange.color.length > 0 ? [{
-          $match: {
-            "purchaseStockDetails.color": {
-              $in: filters.groupByRange.color.map(id => new mongoose.Types.ObjectId(id))
-            }
-          }
-        }] : []),
-        ...(filters.groupByRange?.brand && filters.groupByRange.brand.length > 0 ? [{
-          $match: {
-            "purchaseStockDetails.brand": {
-              $in: filters.groupByRange.brand.map(id => new mongoose.Types.ObjectId(id))
-            }
-          }
-        }] : []),
-        {
-          $group: {
-            _id: null,
-            totalPurchaseMakingCharges: {
-              $sum: { $ifNull: ["$stockItems.makingCharges.amount", 0] }
-            },
-            totalPurchaseGrossQty: {
-              $sum: {
-                $cond: {
-                  if: {
-                    $and: [
-                      { $eq: ["$purchaseStockDetails.isPcs", true] },
-                      { $gt: [{ $ifNull: ["$purchaseStockDetails.totalValue", 0] }, 0] }
-                    ]
-                  },
-                  then: {
-                    $divide: [
-                      { $ifNull: ["$stockItems.grossWeight", 0] },
-                      { $ifNull: ["$purchaseStockDetails.totalValue", 1] }
-                    ]
-                  },
-                  else: { $ifNull: ["$stockItems.grossWeight", 0] }
-                }
-              }
-            }
-          }
-        }
-      ],
-      as: "costData"
-    }
-  });
-
-  pipeline.push({
-    $addFields: {
-      costData: { $arrayElemAt: ["$costData", 0] },
-    }
-  });
-
-  pipeline.push({
-    $addFields: {
-      cost: {
+    groupFields.salesMkgValue = {
+      $sum: { $ifNull: ["$metalTxnInfo.stockItems.makingCharges.amount", 0] }
+    };
+    groupFields.salesGrossQty = {
+      $sum: {
         $cond: {
           if: {
             $and: [
-              { $gt: ["$salesGrossQty", 0] },
-              { $gt: [{ $ifNull: ["$costData.totalPurchaseGrossQty", 0] }, 0] }
+              { $eq: ["$stockDetails.isPcs", true] },
+              { $gt: [{ $ifNull: ["$stockDetails.totalValue", 0] }, 0] }
             ]
           },
           then: {
-            $multiply: [
-              {
-                $divide: [
-                  { $ifNull: ["$costData.totalPurchaseMakingCharges", 0] },
-                  { $ifNull: ["$costData.totalPurchaseGrossQty", 1] }
-                ]
-              },
-              "$salesGrossQty"
+            $divide: [
+              { $ifNull: ["$metalTxnInfo.stockItems.grossWeight", 0] },
+              { $ifNull: ["$stockDetails.totalValue", 1] }
             ]
           },
+          else: { $ifNull: ["$metalTxnInfo.stockItems.grossWeight", 0] }
+        }
+      }
+    };
+    groupFields.salesPcs = {
+      $sum: {
+        $cond: {
+          if: { $eq: ["$stockDetails.isPcs", true] },
+          then: { $ifNull: ["$metalTxnInfo.stockItems.pieces", 0] },
           else: 0
         }
       }
-    }
-  });
+    };
+    pipeline.push({ $group: groupFields });
 
-  pipeline.push({
-    $addFields: {
-      mkgAmount: { $subtract: ["$salesMkgValue", "$cost"] },
-      mkgRate: {
-        $cond: {
-          if: { $gt: ["$salesGrossQty", 0] },
-          then: {
-            $subtract: [
-              { $divide: ["$salesMkgValue", "$salesGrossQty"] },
-              {
-                $cond: {
-                  if: { $gt: [{ $ifNull: ["$costData.totalPurchaseGrossQty", 0] }, 0] },
-                  then: {
-                    $divide: [
-                      { $ifNull: ["$costData.totalPurchaseMakingCharges", 0] },
-                      { $ifNull: ["$costData.totalPurchaseGrossQty", 1] }
-                    ]
-                  },
-                  else: 0
+    // Cost calculation
+    const currentYear = currentDate.getFullYear();
+    const financialYearStart = new Date(currentYear, 5, 1);
+    if (currentDate.getMonth() < 5) {
+      financialYearStart.setFullYear(currentYear - 1);
+    }
+
+    pipeline.push({
+      $lookup: {
+        from: "metaltransactions",
+        pipeline: [
+          {
+            $match: {
+              transactionType: "purchase",
+              isActive: true,
+              status: { $in: ["confirmed", "completed"] }
+            }
+          },
+          { $unwind: { path: "$stockItems", preserveNullAndEmptyArrays: true } },
+          {
+            $lookup: {
+              from: "metalstocks",
+              localField: "stockItems.stockCode",
+              foreignField: "_id",
+              as: "purchaseStockDetails"
+            }
+          },
+          { $unwind: { path: "$purchaseStockDetails", preserveNullAndEmptyArrays: true } },
+          ...(filters.groupByRange?.stockCode && filters.groupByRange.stockCode.length > 0 ? [{
+            $match: {
+              "purchaseStockDetails._id": {
+                $in: filters.groupByRange.stockCode.map(id => new mongoose.Types.ObjectId(id))
+              }
+            }
+          }] : []),
+          ...(filters.groupByRange?.karat && filters.groupByRange.karat.length > 0 ? [{
+            $match: {
+              "purchaseStockDetails.karat": {
+                $in: filters.groupByRange.karat.map(id => new mongoose.Types.ObjectId(id))
+              }
+            }
+          }] : []),
+          ...(filters.groupByRange?.categoryCode && filters.groupByRange.categoryCode.length > 0 ? [{
+            $match: {
+              "purchaseStockDetails.categoryCode": {
+                $in: filters.groupByRange.categoryCode.map(id => new mongoose.Types.ObjectId(id))
+              }
+            }
+          }] : []),
+          ...(filters.groupByRange?.type && filters.groupByRange.type.length > 0 ? [{
+            $match: {
+              "purchaseStockDetails.type": {
+                $in: filters.groupByRange.type.map(id => new mongoose.Types.ObjectId(id))
+              }
+            }
+          }] : []),
+          ...(filters.groupByRange?.size && filters.groupByRange.size.length > 0 ? [{
+            $match: {
+              "purchaseStockDetails.size": {
+                $in: filters.groupByRange.size.map(id => new mongoose.Types.ObjectId(id))
+              }
+            }
+          }] : []),
+          ...(filters.groupByRange?.color && filters.groupByRange.color.length > 0 ? [{
+            $match: {
+              "purchaseStockDetails.color": {
+                $in: filters.groupByRange.color.map(id => new mongoose.Types.ObjectId(id))
+              }
+            }
+          }] : []),
+          ...(filters.groupByRange?.brand && filters.groupByRange.brand.length > 0 ? [{
+            $match: {
+              "purchaseStockDetails.brand": {
+                $in: filters.groupByRange.brand.map(id => new mongoose.Types.ObjectId(id))
+              }
+            }
+          }] : []),
+          {
+            $group: {
+              _id: null,
+              totalPurchaseMakingCharges: {
+                $sum: { $ifNull: ["$stockItems.makingCharges.amount", 0] }
+              },
+              totalPurchaseGrossQty: {
+                $sum: {
+                  $cond: {
+                    if: {
+                      $and: [
+                        { $eq: ["$purchaseStockDetails.isPcs", true] },
+                        { $gt: [{ $ifNull: ["$purchaseStockDetails.totalValue", 0] }, 0] }
+                      ]
+                    },
+                    then: {
+                      $divide: [
+                        { $ifNull: ["$stockItems.grossWeight", 0] },
+                        { $ifNull: ["$purchaseStockDetails.totalValue", 1] }
+                      ]
+                    },
+                    else: { $ifNull: ["$stockItems.grossWeight", 0] }
+                  }
                 }
               }
-            ]
-          },
-          else: 0
+            }
+          }
+        ],
+        as: "costData"
+      }
+    });
+
+    pipeline.push({
+      $addFields: {
+        costData: { $arrayElemAt: ["$costData", 0] },
+      }
+    });
+
+    pipeline.push({
+      $addFields: {
+        cost: {
+          $cond: {
+            if: {
+              $and: [
+                { $gt: ["$salesGrossQty", 0] },
+                { $gt: [{ $ifNull: ["$costData.totalPurchaseGrossQty", 0] }, 0] }
+              ]
+            },
+            then: {
+              $multiply: [
+                {
+                  $divide: [
+                    { $ifNull: ["$costData.totalPurchaseMakingCharges", 0] },
+                    { $ifNull: ["$costData.totalPurchaseGrossQty", 1] }
+                  ]
+                },
+                "$salesGrossQty"
+              ]
+            },
+            else: 0
+          }
         }
       }
-    }
-  });
+    });
 
-  pipeline.push({
-    $project: {
-      _id: 0,
-      CODE: projectFields.CODE || "N/A",
-      DESCRIPTION: projectFields.DESCRIPTION || "N/A",
-      MKG_VALUE: { $round: [{ $ifNull: ["$salesMkgValue", 0] }, 2] },
-      GROSS_QTY: { $round: [{ $ifNull: ["$salesGrossQty", 0] }, 2] },
-      PCS: { $ifNull: ["$salesPcs", 0] },
-      COST: { $round: [{ $ifNull: ["$cost", 0] }, 2] },
-      MKG_AMOUNT: { $round: [{ $ifNull: ["$mkgAmount", 0] }, 2] },
-      MKG_RATE: { $round: [{ $ifNull: ["$mkgRate", 0] }, 2] }
-    }
-  });
-
-  // Handle empty results
-  pipeline.push({
-    $group: {
-      _id: null,
-      results: { $push: "$$ROOT" }
-    }
-  });
-  pipeline.push({
-    $project: {
-      _id: 0,
-      results: {
-        $cond: {
-          if: { $eq: [{ $size: "$results" }, 0] },
-          then: [{
-            CODE: "N/A",
-            DESCRIPTION: "No transactions found for the specified criteria",
-            MKG_VALUE: 0,
-            GROSS_QTY: 0,
-            PCS: 0,
-            COST: 0,
-            MKG_AMOUNT: 0,
-            MKG_RATE: 0
-          }],
-          else: "$results"
+    pipeline.push({
+      $addFields: {
+        mkgAmount: { $subtract: ["$salesMkgValue", "$cost"] },
+        mkgRate: {
+          $cond: {
+            if: { $gt: ["$salesGrossQty", 0] },
+            then: {
+              $subtract: [
+                { $divide: ["$salesMkgValue", "$salesGrossQty"] },
+                {
+                  $cond: {
+                    if: { $gt: [{ $ifNull: ["$costData.totalPurchaseGrossQty", 0] }, 0] },
+                    then: {
+                      $divide: [
+                        { $ifNull: ["$costData.totalPurchaseMakingCharges", 0] },
+                        { $ifNull: ["$costData.totalPurchaseGrossQty", 1] }
+                      ]
+                    },
+                    else: 0
+                  }
+                }
+              ]
+            },
+            else: 0
+          }
         }
       }
-    }
-  });
-  pipeline.push({ $unwind: "$results" });
-  pipeline.push({ $replaceRoot: { newRoot: "$results" } });
+    });
 
-  pipeline.push({ $sort: { CODE: 1 } });
+    pipeline.push({
+      $project: {
+        _id: 0,
+        CODE: projectFields.CODE || "N/A",
+        DESCRIPTION: projectFields.DESCRIPTION || "N/A",
+        MKG_VALUE: { $round: [{ $ifNull: ["$salesMkgValue", 0] }, 2] },
+        GROSS_QTY: { $round: [{ $ifNull: ["$salesGrossQty", 0] }, 2] },
+        PCS: { $ifNull: ["$salesPcs", 0] },
+        COST: { $round: [{ $ifNull: ["$cost", 0] }, 2] },
+        MKG_AMOUNT: { $round: [{ $ifNull: ["$mkgAmount", 0] }, 2] },
+        MKG_RATE: { $round: [{ $ifNull: ["$mkgRate", 0] }, 2] }
+      }
+    });
 
-  return pipeline;
-}
+    // Handle empty results
+    pipeline.push({
+      $group: {
+        _id: null,
+        results: { $push: "$$ROOT" }
+      }
+    });
+    pipeline.push({
+      $project: {
+        _id: 0,
+        results: {
+          $cond: {
+            if: { $eq: [{ $size: "$results" }, 0] },
+            then: [{
+              CODE: "N/A",
+              DESCRIPTION: "No transactions found for the specified criteria",
+              MKG_VALUE: 0,
+              GROSS_QTY: 0,
+              PCS: 0,
+              COST: 0,
+              MKG_AMOUNT: 0,
+              MKG_RATE: 0
+            }],
+            else: "$results"
+          }
+        }
+      }
+    });
+    pipeline.push({ $unwind: "$results" });
+    pipeline.push({ $replaceRoot: { newRoot: "$results" } });
+
+    pipeline.push({ $sort: { CODE: 1 } });
+
+    return pipeline;
+  }
 
 
-buildStockAnalysis(filters) {
-  const pipeline = [];
+  buildStockAnalysis(filters) {
+    const pipeline = [];
 
     // Base match conditions for Registry
     const matchConditions = {
@@ -1569,6 +1569,17 @@ buildStockAnalysis(filters) {
     });
 
     pipeline.push({ $unwind: { path: "$metaldetail", preserveNullAndEmptyArrays: true } });
+    pipeline.push({
+      $lookup: {
+        from: "karatmasters",
+        localField: "metalTxnInfo.karat",
+        foreignField: "_id",
+        as: "karat",
+      },
+    });
+
+    pipeline.push({ $unwind: { path: "$karat", preserveNullAndEmptyArrays: true } });
+    // return pipeline
 
     // 10. Project clean fields
     pipeline.push({
@@ -1584,6 +1595,9 @@ buildStockAnalysis(filters) {
         code: {
           $ifNull: ["$metalInfo.code", "$metaldetail.code"],
         },
+        purity: {
+          $ifNull: ["$karatDetails.standardPurity", "$metaldetail.purity"],
+        },
         description: {
           $ifNull: ["$metalInfo.description", "$metaldetail.description"],
         },
@@ -1597,6 +1611,7 @@ buildStockAnalysis(filters) {
       $group: {
         _id: groupId,
         code: { $first: "$code" },
+        purity: { $first: "$purity" },
         description: { $first: "$description" },
         totalGrossWeight: { $sum: "$grossWeight" },
         totalPureWeight: { $sum: "$pureWeight" },
@@ -1718,6 +1733,8 @@ buildStockAnalysis(filters) {
         _id: 0,
         stockId: filters.groupBy?.includes('stockCode') ? "$_id" : null,
         code: { $ifNull: ["$code", "N/A"] },
+        purity: { $ifNull: ["$purity", "N/A"] },
+        description: { $ifNull: ["$description", "No Description"] },
         description: { $ifNull: ["$description", "No Description"] },
         opening: {
           pcs: "$totalPcs",
@@ -1865,13 +1882,13 @@ buildStockAnalysis(filters) {
     }
 
     // Add cost center filter if provided
-    if (filters.costCenter) {
-      if (Array.isArray(filters.costCenter)) {
-        matchConditions.costCenter = { $in: filters.costCenter };
-      } else {
-        matchConditions.costCenter = filters.costCenter;
-      }
-    }
+    // if (filters.costCenter) {
+    //   if (Array.isArray(filters.costCenter)) {
+    //     matchConditions.costCenter = { $in: filters.costCenter };
+    //   } else {
+    //     matchConditions.costCenter = filters.costCenter;
+    //   }
+    // }
 
     pipeline.push({ $match: matchConditions });
 
@@ -2148,7 +2165,6 @@ buildStockAnalysis(filters) {
         pipeline.push({ $match: transactionTypeFilter });
       }
     }
-
     // Project merged structure with data from all sources
     pipeline.push({
       $project: {
@@ -2343,32 +2359,42 @@ buildStockAnalysis(filters) {
       }
     });
 
+    // return pipeline
+
     // Group by code and description to get totals
     pipeline.push({
       $group: {
         _id: {
           code: "$code",
-          stockDescription: "$stockDescription",
-          metalType: "$metalType",
-          karat: "$karat",
-          purity: "$purity",
-          isPcsStock: "$isPcsStock"
+            stockDescription: "$stockDescription",
+            metalType: "$metalType",
+            karat: "$karat",
+            purity: "$purity",
+            isPcsStock: "$isPcsStock"
         },
-        totalGrossWeight: { $sum: "$grossWeight" },
+        totalCredit: { $sum: "$credit" },
+        totalDebit: { $sum: "$debit" },
         totalPureWeight: { $sum: "$pureWeight" },
         totalPcs: { $sum: "$pcs" },
         totalCalculatedStockPcs: { $sum: "$calculatedStockPcs" },
-        totalDebit: { $sum: "$debit" },
-        totalCredit: { $sum: "$credit" },
-        // Get stock metadata (these should be consistent within each group)
         stockTotalValue: { $first: "$stockTotalValue" },
         stockPcsCount: { $first: "$stockPcsCount" },
         transactions: { $push: "$$ROOT" },
         transactionCount: { $sum: 1 },
-        // Group transaction types for analysis
         transactionTypes: { $addToSet: "$transactionTypeDetailed" }
       }
     });
+    
+    // Add this stage next:
+    pipeline.push({
+      $addFields: {
+        totalGrossWeight: {
+          $subtract: ["$totalDebit", "$totalCredit"]
+        }
+      }
+    });
+    
+    
 
     // Add conditional calculations for net values
     pipeline.push({
@@ -2466,6 +2492,7 @@ buildStockAnalysis(filters) {
         isPcsStock: "$_id.isPcsStock",
         stockPcsCount: "$stockPcsCount",
         stockTotalValue: "$stockTotalValue",
+        test:"",
         totalGrossWeight: {
           $round: [
             {
@@ -2485,6 +2512,7 @@ buildStockAnalysis(filters) {
           ]
         },
         totalPureWeight: { $round: ["$totalPureWeight", 3] },
+        totalGrsWt: { $round: ["$totalPureWeight", 3] },
         totalPcs: "$totalPcs",
         // Calculate final stock PCS: totalGrossWeight / stockTotalValue (for PCS stocks only)
         totalStockPcs: {
@@ -2625,7 +2653,7 @@ buildStockAnalysis(filters) {
       });
     }
     console.log('====================================');
-    console.log("Fil" , filters);
+    console.log("Fil", filters);
     console.log('====================================');
 
     if (filters.groupByRange?.karat?.length > 0) {
@@ -2853,7 +2881,7 @@ buildStockAnalysis(filters) {
     return pipeline
   }
 
-  
+
   formatReportData(reportData, filters) {
     if (!reportData || reportData.length === 0) {
       return {
@@ -2909,7 +2937,7 @@ buildStockAnalysis(filters) {
         debit: item.debit || 0,
         credit: item.credit || 0,
         value: item.value || 0,
-        stock:item.stockCode||"N/A"
+        stock: item.stockCode || "N/A"
       };
 
       // Add conditional fields based on filters
