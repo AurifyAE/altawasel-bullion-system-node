@@ -2712,6 +2712,24 @@ export class ReportService {
       },
     });
 
+    pipeline.push({
+      $lookup: {
+        from: "metalratemasters",
+        localField: "metaltransactions.stockItems.metalRate",
+        foreignField: "_id",
+        as: "metalRate",
+      },
+    });
+
+    // Step 12: Unwind karatDetails
+    pipeline.push({
+      $unwind: {
+        path: "$metalRate",
+        preserveNullAndEmptyArrays: true,
+      },
+    });
+
+
 
     // Step 13: Project the required fields
     pipeline.push({
@@ -2721,14 +2739,15 @@ export class ReportService {
         pcs: { $ifNull: ["$metaltransactions.stockItems.pieces", 0] },
         grossWeight: { $ifNull: ["$grossWeight", "$metaltransactions.stockItems.grossWeight", 0] },
         premium: { $ifNull: ["$metaltransactions.stockItems.premium.amount", 0] },
+        makingCharge: { $ifNull: ["$metaltransactions.stockItems.makingCharges.amount", 0] },
         discount: { $literal: 0 }, // Explicitly set to 0 using $literal
         purity: { $ifNull: ["$purity", "$metaltransactions.stockItems.purity", 0] },
         pureWeight: { $ifNull: ["$pureWeight", "$metaltransactions.stockItems.pureWeight", 0] },
-        metalValue: { $literal: 0 }, // Explicitly set to 0 using $literal
-        makingCharge: { $literal: 0 }, // Explicitly set to 0 as per requirement
+        metalValue: { $ifNull: ["$metaltransactions.stockItems.metalRateRequirements.rate", 0] },
         _id: 0,
       },
     });
+
 
     // Step 14: Group to calculate totals
     pipeline.push({
