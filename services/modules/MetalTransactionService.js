@@ -175,6 +175,8 @@ class MetalTransactionService {
     voucherNumber,
     adminId
   ) {
+    console.log("+++++++++++++++++++++++++++++++++++++");
+    console.log(totals);
     return mode === "fix"
       ? this.buildPurchaseFixEntries(
           totals,
@@ -452,7 +454,7 @@ class MetalTransactionService {
             cashDebit: totals.goldValue,
             grossWeight: totals.grossWeight,
             pureWeight: totals.pureWeight,
-            purity: totals.pureWeight / totals.grossWeight,
+            purity: totals.purity,
           },
           voucherDate,
           voucherNumber,
@@ -475,7 +477,9 @@ class MetalTransactionService {
   ) {
     const entries = [];
     const partyName = party.customerName || party.accountCode;
-
+    console.log(totals);
+    console.log(totals.purity);
+    // Party Gold Balance - CREDIT
     if (totals.pureWeight > 0) {
       entries.push(
         this.createRegistryEntry(
@@ -495,6 +499,7 @@ class MetalTransactionService {
         )
       );
     }
+    // Making Charges - CREDIT
 
     if (totals.makingCharges > 0) {
       entries.push(
@@ -516,6 +521,8 @@ class MetalTransactionService {
       );
     }
 
+    // Premium Discount - CREDIT
+
     if (totals.premium > 0) {
       entries.push(
         this.createRegistryEntry(
@@ -535,6 +542,7 @@ class MetalTransactionService {
         )
       );
     }
+    // Premium Discount - debit
 
     if (totals.discount > 0) {
       entries.push(
@@ -556,6 +564,8 @@ class MetalTransactionService {
       );
     }
 
+    // Gold Inventory - DEBIT
+
     if (totals.pureWeight > 0) {
       entries.push(
         this.createRegistryEntry(
@@ -575,6 +585,7 @@ class MetalTransactionService {
         )
       );
     }
+    // Gold Stock - DEBIT
 
     if (totals.grossWeight > 0) {
       entries.push(
@@ -592,7 +603,7 @@ class MetalTransactionService {
             debit: totals.grossWeight,
             grossWeight: totals.grossWeight,
             pureWeight: totals.pureWeight,
-            purity: totals.pureWeight / totals.grossWeight,
+            purity: totals.purity,
           },
           voucherDate,
           voucherNumber,
@@ -770,7 +781,7 @@ class MetalTransactionService {
             cashCredit: totals.goldValue,
             grossWeight: totals.grossWeight,
             pureWeight: totals.pureWeight,
-            purity: totals.pureWeight / totals.grossWeight,
+            purity: totals.purity,
           },
           voucherDate,
           voucherNumber,
@@ -909,7 +920,7 @@ class MetalTransactionService {
           {
             grossWeight: totals.grossWeight,
             pureWeight: totals.pureWeight,
-            purity: totals.pureWeight / totals.grossWeight,
+            purity: totals.purity,
           },
           voucherDate,
           voucherNumber,
@@ -1087,7 +1098,7 @@ class MetalTransactionService {
             cashCredit: totals.goldValue,
             grossWeight: totals.grossWeight,
             pureWeight: totals.pureWeight,
-            purity: totals.pureWeight / totals.grossWeight,
+            purity: totals.purity,
           },
           voucherDate,
           voucherNumber,
@@ -1225,7 +1236,7 @@ class MetalTransactionService {
           {
             grossWeight: totals.grossWeight,
             pureWeight: totals.pureWeight,
-            purity: totals.pureWeight / totals.grossWeight,
+            purity: totals.purity,
           },
           voucherDate,
           voucherNumber,
@@ -1364,7 +1375,7 @@ class MetalTransactionService {
             debit: totals.grossWeight,
             grossWeight: totals.grossWeight,
             pureWeight: totals.pureWeight,
-            purity: totals.pureWeight / totals.grossWeight,
+            purity: totals.purity,
           },
           voucherDate,
           voucherNumber,
@@ -1513,6 +1524,7 @@ class MetalTransactionService {
             debit: totals.pureWeight,
             goldCredit: totals.grossWeight,
             cashDebit: totals.goldValue,
+            purity: totals.purity,
           },
           voucherDate,
           voucherNumber,
@@ -1539,7 +1551,7 @@ class MetalTransactionService {
             cashDebit: totals.goldValue,
             grossWeight: totals.grossWeight,
             pureWeight: totals.pureWeight,
-            purity: totals.pureWeight / totals.grossWeight,
+            purity: totals.purity,
           },
           voucherDate,
           voucherNumber,
@@ -1560,6 +1572,7 @@ class MetalTransactionService {
           item.itemTotal?.premiumTotal || item.premium?.amount || 0;
         const goldValue = item.itemTotal?.baseAmount || 0;
         const pureWeight = item.pureWeight || 0;
+        const purity = item.purity || 0;
         const grossWeight = item.grossWeight || 0;
         const premium = premiumDiscountAmount > 0 ? premiumDiscountAmount : 0;
         const discount =
@@ -1572,6 +1585,7 @@ class MetalTransactionService {
           goldValue: acc.goldValue + goldValue,
           pureWeight: acc.pureWeight + pureWeight,
           grossWeight: acc.grossWeight + grossWeight,
+          purity: acc.purity + purity,
         };
       },
       {
@@ -1581,6 +1595,7 @@ class MetalTransactionService {
         goldValue: 0,
         pureWeight: 0,
         grossWeight: 0,
+        purity: 0,
       }
     );
 

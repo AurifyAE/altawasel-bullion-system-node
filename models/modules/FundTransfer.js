@@ -74,7 +74,7 @@ const FundTransferSchema = new mongoose.Schema(
     value: {
       type: Number,
       required: [true, "Transaction value is required"],
-      min: [0, "Value cannot be negative"],
+      // min: [0, "Value cannot be negative"],
     },
     transactionDate: {
       type: Date,

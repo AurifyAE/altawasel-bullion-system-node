@@ -13,8 +13,19 @@ class FundTransferService {
     voucher
   ) {
     try {
+      // Remove or modify the negative value validation
+      // Allow negative values for reverse transfers
+      if (value === 0) {
+        throw createAppError(
+          "Transfer value cannot be zero",
+          400,
+          "INVALID_VALUE"
+        );
+      }
+
       const senderAccount = await AccountType.findById(senderId);
       const receiverAccount = await AccountType.findById(receiverId);
+
       if (!senderAccount || !receiverAccount) {
         throw createAppError(
           "Sender or receiver account not found",
@@ -23,7 +34,26 @@ class FundTransferService {
         );
       }
 
+      // Check if accounts have sufficient balance for the transfer
+      const transferAmount = Math.abs(value);
+      const isNegativeTransfer = value < 0;
+
       if (assetType === "CASH") {
+        // For negative transfers, check if receiver has sufficient balance
+        // For positive transfers, check if sender has sufficient balance
+        const accountToCheck = isNegativeTransfer
+          ? receiverAccount
+          : senderAccount;
+        const currentBalance = accountToCheck.balances.cashBalance.amount;
+
+        // if (currentBalance < transferAmount) {
+        //   throw createAppError(
+        //     `Insufficient cash balance. Available: ${currentBalance}, Required: ${transferAmount}`,
+        //     400,
+        //     "INSUFFICIENT_BALANCE"
+        //   );
+        // }
+
         await handleCashTransfer(
           senderAccount,
           receiverAccount,
@@ -32,7 +62,23 @@ class FundTransferService {
           voucher
         );
       }
+
       if (assetType === "GOLD") {
+        // For negative transfers, check if receiver has sufficient balance
+        // For positive transfers, check if sender has sufficient balance
+        const accountToCheck = isNegativeTransfer
+          ? receiverAccount
+          : senderAccount;
+        const currentBalance = accountToCheck.balances.goldBalance.totalGrams;
+
+        // if (currentBalance < transferAmount) {
+        //   throw createAppError(
+        //     `Insufficient gold balance. Available: ${currentBalance}, Required: ${transferAmount}`,
+        //     400,
+        //     "INSUFFICIENT_BALANCE"
+        //   );
+        // }
+
         await handleGoldTransfer(
           senderAccount,
           receiverAccount,
@@ -50,10 +96,16 @@ class FundTransferService {
     }
   }
 
-  static async openingBalanceTransfer(receiverId, value, adminId, assetType, voucher) {
-    console.log('====================================');
-    console.log(receiverId , value , adminId , assetType , voucher);
-    console.log('====================================');
+  static async openingBalanceTransfer(
+    receiverId,
+    value,
+    adminId,
+    assetType,
+    voucher
+  ) {
+    console.log("====================================");
+    console.log(receiverId, value, adminId, assetType, voucher);
+    console.log("====================================");
     try {
       const receiverAccount = await AccountType.findById(receiverId);
       if (!receiverAccount) {
@@ -63,22 +115,22 @@ class FundTransferService {
           "ACCOUNT_NOT_FOUND"
         );
       }
-  
+
       // Determine if it's credit or debit
       const isCredit = value > 0;
       const isDebit = value < 0;
       const absoluteValue = Math.abs(value);
-  
+
       if (assetType === "CASH") {
         // Store previous balance for tracking
         const previousBalance = receiverAccount.balances.cashBalance.amount;
-  
+
         // Update account balance (add positive, subtract negative)
         receiverAccount.balances.cashBalance.amount += value;
-  
+
         // Calculate running balance
         const runningBalance = receiverAccount.balances.cashBalance.amount;
-  
+
         // Create fund transfer first to get its ID
         const fundTransfer = new FundTransfer({
           transactionId: await FundTransfer.generateTransactionId(),
@@ -97,9 +149,9 @@ class FundTransferService {
           voucherType: voucher.voucherType,
           isBullion: false,
           createdBy: adminId,
-          type: "OPENING-BALANCE"
+          type: "OPENING-BALANCE",
         });
-  
+
         const transaction = new Registry({
           transactionId: await Registry.generateTransactionId(),
           type: "PARTY_CASH_BALANCE",
@@ -114,7 +166,7 @@ class FundTransferService {
           party: receiverAccount._id,
           TransferTransactionId: fundTransfer._id, // Reference to FundTransfer
         });
-  
+
         const transactionForParty = new Registry({
           transactionId: await Registry.generateTransactionId(),
           type: "OPENING_CASH_BALANCE",
@@ -129,24 +181,21 @@ class FundTransferService {
           party: receiverAccount._id,
           TransferTransactionId: fundTransfer._id, // Reference to FundTransfer
         });
-  
+
         await receiverAccount.save();
         await fundTransfer.save();
         await transactionForParty.save();
         await transaction.save();
-  
       } else if (assetType === "GOLD") {
-
-        
         // Store previous balance for tracking
         const previousBalance = receiverAccount.balances.goldBalance.totalGrams;
-  
+
         // Update account balance (add positive, subtract negative)
         receiverAccount.balances.goldBalance.totalGrams += value;
-  
+
         // Calculate running balance
         const runningBalance = receiverAccount.balances.goldBalance.totalGrams;
-  
+
         // Create fund transfer first to get its ID
         const fundTransfer = new FundTransfer({
           transactionId: await FundTransfer.generateTransactionId(),
@@ -165,9 +214,9 @@ class FundTransferService {
           voucherType: voucher.voucherType,
           isBullion: false,
           createdBy: adminId,
-          type: "OPENING-BALANCE"
+          type: "OPENING-BALANCE",
         });
-  
+
         const transaction = new Registry({
           transactionId: await Registry.generateTransactionId(),
           type: "PARTY_GOLD_BALANCE",
@@ -182,7 +231,7 @@ class FundTransferService {
           party: receiverAccount._id,
           TransferTransactionId: fundTransfer._id, // Reference to FundTransfer
         });
-  
+
         const transactionForParty = new Registry({
           transactionId: await Registry.generateTransactionId(),
           type: "OPENING_GOLD_BALANCE",
@@ -197,7 +246,7 @@ class FundTransferService {
           party: receiverAccount._id,
           TransferTransactionId: fundTransfer._id, // Reference to FundTransfer
         });
-  
+
         await receiverAccount.save();
         await fundTransfer.save();
         await transactionForParty.save();
@@ -233,31 +282,44 @@ async function handleCashTransfer(
   adminId,
   voucher
 ) {
-  if (senderAccount.balances.cashBalance.amount < value) {
-    throw createAppError(
-      "Insufficient balance in sender's account",
-      400,
-      "INSUFFICIENT_BALANCE"
-    );
+  // Calculate the actual amounts to debit/credit based on value sign
+  const transferAmount = Math.abs(value);
+  const isNegativeTransfer = value < 0;
+
+  // Store previous balances for registry logging
+  const senderPreviousBalance = senderAccount.balances.cashBalance.amount;
+  const receiverPreviousBalance = receiverAccount.balances.cashBalance.amount;
+  console.log(isNegativeTransfer);
+  if (isNegativeTransfer) {
+    console.log("fist");
+    // Negative transfer: sender gets credited, receiver gets debited
+    // Example: value = -2000, sender balance = -1000
+    // Result: sender = -1000 + 2000 = 1000, receiver = current - 2000
+    senderAccount.balances.cashBalance.amount -= transferAmount;
+    receiverAccount.balances.cashBalance.amount += transferAmount;
+  } else {
+    console.log("second");
+
+    // Positive transfer: sender gets debited, receiver gets credited
+    // Example: value = 2000, sender balance = -1000
+    // Result: sender = -1000 - 2000 = -3000, receiver = current + 2000
+    senderAccount.balances.cashBalance.amount -= transferAmount;
+    receiverAccount.balances.cashBalance.amount += transferAmount;
   }
 
-  // Deduct from sender's account
-  senderAccount.balances.cashBalance.amount -= value;
-  receiverAccount.balances.cashBalance.amount += value;
-
-  // Create fund transfer first to get its ID
+  // Create fund transfer record
   const fundTransfer = new FundTransfer({
     transactionId: await FundTransfer.generateTransactionId(),
     description: `CASH TRANSFER FROM ${senderAccount.customerName} TO ${receiverAccount.customerName}`,
-    value: value,
+    value: value, // Keep original value (including sign)
     assetType: "CASH",
     receivingParty: {
-      party: receiverAccount._id,
-      credit: value,
+      party: isNegativeTransfer ? senderAccount._id : receiverAccount._id,
+      credit: transferAmount,
     },
     sendingParty: {
-      party: senderAccount._id,
-      debit: value,
+      party: isNegativeTransfer ? receiverAccount._id : senderAccount._id,
+      debit: transferAmount,
     },
     voucherNumber: voucher.voucherCode,
     voucherType: voucher.voucherType,
@@ -265,34 +327,36 @@ async function handleCashTransfer(
     createdBy: adminId,
   });
 
-  // Log the transaction in the registry for sender
+  // Log transaction in registry for sender
   const transaction = new Registry({
     transactionId: await Registry.generateTransactionId(),
     type: "PARTY_CASH_BALANCE",
     description: `FUND TRANSFER FROM ${senderAccount.customerName} TO ${receiverAccount.customerName}`,
-    value: value,
+    value: Math.abs(value), // Use absolute value for registry
     runningBalance: senderAccount.balances.cashBalance.amount,
-    previousBalance: senderAccount.balances.cashBalance.amount + value,
-    debit: value,
+    previousBalance: senderPreviousBalance,
+    debit: transferAmount,
+    credit: 0,
     reference: voucher.voucherCode,
     createdBy: adminId,
     party: senderAccount._id,
-    TransferTransactionId: fundTransfer._id, // Reference to FundTransfer
+    TransferTransactionId: fundTransfer._id,
   });
 
-  // Log the transaction in the registry for receiver
+  // Log transaction in registry for receiver
   const receiverTransaction = new Registry({
     transactionId: await Registry.generateTransactionId(),
     type: "PARTY_CASH_BALANCE",
     description: `FUND TRANSFER TO ${receiverAccount.customerName} FROM ${senderAccount.customerName}`,
-    value: value,
+    value: Math.abs(value), // Use absolute value for registry
     runningBalance: receiverAccount.balances.cashBalance.amount,
-    previousBalance: receiverAccount.balances.cashBalance.amount - value,
-    credit: value,
+    previousBalance: receiverPreviousBalance,
+    debit: 0,
+    credit: transferAmount,
     reference: voucher.voucherCode,
     createdBy: adminId,
     party: receiverAccount._id,
-    TransferTransactionId: fundTransfer._id, // Reference to FundTransfer
+    TransferTransactionId: fundTransfer._id,
   });
 
   await receiverAccount.save();
@@ -309,31 +373,42 @@ async function handleGoldTransfer(
   adminId,
   voucher
 ) {
-  if (senderAccount.balances.goldBalance.totalGrams < value) {
-    throw createAppError(
-      "Insufficient balance in sender's account",
-      400,
-      "INSUFFICIENT_BALANCE"
-    );
+  // Calculate the actual amounts to debit/credit based on value sign
+  const transferAmount = Math.abs(value);
+  const isNegativeTransfer = value < 0;
+
+  // Store previous balances for registry logging
+  const senderPreviousBalance = senderAccount.balances.goldBalance.totalGrams;
+  const receiverPreviousBalance =
+    receiverAccount.balances.goldBalance.totalGrams;
+
+  if (isNegativeTransfer) {
+    // Negative transfer: sender gets credited, receiver gets debited
+    // Example: value = -2000, sender balance = -1000
+    // Result: sender = -1000 + 2000 = 1000, receiver = current - 2000
+    senderAccount.balances.goldBalance.totalGrams -= transferAmount;
+    receiverAccount.balances.goldBalance.totalGrams += transferAmount;
+  } else {
+    // Positive transfer: sender gets debited, receiver gets credited
+    // Example: value = 2000, sender balance = -1000
+    // Result: sender = -1000 - 2000 = -3000, receiver = current + 2000
+    senderAccount.balances.goldBalance.totalGrams -= transferAmount;
+    receiverAccount.balances.goldBalance.totalGrams += transferAmount;
   }
 
-  // Deduct from sender's account
-  senderAccount.balances.goldBalance.totalGrams -= value;
-  receiverAccount.balances.goldBalance.totalGrams += value;
-
-  // Create fund transfer first to get its ID
+  // Create fund transfer record
   const fundTransfer = new FundTransfer({
     transactionId: await FundTransfer.generateTransactionId(),
     description: `GOLD TRANSFER FROM ${senderAccount.customerName} TO ${receiverAccount.customerName}`,
-    value: value,
+    value: value, // Keep original value (including sign)
     assetType: "GOLD",
     receivingParty: {
-      party: receiverAccount._id,
-      credit: value,
+      party: isNegativeTransfer ? senderAccount._id : receiverAccount._id,
+      credit: transferAmount,
     },
     sendingParty: {
-      party: senderAccount._id,
-      debit: value,
+      party: isNegativeTransfer ? receiverAccount._id : senderAccount._id,
+      debit: transferAmount,
     },
     voucherNumber: voucher.voucherCode,
     voucherType: voucher.voucherType,
@@ -341,38 +416,40 @@ async function handleGoldTransfer(
     createdBy: adminId,
   });
 
-  // Log the transaction in the registry for sender
+  // Log transaction in registry for sender
   const transaction = new Registry({
     transactionId: await Registry.generateTransactionId(),
     type: "PARTY_GOLD_BALANCE",
     description: `GOLD TRANSFER FROM ${senderAccount.customerName} TO ${receiverAccount.customerName}`,
-    value: value,
+    value: Math.abs(value), // Use absolute value for registry
     runningBalance: senderAccount.balances.goldBalance.totalGrams,
-    previousBalance: senderAccount.balances.goldBalance.totalGrams + value,
-    debit: value,
+    previousBalance: senderPreviousBalance,
+    debit: transferAmount,
+    credit: 0,
     reference: voucher.voucherCode,
     createdBy: adminId,
     party: senderAccount._id,
-    TransferTransactionId: fundTransfer._id, // Reference to FundTransfer
+    TransferTransactionId: fundTransfer._id,
   });
 
-  console.log('====================================');
+  console.log("====================================");
   console.log(transaction);
-  console.log('====================================');
+  console.log("====================================");
 
-  // Log the transaction in the registry for receiver
+  // Log transaction in registry for receiver
   const receiverTransaction = new Registry({
     transactionId: await Registry.generateTransactionId(),
     type: "PARTY_GOLD_BALANCE",
     description: `GOLD TRANSFER TO ${receiverAccount.customerName} FROM ${senderAccount.customerName}`,
-    value: value,
+    value: Math.abs(value), // Use absolute value for registry
     runningBalance: receiverAccount.balances.goldBalance.totalGrams,
-    previousBalance: receiverAccount.balances.goldBalance.totalGrams - value,
-    credit: value,
+    previousBalance: receiverPreviousBalance,
+    debit: 0,
+    credit: transferAmount,
     reference: voucher.voucherCode,
     createdBy: adminId,
     party: receiverAccount._id,
-    TransferTransactionId: fundTransfer._id, // Reference to FundTransfer
+    TransferTransactionId: fundTransfer._id,
   });
 
   await receiverAccount.save();
