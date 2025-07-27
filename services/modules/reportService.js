@@ -44,6 +44,9 @@ export class ReportService {
 
       // Execute aggregation query  
       const reportData = await Registry.aggregate(pipeline);
+      console.log('====================================');
+      console.log(reportData);
+      console.log('====================================');
 
       // Format the retrieved data for response
       const formattedData = this.formatReportData(reportData, validatedFilters);
@@ -1092,11 +1095,13 @@ export class ReportService {
 
     // Add voucher filter
     if (filters.voucher && filters.voucher.length > 0) {
-      matchConditions.$or = [
-        { reference: { $in: filters.voucher } },
-      ];
+      console.log('====================================');
+      console.log(filters.voucher);
+      console.log('====================================');
+      matchConditions.$or = filters.voucher.map(prefix => ({
+        reference: { $regex: `^${prefix}`, $options: 'i' }
+      }));
     }
-
 
     // Initial filtering from Registry
     pipeline.push({ $match: matchConditions });
@@ -1198,18 +1203,6 @@ export class ReportService {
       if (Object.keys(transactionTypeMatch).length > 0) {
         pipeline.push({ $match: transactionTypeMatch });
       }
-    }
-
-    // Add voucher filter after joins
-    if (filters.voucher && filters.voucher.length > 0) {
-      pipeline.push({
-        $match: {
-          $or: [
-            { reference: { $in: filters.voucher } },
-            { "metalTxnInfo.voucherType": { $in: filters.voucher } },
-          ],
-        },
-      });
     }
 
     // Add account type (party) filter
@@ -1367,51 +1360,25 @@ export class ReportService {
           ]
         },
         Pcs: {
-          $cond: {
-            if: filters.showPcs,
-            then: {
-              $ifNull: [
-                "$metalTxnInfo.stockItems.pieces",
-                "$entryInfo.stocks.pieces",
-                0,
-              ],
-            },
-            else: null,
-          },
+          $ifNull: [
+            "$metalTxnInfo.stockItems.pieces",
+            "$entryInfo.stocks.pieces",
+            0
+          ]
         },
         Weight: {
-          $cond: {
-            if: filters.grossWeight,
-            then: {
-              $ifNull: [
-                "$grossWeight",
-                "$metalTxnInfo.stockItems.grossWeight",
-                "$entryInfo.stocks.grossWeight",
-                0,
-              ],
-            },
-            else: null,
-          },
+          $ifNull: [
+            "$grossWeight",
+            "$metalTxnInfo.stockItems.grossWeight",
+            "$entryInfo.totalAmount",
+            0
+          ]
         },
         Rate: {
           $ifNull: ["$metalTxnInfo.stockItems.metalRateRequirements.rate", 0],
         },
         Discount: {
-          $cond: {
-            if: filters.discount,
-            then: {
-              $ifNull: [
-                {
-                  $subtract: [
-                    "$metalTxnInfo.stockItems.itemTotal.subTotal",
-                    "$metalTxnInfo.stockItems.itemTotal.itemTotalAmount",
-                  ],
-                },
-                0,
-              ],
-            },
-            else: null,
-          },
+          $ifNull: ["$metalTxnInfo.stockItems.premium.amount", 0],
         },
         NetAmount: {
           $ifNull: ["$metalTxnInfo.stockItems.itemTotal.itemTotalAmount", "$value", 0],
@@ -1740,6 +1707,12 @@ export class ReportService {
           pcs: "$totalPcs",
           grossWeight: "$totalGrossWeight",
           pureWeight: "$totalPureWeight"
+        },
+        Weight: {
+          pcs: "$totalPcs",
+          grossWeight: "$totalGrossWeight",
+          pureWeight: "$totalPureWeight",
+          net: "$totalPureWeight"
         },
         payment: {
           pcs: null, // You can add pcs calculation if needed
@@ -2366,11 +2339,11 @@ export class ReportService {
       $group: {
         _id: {
           code: "$code",
-            stockDescription: "$stockDescription",
-            metalType: "$metalType",
-            karat: "$karat",
-            purity: "$purity",
-            isPcsStock: "$isPcsStock"
+          stockDescription: "$stockDescription",
+          metalType: "$metalType",
+          karat: "$karat",
+          purity: "$purity",
+          isPcsStock: "$isPcsStock"
         },
         totalCredit: { $sum: "$credit" },
         totalDebit: { $sum: "$debit" },
@@ -2384,7 +2357,7 @@ export class ReportService {
         transactionTypes: { $addToSet: "$transactionTypeDetailed" }
       }
     });
-    
+
     // Add this stage next:
     pipeline.push({
       $addFields: {
@@ -2393,8 +2366,8 @@ export class ReportService {
         }
       }
     });
-    
-    
+
+
 
     // Add conditional calculations for net values
     pipeline.push({
@@ -2492,7 +2465,7 @@ export class ReportService {
         isPcsStock: "$_id.isPcsStock",
         stockPcsCount: "$stockPcsCount",
         stockTotalValue: "$stockTotalValue",
-        test:"",
+        test: "",
         totalGrossWeight: {
           $round: [
             {
@@ -2743,6 +2716,12 @@ export class ReportService {
         discount: { $literal: 0 }, // Explicitly set to 0 using $literal
         purity: { $ifNull: ["$purity", "$metaltransactions.stockItems.purity", 0] },
         pureWeight: { $ifNull: ["$pureWeight", "$metaltransactions.stockItems.pureWeight", 0] },
+        totalAmount: {
+          $ifNull:
+            ["$metaltransactions.totalAmountSession.totalAmountAED",
+              "$entries.totalAmount",
+              0]
+        },
         metalValue: { $ifNull: ["$metaltransactions.stockItems.metalRateRequirements.rate", 0] },
         _id: 0,
       },
