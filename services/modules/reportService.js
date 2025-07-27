@@ -2744,6 +2744,7 @@ export class ReportService {
             pureWeight: "$pureWeight",
             metalValue: "$metalValue",
             makingCharge: "$makingCharge",
+            total:"$totalAmount"
           },
         },
         totalPcs: { $sum: "$pcs" },
@@ -2776,14 +2777,6 @@ export class ReportService {
     return pipeline
 
 
-
-    if (filters.division.length > 0) {
-      pipeline.push({
-        $match: {
-          "metalInfo.metalType": { $in: filters.division }
-        }
-      });
-    }
 
 
     // Dynamically add conditions based on non-empty arrays
