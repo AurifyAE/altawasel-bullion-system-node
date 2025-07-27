@@ -37,23 +37,9 @@ class FundTransferService {
       // Check if accounts have sufficient balance for the transfer
       const transferAmount = Math.abs(value);
       const isNegativeTransfer = value < 0;
-
+       console.log(isNegativeTransfer)
       if (assetType === "CASH") {
-        // For negative transfers, check if receiver has sufficient balance
-        // For positive transfers, check if sender has sufficient balance
-        const accountToCheck = isNegativeTransfer
-          ? receiverAccount
-          : senderAccount;
-        const currentBalance = accountToCheck.balances.cashBalance.amount;
-
-        // if (currentBalance < transferAmount) {
-        //   throw createAppError(
-        //     `Insufficient cash balance. Available: ${currentBalance}, Required: ${transferAmount}`,
-        //     400,
-        //     "INSUFFICIENT_BALANCE"
-        //   );
-        // }
-
+       
         await handleCashTransfer(
           senderAccount,
           receiverAccount,
@@ -64,21 +50,7 @@ class FundTransferService {
       }
 
       if (assetType === "GOLD") {
-        // For negative transfers, check if receiver has sufficient balance
-        // For positive transfers, check if sender has sufficient balance
-        const accountToCheck = isNegativeTransfer
-          ? receiverAccount
-          : senderAccount;
-        const currentBalance = accountToCheck.balances.goldBalance.totalGrams;
-
-        // if (currentBalance < transferAmount) {
-        //   throw createAppError(
-        //     `Insufficient gold balance. Available: ${currentBalance}, Required: ${transferAmount}`,
-        //     400,
-        //     "INSUFFICIENT_BALANCE"
-        //   );
-        // }
-
+      
         await handleGoldTransfer(
           senderAccount,
           receiverAccount,
@@ -303,7 +275,7 @@ async function handleCashTransfer(
     // Positive transfer: sender gets debited, receiver gets credited
     // Example: value = 2000, sender balance = -1000
     // Result: sender = -1000 - 2000 = -3000, receiver = current + 2000
-    senderAccount.balances.cashBalance.amount -= transferAmount;
+    senderAccount.balances.cashBalance.amount += transferAmount;
     receiverAccount.balances.cashBalance.amount += transferAmount;
   }
 
@@ -432,9 +404,6 @@ async function handleGoldTransfer(
     TransferTransactionId: fundTransfer._id,
   });
 
-  console.log("====================================");
-  console.log(transaction);
-  console.log("====================================");
 
   // Log transaction in registry for receiver
   const receiverTransaction = new Registry({
