@@ -97,45 +97,46 @@ export const getStockAnalysis = async (req, res) => {
 export const getSalesAnalysis = async (req, res) => {
   try {
     const filters = req.body;
-    console.log(filters)
+    console.log('Input Filters:', JSON.stringify(filters, null, 2));
+
     // Call service to get report data
     const reportData = await reportService.getSalesAnalysis(filters);
+
     // Return success response (even if no data found)
     res.status(200).json({
       success: true,
       message: reportData.totalRecords > 0
         ? `Metal stock ledger report generated successfully with ${reportData.totalRecords} records`
-        : "No transactions found for the specified criteria",
+        : 'No transactions found for the specified criteria',
       data: reportData.data,
       totalRecords: reportData.totalRecords,
-      filters: reportData.filters
+      filters: reportData.filters,
     });
-
   } catch (error) {
-    console.error("Error in getMetalStockLedgerReport:", error);
+    console.error('Error in getSalesAnalysis:', error);
 
     // Handle specific error types
-    if (error.message.includes("From date cannot be greater than to date")) {
+    if (error.message.includes('From date cannot be greater than to date')) {
       return res.status(400).json({
         success: false,
-        message: "Invalid date range: From date cannot be greater than to date",
-        error: "INVALID_DATE_RANGE"
+        message: 'Invalid date range: From date cannot be greater than to date',
+        error: 'INVALID_DATE_RANGE',
       });
     }
 
-    if (error.message.includes("From date and to date are required")) {
+    if (error.message.includes('From date and to date are required')) {
       return res.status(400).json({
         success: false,
-        message: "From date and to date are required",
-        error: "MISSING_REQUIRED_FIELDS"
+        message: 'From date and to date are required',
+        error: 'MISSING_REQUIRED_FIELDS',
       });
     }
 
     // Generic error response
     res.status(500).json({
       success: false,
-      message: "Internal server error while generating report",
-      error: error.message
+      message: 'Internal server error while generating report',
+      error: error.message,
     });
   }
 };
