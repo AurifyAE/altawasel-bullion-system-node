@@ -44,9 +44,6 @@ export class ReportService {
 
       // Execute aggregation query  
       const reportData = await Registry.aggregate(pipeline);
-      console.log('====================================');
-      console.log(reportData);
-      console.log('====================================');
 
       // Format the retrieved data for response
       const formattedData = this.formatReportData(reportData, validatedFilters);
@@ -89,10 +86,6 @@ export class ReportService {
   }
   async getPurchaseMetalReport(filters) {
     try {
-
-      console.log('====================================');
-      console.log("On the Purchase");
-      console.log('====================================');
 
       // Validate and format input filters
       const validatedFilters = this.validateFilters(filters);
@@ -161,7 +154,6 @@ export class ReportService {
       // Format the retrieved data for response
       const formattedData = this.formatReportData(reportData, validatedFilters);
 
-
       return {
         success: true,
         data: reportData,
@@ -201,7 +193,6 @@ export class ReportService {
 
   async getTransactionSummary(filters) {
     try {
-
       // Validate and format input filters
       const validatedFilters = this.validateFilters(filters);
 
@@ -210,17 +201,40 @@ export class ReportService {
 
       // Execute aggregation query  
       const reportData = await Registry.aggregate(pipeline);
-      console.log('====================================');
-      console.log(reportData);
-      console.log('====================================');
-
-
+     
       // Format the retrieved data for response
       const formattedData = this.formatReportData(reportData, validatedFilters);
 
       return {
         success: true,
         data: reportData,
+        filters: validatedFilters,
+        totalRecords: reportData.length,
+      };
+    } catch (error) {
+      throw new Error(`Failed to generate metal stock ledger report: ${error.message}`);
+    }
+  }
+
+
+  async getOwnStockReport(filters) {
+    try {
+
+      // Validate and format input filters
+      const validatedFilters = this.validateFilters(filters);
+
+      // Construct MongoDB aggregation pipeline
+      const pipeline = this.OwnStockPipeLine(validatedFilters);
+
+      // Execute aggregation query  
+      const reportData = await Registry.aggregate(pipeline);
+
+      // Format the retrieved data for response
+      const formattedData = this.formatReportData(reportData, validatedFilters);
+
+      return {
+        success: true,
+        data: formattedData,
         filters: validatedFilters,
         totalRecords: reportData.length,
       };
@@ -259,6 +273,7 @@ export class ReportService {
       showRetails = false,
       showCostIn = false,
       groupBy = [],
+      costFilter,
       groupByRange = {
         stockCode: [],
         categoryCode: [],
@@ -279,7 +294,8 @@ export class ReportService {
     if (startDate && endDate && startDate > endDate) {
       throw new Error("From date cannot be greater than to date");
     }
-
+       
+  
     const formatObjectIds = (arr) =>
       arr
         .filter((id) => mongoose.Types.ObjectId.isValid(id))
@@ -309,7 +325,8 @@ export class ReportService {
       showRetails,
       showCostIn,
       costCenter,
-      discount
+      discount,
+      costFilter
     };
 
     if (startDate) result.startDate = startDate;
@@ -1573,6 +1590,9 @@ export class ReportService {
 
     // 11. Group by CODE only (or stockId if groupBy includes stockCode)
     const groupId = filters.groupBy?.includes('stockCode') ? "$stockId" : "$code";
+    console.log('====================================');
+    console.log(groupId);
+    console.log('====================================');
 
     pipeline.push({
       $group: {
@@ -2625,9 +2645,369 @@ export class ReportService {
         }
       });
     }
-    console.log('====================================');
-    console.log("Fil", filters);
-    console.log('====================================');
+ 
+
+    if (filters.groupByRange?.karat?.length > 0) {
+      pipeline.push({
+        $match: {
+          $or: [
+            { "metalInfo._id": { $in: filters.groupByRange.stockCode } },
+            { "metalTxnInfo.stockItems.stockCode": { $in: filters.groupByRange.stockCode } }
+          ]
+        }
+      });
+    }
+
+
+    // Step 8: Unwind stockItems from metaltransactions
+    pipeline.push({
+      $unwind: {
+        path: "$metaltransactions.stockItems",
+        preserveNullAndEmptyArrays: true,
+      },
+    });
+
+    // Step 9: Lookup metalstocks for stock details
+    pipeline.push({
+      $lookup: {
+        from: "metalstocks",
+        localField: "metaltransactions.stockItems.stockCode",
+        foreignField: "_id",
+        as: "metaldetail",
+      },
+    });
+
+    // Step 10: Unwind metaldetail
+    pipeline.push({
+      $unwind: {
+        path: "$metaldetail",
+        preserveNullAndEmptyArrays: true,
+      },
+    });
+
+    // Step 11: Lookup karat details (optional, as purity is available in stockItems)
+    pipeline.push({
+      $lookup: {
+        from: "karatmasters",
+        localField: "metaldetail.karat",
+        foreignField: "_id",
+        as: "karatDetails",
+      },
+    });
+
+    // Step 12: Unwind karatDetails
+    pipeline.push({
+      $unwind: {
+        path: "$karatDetails",
+        preserveNullAndEmptyArrays: true,
+      },
+    });
+
+    pipeline.push({
+      $lookup: {
+        from: "metalratemasters",
+        localField: "metaltransactions.stockItems.metalRate",
+        foreignField: "_id",
+        as: "metalRate",
+      },
+    });
+
+    // Step 12: Unwind karatDetails
+    pipeline.push({
+      $unwind: {
+        path: "$metalRate",
+        preserveNullAndEmptyArrays: true,
+      },
+    });
+
+
+
+    // Step 13: Project the required fields
+    pipeline.push({
+      $project: {
+        transactionId: "$transactionId",
+        description: "$description",
+        pcs: { $ifNull: ["$metaltransactions.stockItems.pieces", 0] },
+        grossWeight: { $ifNull: ["$grossWeight", "$metaltransactions.stockItems.grossWeight", 0] },
+        premium: { $ifNull: ["$metaltransactions.stockItems.premium.amount", 0] },
+        makingCharge: { $ifNull: ["$metaltransactions.stockItems.makingCharges.amount", 0] },
+        discount: { $literal: 0 }, // Explicitly set to 0 using $literal
+        purity: { $ifNull: ["$purity", "$metaltransactions.stockItems.purity", 0] },
+        pureWeight: { $ifNull: ["$pureWeight", "$metaltransactions.stockItems.pureWeight", 0] },
+        totalAmount: {
+          $ifNull:
+            ["$metaltransactions.totalAmountSession.totalAmountAED",
+              "$entries.totalAmount",
+              0]
+        },
+        metalValue: { $ifNull: ["$metaltransactions.stockItems.metalRateRequirements.rate", 0] },
+        _id: 0,
+      },
+    });
+
+    if (filters.costFilter?.minAmount) {
+      pipeline.push({
+        $match: {
+          totalAmount: { $gte: filters.costFilter.minAmount }
+        }
+      });
+    }    
+
+
+    // Step 14: Group to calculate totals
+    pipeline.push({
+      $group: {
+        _id: null,
+        transactions: {
+          $push: {
+            transactionId: "$transactionId",
+            description: "$description",
+            pcs: "$pcs",
+            grossWeight: "$grossWeight",
+            premium: "$premium",
+            discount: "$discount",
+            purity: "$purity",
+            pureWeight: "$pureWeight",
+            metalValue: "$metalValue",
+            makingCharge: "$makingCharge",
+            total: "$totalAmount"
+          },
+        },
+        totalPcs: { $sum: "$pcs" },
+        totalGrossWeight: { $sum: "$grossWeight" },
+        totalPremium: { $sum: "$premium" },
+        totalDiscount: { $sum: "$discount" },
+        totalPureWeight: { $sum: "$pureWeight" },
+        totalMetalValue: { $sum: "$metalValue" },
+        totalMakingCharge: { $sum: "$makingCharge" },
+      },
+    });
+
+    // Step 15: Project the final output
+    pipeline.push({
+      $project: {
+        _id: 0,
+        transactions: 1,
+        totals: {
+          totalPcs: "$totalPcs",
+          totalGrossWeight: "$totalGrossWeight",
+          totalPremium: "$totalPremium",
+          totalDiscount: "$totalDiscount",
+          totalPureWeight: "$totalPureWeight",
+          totalMetalValue: "$totalMetalValue",
+          totalMakingCharge: "$totalMakingCharge",
+        },
+      },
+    });
+
+    return pipeline
+
+
+
+
+    // Dynamically add conditions based on non-empty arrays
+    if (filters.groupByRange?.stockCode?.length > 0) {
+      groupByMatch["metalInfo.code"] = { $in: filters.groupByRange.stockCode };
+    }
+
+    if (filters.groupByRange?.categoryCode?.length > 0) {
+      groupByMatch["metalInfo.category"] = { $in: filters.groupByRange.categoryCode };
+    }
+
+    if (filters.groupByRange?.karat?.length > 0) {
+      groupByMatch["metalInfo.karat"] = { $in: filters.groupByRange.karat };
+    }
+
+    if (filters.groupByRange?.type?.length > 0) {
+      groupByMatch["metalInfo.type"] = { $in: filters.groupByRange.type };
+    }
+
+    if (filters.groupByRange?.size?.length > 0) {
+      groupByMatch["metalInfo.size"] = { $in: filters.groupByRange.size };
+    }
+
+    if (filters.groupByRange?.color?.length > 0) {
+      groupByMatch["metalInfo.color"] = { $in: filters.groupByRange.color };
+    }
+
+    if (filters.groupByRange?.brand?.length > 0) {
+      groupByMatch["metalInfo.brand"] = { $in: filters.groupByRange.brand };
+    }
+
+    // Only push $match if any filter was added
+    if (Object.keys(groupByMatch).length > 0) {
+      pipeline.push({ $match: groupByMatch });
+    }
+    pipeline.push({
+      $lookup: {
+        from: "karatmasters",
+        localField: "metalInfo.karat",
+        foreignField: "_id",
+        as: "karatDetails",
+      },
+    });
+
+    pipeline.push({
+      $group: {
+        _id: {
+          metalId: "$metalId",
+          code: "$metalInfo.code",
+          description: "$metalInfo.description",
+          metalType: "$metalInfo.metalType",
+          purity: "$purity"
+        },
+        metalName: { $first: "$metalInfo.code" },
+        totalGrossWeight: { $sum: "$grossWeight" },
+        totalPureWeight: { $sum: "$pureWeight" },
+
+        totalCredit: { $sum: "$credit" },
+        totalDebit: { $sum: "$debit" },
+
+        // Smart pcsCount computation
+        totalPcsCount: {
+          $sum: {
+            $cond: [
+              { $eq: ["$metalInfo.pcs", true] },
+              { $round: [{ $divide: ["$grossWeight", "$metalInfo.totalValue"] }, 0] },
+              0
+            ]
+          }
+        },
+        logs: { $push: "$$ROOT" }
+      }
+    });
+
+
+    // Conditionally filter based on transactionType
+    if (filters.transactionType) {
+      pipeline.push({
+        $project: {
+          metalId: "$_id.metalId",
+          code: "$_id.code",
+          description: "$_id.description",
+          metalType: "$_id.metalType",
+          purity: "$_id.purity",
+          totalPcsCount: 1,
+          totalGrossWeight: 1,
+          totalPureWeight: 1,
+          totalValue: 1,
+          _id: 0
+        }
+      });
+    }
+    return pipeline
+  }
+
+  OwnStockPipeLine(filters) {
+    const pipeline = [];
+
+    // Step 1: Base match condition
+    const matchConditions = {
+      isActive: true,
+    };
+
+    // Step 2: Add date filters if present
+    if (filters.startDate || filters.endDate) {
+      matchConditions.transactionDate = {};
+      if (filters.startDate) {
+        matchConditions.transactionDate.$gte = new Date(filters.startDate);
+      }
+      if (filters.endDate) {
+        matchConditions.transactionDate.$lte = new Date(filters.endDate);
+      }
+    }
+    if (filters.voucher && filters.voucher.length > 0) {
+      matchConditions.reference = {
+        $regex: `^(${filters.voucher.join('|')})`, // Starts with any value in the array
+        $options: 'i' // case-insensitive (optional)
+      };
+    }
+
+
+    // Step 3: Include documents where at least one type of transaction exists
+    matchConditions.$or = [
+      { metalTransactionId: { $exists: true, $ne: null } },
+      { EntryTransactionId: { $exists: true, $ne: null } },
+      { TransferTransactionId: { $exists: true, $ne: null } },
+    ];
+
+    // Step 4: Apply the match
+    pipeline.push({ $match: matchConditions });
+    // Step 5: Lookup related collections
+
+    // 5a: Lookup metalTransaction data
+    pipeline.push({
+      $lookup: {
+        from: "metaltransactions",
+        localField: "metalTransactionId",
+        foreignField: "_id",
+        as: "metaltransactions",
+      },
+    });
+
+    // 5b: Lookup entries (e.g., purchase or manual entry records)
+    pipeline.push({
+      $lookup: {
+        from: "entries",
+        localField: "EntryTransactionId",
+        foreignField: "_id",
+        as: "entries",
+      },
+    });
+
+    // 5c: Lookup fund transfers
+    pipeline.push({
+      $lookup: {
+        from: "fundtransfers",
+        localField: "TransferTransactionId",
+        foreignField: "_id",
+        as: "fundtransfers",
+      },
+    });
+
+    pipeline.push({
+      $lookup: {
+        from: "metalstocks",
+        localField: "metaltransactions.stockItems.stockCode",
+        foreignField: "_id",
+        as: "MetalTransactionMetalStock",
+      },
+    });
+
+    pipeline.push({
+      $lookup: {
+        from: "metalstocks",
+        localField: "entries.stocks.stock",
+        foreignField: "_id",
+        as: "entriesMetalStock",
+      },
+    });
+
+    // Step 6: Unwind joined data (preserve null for optional relationships)
+    pipeline.push({ $unwind: { path: "$metaltransactions", preserveNullAndEmptyArrays: true } });
+    pipeline.push({ $unwind: { path: "$entries", preserveNullAndEmptyArrays: true } });
+    pipeline.push({ $unwind: { path: "$fundtransfers", preserveNullAndEmptyArrays: true } });
+
+    // Step 7: Filter by transactionType if provided
+    if (filters.transactionType && filters.transactionType !== "all") {
+      pipeline.push({
+        $match: {
+          "metaltransactions.transactionType": filters.transactionType,
+        },
+      });
+    }
+
+    if (filters.groupByRange?.stockCode?.length > 0) {
+      pipeline.push({
+        $match: {
+          $or: [
+            { "entries.stocks.stock": { $in: filters.groupByRange.stockCode } },
+            { "metaltransactions.stockItems.stockCode": { $in: filters.groupByRange.stockCode } }
+          ]
+        }
+      });
+    }
+   
 
     if (filters.groupByRange?.karat?.length > 0) {
       pipeline.push({
@@ -2744,7 +3124,7 @@ export class ReportService {
             pureWeight: "$pureWeight",
             metalValue: "$metalValue",
             makingCharge: "$makingCharge",
-            total:"$totalAmount"
+            total: "$totalAmount"
           },
         },
         totalPcs: { $sum: "$pcs" },
