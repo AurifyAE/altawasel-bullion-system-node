@@ -275,7 +275,7 @@ async function handleCashTransfer(
     // Positive transfer: sender gets debited, receiver gets credited
     // Example: value = 2000, sender balance = -1000
     // Result: sender = -1000 - 2000 = -3000, receiver = current + 2000
-    senderAccount.balances.cashBalance.amount += transferAmount;
+    senderAccount.balances.cashBalance.amount -= transferAmount;
     receiverAccount.balances.cashBalance.amount += transferAmount;
   }
 
