@@ -105,8 +105,8 @@ const RegistrySchema = new mongoose.Schema(
     transactionDate: {
       type: Date,
       required: [true, "Transaction date is required"],
-      default: Date.now,
-    },
+      default: () => new Date(),
+    },    
     reference: {
       type: String,
       trim: true,

@@ -179,23 +179,23 @@ class MetalTransactionService {
     console.log(totals);
     return mode === "fix"
       ? this.buildPurchaseFixEntries(
-          totals,
-          metalTransactionId,
-          party,
-          baseTransactionId,
-          voucherDate,
-          voucherNumber,
-          adminId
-        )
+        totals,
+        metalTransactionId,
+        party,
+        baseTransactionId,
+        voucherDate,
+        voucherNumber,
+        adminId
+      )
       : this.buildPurchaseUnfixEntries(
-          totals,
-          metalTransactionId,
-          party,
-          baseTransactionId,
-          voucherDate,
-          voucherNumber,
-          adminId
-        );
+        totals,
+        metalTransactionId,
+        party,
+        baseTransactionId,
+        voucherDate,
+        voucherNumber,
+        adminId
+      );
   }
 
   static buildSaleEntries(
@@ -210,23 +210,23 @@ class MetalTransactionService {
   ) {
     return mode === "fix"
       ? this.buildSaleFixEntries(
-          totals,
-          metalTransactionId,
-          party,
-          baseTransactionId,
-          voucherDate,
-          voucherNumber,
-          adminId
-        )
+        totals,
+        metalTransactionId,
+        party,
+        baseTransactionId,
+        voucherDate,
+        voucherNumber,
+        adminId
+      )
       : this.buildSaleUnfixEntries(
-          totals,
-          metalTransactionId,
-          party,
-          baseTransactionId,
-          voucherDate,
-          voucherNumber,
-          adminId
-        );
+        totals,
+        metalTransactionId,
+        party,
+        baseTransactionId,
+        voucherDate,
+        voucherNumber,
+        adminId
+      );
   }
 
   static buildPurchaseReturnEntries(
@@ -241,23 +241,23 @@ class MetalTransactionService {
   ) {
     return mode === "fix"
       ? this.buildPurchaseReturnFixEntries(
-          totals,
-          metalTransactionId,
-          party,
-          baseTransactionId,
-          voucherDate,
-          voucherNumber,
-          adminId
-        )
+        totals,
+        metalTransactionId,
+        party,
+        baseTransactionId,
+        voucherDate,
+        voucherNumber,
+        adminId
+      )
       : this.buildPurchaseReturnUnfixEntries(
-          totals,
-          metalTransactionId,
-          party,
-          baseTransactionId,
-          voucherDate,
-          voucherNumber,
-          adminId
-        );
+        totals,
+        metalTransactionId,
+        party,
+        baseTransactionId,
+        voucherDate,
+        voucherNumber,
+        adminId
+      );
   }
 
   static buildSaleReturnEntries(
@@ -272,23 +272,23 @@ class MetalTransactionService {
   ) {
     return mode === "fix"
       ? this.buildSaleReturnFixEntries(
-          totals,
-          metalTransactionId,
-          party,
-          baseTransactionId,
-          voucherDate,
-          voucherNumber,
-          adminId
-        )
+        totals,
+        metalTransactionId,
+        party,
+        baseTransactionId,
+        voucherDate,
+        voucherNumber,
+        adminId
+      )
       : this.buildSaleReturnUnfixEntries(
-          totals,
-          metalTransactionId,
-          party,
-          baseTransactionId,
-          voucherDate,
-          voucherNumber,
-          adminId
-        );
+        totals,
+        metalTransactionId,
+        party,
+        baseTransactionId,
+        voucherDate,
+        voucherNumber,
+        adminId
+      );
   }
 
   static buildPurchaseFixEntries(
@@ -1644,7 +1644,7 @@ class MetalTransactionService {
       cashCredit: parseFloat(cashCredit) || 0,
       goldDebit: parseFloat(goldDebit) || 0,
       debit: parseFloat(debit) || 0,
-      transactionDate: voucherDate || new Date(),
+      transactionDate: new Date() || voucherDate,
       reference,
       createdBy: adminId,
       createdAt: new Date(),
@@ -2989,9 +2989,8 @@ class MetalTransactionService {
     session
   ) {
     const registryEntries = [];
-    const transactionId = `TXN-${new Date().getFullYear()}-${
-      Math.floor(Math.random() * 900) + 100
-    }`;
+    const transactionId = `TXN-${new Date().getFullYear()}-${Math.floor(Math.random() * 900) + 100
+      }`;
 
     // Calculate totals for charges
     let totalMakingCharges = 0;
@@ -3021,18 +3020,17 @@ class MetalTransactionService {
         new Registry({
           transactionId: transactionId,
           type: "gold",
-          description: `${
-            isPurchaseReturn
+          description: `${isPurchaseReturn
               ? "Purchase Return"
               : isSaleReturn
-              ? "Sale Return"
-              : transaction.transactionType
-          } - ${stockItem.description || "Metal Item"}`,
+                ? "Sale Return"
+                : transaction.transactionType
+            } - ${stockItem.description || "Metal Item"}`,
           paryty: transaction.partyCode,
           value: pureWeight,
           debit: isSale || isPurchaseReturn ? pureWeight : 0,
           credit: isPurchase || isSaleReturn ? pureWeight : 0,
-          transactionDate: transaction.voucherDate,
+          transactionDate: new Date(),
           reference: `Stock-${stockItem._id}`,
           createdBy: adminId,
         })
@@ -3043,18 +3041,17 @@ class MetalTransactionService {
         new Registry({
           transactionId: transactionId,
           type: "stock_balance",
-          description: `${
-            isPurchaseReturn
+          description: `${isPurchaseReturn
               ? "Purchase Return"
               : isSaleReturn
-              ? "Sale Return"
-              : transaction.transactionType
-          } Stock Balance - ${stockItem.description || "Metal Item"}`,
+                ? "Sale Return"
+                : transaction.transactionType
+            } Stock Balance - ${stockItem.description || "Metal Item"}`,
           paryty: transaction.partyCode,
           value: pureWeight,
           debit: isSale || isPurchaseReturn ? pureWeight : 0,
           credit: isPurchase || isSaleReturn ? pureWeight : 0,
-          transactionDate: transaction.voucherDate,
+          transactionDate: new Date(),
           reference: `Stock-${stockItem._id}`,
           createdBy: adminId,
         })
@@ -3067,26 +3064,25 @@ class MetalTransactionService {
         new Registry({
           transactionId: transactionId,
           type: "making_charges",
-          description: `${
-            transaction.transactionType === "purchaseReturn"
+          description: `${transaction.transactionType === "purchaseReturn"
               ? "Purchase Return"
               : transaction.transactionType === "saleReturn"
-              ? "Sale Return"
-              : transaction.transactionType
-          } - Making Charges`,
+                ? "Sale Return"
+                : transaction.transactionType
+            } - Making Charges`,
           paryty: transaction.partyCode,
           value: totalMakingCharges,
           debit:
             transaction.transactionType === "sale" ||
-            transaction.transactionType === "purchaseReturn"
+              transaction.transactionType === "purchaseReturn"
               ? totalMakingCharges
               : 0,
           credit:
             transaction.transactionType === "purchase" ||
-            transaction.transactionType === "saleReturn"
+              transaction.transactionType === "saleReturn"
               ? totalMakingCharges
               : 0,
-          transactionDate: transaction.voucherDate,
+              transactionDate: new Date(),
           reference: `MakingCharges-${transaction._id}`,
           createdBy: adminId,
         })
@@ -3099,26 +3095,25 @@ class MetalTransactionService {
         new Registry({
           transactionId: transactionId,
           type: "premium",
-          description: `${
-            transaction.transactionType === "purchaseReturn"
+          description: `${transaction.transactionType === "purchaseReturn"
               ? "Purchase Return"
               : transaction.transactionType === "saleReturn"
-              ? "Sale Return"
-              : transaction.transactionType
-          } - Premium Amount`,
+                ? "Sale Return"
+                : transaction.transactionType
+            } - Premium Amount`,
           paryty: transaction.partyCode,
           value: totalPremiumAmount,
           debit:
             transaction.transactionType === "sale" ||
-            transaction.transactionType === "purchaseReturn"
+              transaction.transactionType === "purchaseReturn"
               ? totalPremiumAmount
               : 0,
           credit:
             transaction.transactionType === "purchase" ||
-            transaction.transactionType === "saleReturn"
+              transaction.transactionType === "saleReturn"
               ? totalPremiumAmount
               : 0,
-          transactionDate: transaction.voucherDate,
+              transactionDate: new Date(),
           reference: `Premium-${transaction._id}`,
           createdBy: adminId,
         })
@@ -3130,26 +3125,25 @@ class MetalTransactionService {
       new Registry({
         transactionId: transactionId,
         type: "party_gold_balance",
-        description: `${
-          transaction.transactionType === "purchaseReturn"
+        description: `${transaction.transactionType === "purchaseReturn"
             ? "Purchase Return"
             : transaction.transactionType === "saleReturn"
-            ? "Sale Return"
-            : transaction.transactionType
-        } - Party Gold Balance`,
+              ? "Sale Return"
+              : transaction.transactionType
+          } - Party Gold Balance`,
         paryty: transaction.partyCode,
         value: totalPureWeight,
         debit:
           transaction.transactionType === "purchase" ||
-          transaction.transactionType === "saleReturn"
+            transaction.transactionType === "saleReturn"
             ? totalPureWeight
             : 0,
         credit:
           transaction.transactionType === "sale" ||
-          transaction.transactionType === "purchaseReturn"
+            transaction.transactionType === "purchaseReturn"
             ? totalPureWeight
             : 0,
-        transactionDate: transaction.voucherDate,
+            transactionDate: new Date(),
         reference: `PartyGold-${transaction._id}`,
         createdBy: adminId,
       })
@@ -3162,26 +3156,25 @@ class MetalTransactionService {
         new Registry({
           transactionId: transactionId,
           type: "party_cash_balance",
-          description: `${
-            transaction.transactionType === "purchaseReturn"
+          description: `${transaction.transactionType === "purchaseReturn"
               ? "Purchase Return"
               : transaction.transactionType === "saleReturn"
-              ? "Sale Return"
-              : transaction.transactionType
-          } - Party Cash Balance`,
+                ? "Sale Return"
+                : transaction.transactionType
+            } - Party Cash Balance`,
           paryty: transaction.partyCode,
           value: totalAmountAED,
           debit:
             transaction.transactionType === "sale" ||
-            transaction.transactionType === "purchaseReturn"
+              transaction.transactionType === "purchaseReturn"
               ? totalAmountAED
               : 0,
           credit:
             transaction.transactionType === "purchase" ||
-            transaction.transactionType === "saleReturn"
+              transaction.transactionType === "saleReturn"
               ? totalAmountAED
               : 0,
-          transactionDate: transaction.voucherDate,
+              transactionDate: new Date(),
           reference: `PartyCash-${transaction._id}`,
           createdBy: adminId,
         })

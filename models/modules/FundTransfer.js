@@ -79,7 +79,7 @@ const FundTransferSchema = new mongoose.Schema(
     transactionDate: {
       type: Date,
       required: [true, "Transaction date is required"],
-      default: Date.now,
+      default: () => new Date(),
     },
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,

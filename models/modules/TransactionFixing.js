@@ -58,7 +58,7 @@ const TransactionFixingSchema = new mongoose.Schema(
     transactionDate: {
       type: Date,
       required: [true, "Transaction date is required"],
-      default: Date.now,
+      default: () => new Date(),
     },
 
     referenceNumber: {
