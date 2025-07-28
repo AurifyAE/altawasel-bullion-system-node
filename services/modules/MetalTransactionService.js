@@ -1637,6 +1637,7 @@ class MetalTransactionService {
       description,
       party: partyId,
       isBullion,
+      grossWeight:parseFloat(value),
       value: parseFloat(value) || 0,
       credit: parseFloat(credit) || 0,
       cashDebit: parseFloat(cashDebit) || 0,
