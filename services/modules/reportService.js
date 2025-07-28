@@ -2905,25 +2905,6 @@ export class ReportService {
   OwnStockPipeLine(filters) {
     const pipeline = [];
 
-    // Step 1: Define match conditions for specific reference prefixes
-    const referenceRegex = [
-      { reference: { $regex: "^PR\\d+", $options: "i" } }, // Purchase Return
-      { reference: { $regex: "^PF", $options: "i" } }, // Purchase Fixing
-      { reference: { $regex: "^SR", $options: "i" } }, // Sales Return
-      { reference: { $regex: "^SF", $options: "i" } }, // Sales Fixing
-      { reference: { $regex: "^OSB", $options: "i" } }, // Opening Balance
-      { reference: { $regex: "^PRM\\d+", $options: "i" } }, // Purchase Fixing
-    ];
-    
-    // Step 2: Build match conditions with fallback for missing reference
-    const matchConditions = {
-      isActive: true,
-      $or: [
-        ...referenceRegex,
-        { reference: { $exists: false } } // Include documents with no reference (optional)
-      ],
-    };
-    
     // Step 3: Date filtering (optional, based on filters)
     if (filters.startDate || filters.endDate) {
       matchConditions.transactionDate = {};
@@ -2934,7 +2915,27 @@ export class ReportService {
         matchConditions.transactionDate.$lte = new Date(filters.endDate);
       }
     }
-    
+
+    // Step 1: Define match conditions for specific reference prefixes
+    const referenceRegex = [
+      { reference: { $regex: "^PR\\d+", $options: "i" } }, // Purchase Return
+      { reference: { $regex: "^PF", $options: "i" } },     // Purchase Fixing
+      { reference: { $regex: "^SR", $options: "i" } },     // Sales Return
+      { reference: { $regex: "^SF", $options: "i" } },     // Sales Fixing
+      { reference: { $regex: "^OSB", $options: "i" } },    // Opening Balance
+      { reference: { $regex: "^PRM\\d+", $options: "i" } }, // Purchase Metal (fixing only)
+      { reference: { $regex: "^SAL\\d+", $options: "i" } }, // Sale Metal (fixing only)
+    ];
+
+    // Step 2: Build match conditions with fallback for missing reference
+    const matchConditions = {
+      isActive: true,
+      $or: [
+        ...referenceRegex,
+        { reference: { $exists: false } } // Include documents with no reference (optional)
+      ],
+    };
+
     // Step 4: Push $match to pipeline
     pipeline.push({ $match: matchConditions });
 
@@ -2980,12 +2981,29 @@ export class ReportService {
     pipeline.push({ $unwind: { path: "$metalstocks", preserveNullAndEmptyArrays: true } });
 
     /* ------------------------------------------
-       Step 7: Sort by transactionDate to ensure consistent $first selection (optional)
+       Step 7: Filter metaltransactions for fixed: true for PRM and SAL
+    ------------------------------------------ */
+    pipeline.push({
+      $match: {
+        $or: [
+          { reference: { $not: { $regex: "^(PRM|SAL)\\d+", $options: "i" } } }, // Keep all non-PRM/SAL
+          {
+            $and: [
+              { reference: { $regex: "^(PRM|SAL)\\d+", $options: "i" } }, // Match PRM or SAL
+              { "metaltransactions.fixed": true } // Only include if fixed is true
+            ]
+          }
+        ]
+      }
+    });
+
+    /* ------------------------------------------
+       Step 8: Sort by transactionDate to ensure consistent $first selection (optional)
     ------------------------------------------ */
     pipeline.push({ $sort: { transactionDate: 1 } }); // Sort ascending to get the earliest entry
 
     /* ------------------------------------------
-       Step 8: First Group by full reference to take first value per unique voucher
+       Step 9: First Group by full reference to take first value per unique voucher
     ------------------------------------------ */
     pipeline.push({
       $group: {
@@ -2999,8 +3017,9 @@ export class ReportService {
       },
     });
 
+
     /* ------------------------------------------
-       Step 9: Second Group by prefix to sum across unique vouchers
+       Step 10: Second Group by prefix to sum across unique vouchers
     ------------------------------------------ */
     pipeline.push({
       $group: {
@@ -3015,7 +3034,8 @@ export class ReportService {
                     { case: { $regexMatch: { input: { $ifNull: ["$_id", ""] }, regex: /^SR/i } }, then: "SR" },
                     { case: { $regexMatch: { input: { $ifNull: ["$_id", ""] }, regex: /^SF/i } }, then: "SF" },
                     { case: { $regexMatch: { input: { $ifNull: ["$_id", ""] }, regex: /^OSB/i } }, then: "OSB" },
-                    { case: { $regexMatch: { input: { $ifNull: ["$_id", ""] }, regex: /^PRM\d+/i} }, then: "PRM" },
+                    { case: { $regexMatch: { input: { $ifNull: ["$_id", ""] }, regex: /^PRM\d+/i } }, then: "PRM" },
+                    { case: { $regexMatch: { input: { $ifNull: ["$_id", ""] }, regex: /^SAL\d+/i } }, then: "SAL" },
                   ],
                   default: "UNKNOWN",
                 },
@@ -3034,7 +3054,7 @@ export class ReportService {
     });
 
     /* ------------------------------------------
-       Step 10: Project to format the output
+       Step 11: Project to format the output
     ------------------------------------------ */
     pipeline.push({
       $project: {
@@ -3049,6 +3069,7 @@ export class ReportService {
               { case: { $eq: ["$_id", "PR"] }, then: "Purchase Return" },
               { case: { $eq: ["$_id", "SR"] }, then: "Sales Return" },
               { case: { $eq: ["$_id", "PRM"] }, then: "Purchase" },
+              { case: { $eq: ["$_id", "SAL"] }, then: "Sales" },
               { case: { $eq: ["$_id", "UNKNOWN"] }, then: "Unknown Category" },
             ],
             default: "Unknown Category",
@@ -3063,7 +3084,7 @@ export class ReportService {
     });
 
     /* ------------------------------------------
-       Step 11: Sort by category
+       Step 12: Sort by category
     ------------------------------------------ */
     pipeline.push({
       $sort: { category: 1 }, // Sort alphabetically by category

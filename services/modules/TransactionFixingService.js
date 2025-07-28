@@ -117,6 +117,7 @@ export const TransactionFixingService = {
           party: transactionData.partyId,
           isBullion: false,
           value: transactionData.quantityGm,
+          grossWeight:transactionData.quantityGm,
           debit: transactionData.quantityGm, // Party gives gold (debit from party perspective)
           goldCredit: transactionData.quantityGm,
           cashDebit: transactionData.price,
@@ -135,6 +136,7 @@ export const TransactionFixingService = {
           party: transactionData.partyId,
           isBullion: false,
           value: transactionData.quantityGm,
+          grossWeight:transactionData.quantityGm,
           debit: 0, // Party gives gold (debit from party perspective)
           goldCredit: transactionData.quantityGm,
           cashDebit: transactionData.price,
@@ -154,6 +156,7 @@ export const TransactionFixingService = {
           party: transactionData.partyId,
           isBullion: false,
           value: totalValue,
+          grossWeight:transactionData.quantityGm,
           debit: 0,
           goldCredit: transactionData.quantityGm,
           cashDebit: transactionData.price,
@@ -207,6 +210,7 @@ export const TransactionFixingService = {
           party: transactionData.partyId,
           isBullion: false,
           value: transactionData.quantityGm,
+          grossWeight:transactionData.quantityGm,
           debit: 0, // Party gives gold (debit from party perspective)
           goldCredit: transactionData.quantityGm,
           cashDebit: transactionData.price,
@@ -225,6 +229,7 @@ export const TransactionFixingService = {
           party: transactionData.partyId,
           isBullion: false,
           value: 0,
+          grossWeight:transactionData.quantityGm,
           debit: transactionData.quantityGm, // Party gives gold (debit from party perspective)
           goldDebit: transactionData.quantityGm,
           cashCredit: transactionData.price,
@@ -243,6 +248,7 @@ export const TransactionFixingService = {
             }`,
           party: transactionData.partyId,
           value: totalValue,
+          grossWeight:transactionData.quantityGm,
           debit: totalValue, // Party pays cas  h (debit from party)
           credit: 0,
           goldDebit: transactionData.quantityGm,
