@@ -13,6 +13,10 @@ const RegistrySchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "MetalTransaction",
     },
+    fixingTransactionId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "TransactionFixing",
+    },
     EntryTransactionId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Entry",
@@ -106,7 +110,7 @@ const RegistrySchema = new mongoose.Schema(
       type: Date,
       required: [true, "Transaction date is required"],
       default: () => new Date(),
-    },    
+    },
     reference: {
       type: String,
       trim: true,

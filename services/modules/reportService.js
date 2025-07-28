@@ -201,7 +201,7 @@ export class ReportService {
 
       // Execute aggregation query  
       const reportData = await Registry.aggregate(pipeline);
-     
+
       // Format the retrieved data for response
       const formattedData = this.formatReportData(reportData, validatedFilters);
 
@@ -222,6 +222,9 @@ export class ReportService {
 
       // Validate and format input filters
       const validatedFilters = this.validateFilters(filters);
+      console.log('====================================');
+      console.log(validatedFilters);
+      console.log('====================================');
 
       // Construct MongoDB aggregation pipeline
       const pipeline = this.OwnStockPipeLine(validatedFilters);
@@ -229,12 +232,13 @@ export class ReportService {
       // Execute aggregation query  
       const reportData = await Registry.aggregate(pipeline);
 
+
       // Format the retrieved data for response
       const formattedData = this.formatReportData(reportData, validatedFilters);
 
       return {
         success: true,
-        data: formattedData,
+        data: reportData,
         filters: validatedFilters,
         totalRecords: reportData.length,
       };
@@ -294,8 +298,8 @@ export class ReportService {
     if (startDate && endDate && startDate > endDate) {
       throw new Error("From date cannot be greater than to date");
     }
-       
-  
+
+
     const formatObjectIds = (arr) =>
       arr
         .filter((id) => mongoose.Types.ObjectId.isValid(id))
@@ -2645,7 +2649,7 @@ export class ReportService {
         }
       });
     }
- 
+
 
     if (filters.groupByRange?.karat?.length > 0) {
       pipeline.push({
@@ -2751,7 +2755,7 @@ export class ReportService {
           totalAmount: { $gte: filters.costFilter.minAmount }
         }
       });
-    }    
+    }
 
 
     // Step 14: Group to calculate totals
@@ -2901,12 +2905,26 @@ export class ReportService {
   OwnStockPipeLine(filters) {
     const pipeline = [];
 
-    // Step 1: Base match condition
+    // Step 1: Define match conditions for specific reference prefixes
+    const referenceRegex = [
+      { reference: { $regex: "^PR\\d+", $options: "i" } }, // Purchase Return
+      { reference: { $regex: "^PF", $options: "i" } }, // Purchase Fixing
+      { reference: { $regex: "^SR", $options: "i" } }, // Sales Return
+      { reference: { $regex: "^SF", $options: "i" } }, // Sales Fixing
+      { reference: { $regex: "^OSB", $options: "i" } }, // Opening Balance
+      { reference: { $regex: "^PRM\\d+", $options: "i" } }, // Purchase Fixing
+    ];
+    
+    // Step 2: Build match conditions with fallback for missing reference
     const matchConditions = {
       isActive: true,
+      $or: [
+        ...referenceRegex,
+        { reference: { $exists: false } } // Include documents with no reference (optional)
+      ],
     };
-
-    // Step 2: Add date filters if present
+    
+    // Step 3: Date filtering (optional, based on filters)
     if (filters.startDate || filters.endDate) {
       matchConditions.transactionDate = {};
       if (filters.startDate) {
@@ -2916,26 +2934,15 @@ export class ReportService {
         matchConditions.transactionDate.$lte = new Date(filters.endDate);
       }
     }
-    if (filters.voucher && filters.voucher.length > 0) {
-      matchConditions.reference = {
-        $regex: `^(${filters.voucher.join('|')})`, // Starts with any value in the array
-        $options: 'i' // case-insensitive (optional)
-      };
-    }
-
-
-    // Step 3: Include documents where at least one type of transaction exists
-    matchConditions.$or = [
-      { metalTransactionId: { $exists: true, $ne: null } },
-      { EntryTransactionId: { $exists: true, $ne: null } },
-      { TransferTransactionId: { $exists: true, $ne: null } },
-    ];
-
-    // Step 4: Apply the match
+    
+    // Step 4: Push $match to pipeline
     pipeline.push({ $match: matchConditions });
-    // Step 5: Lookup related collections
 
-    // 5a: Lookup metalTransaction data
+    /* ------------------------------------------
+       Step 5: Lookup related collections
+    ------------------------------------------ */
+
+    // metaltransactions
     pipeline.push({
       $lookup: {
         from: "metaltransactions",
@@ -2945,7 +2952,7 @@ export class ReportService {
       },
     });
 
-    // 5b: Lookup entries (e.g., purchase or manual entry records)
+    // entries
     pipeline.push({
       $lookup: {
         from: "entries",
@@ -2955,38 +2962,114 @@ export class ReportService {
       },
     });
 
-    // 5c: Lookup fund transfers
-    pipeline.push({
-      $lookup: {
-        from: "fundtransfers",
-        localField: "TransferTransactionId",
-        foreignField: "_id",
-        as: "fundtransfers",
-      },
-    });
-
+    // metalstocks
     pipeline.push({
       $lookup: {
         from: "metalstocks",
-        localField: "metaltransactions.stockItems.stockCode",
+        localField: "metalId",
         foreignField: "_id",
-        as: "MetalTransactionMetalStock",
+        as: "metalstocks",
       },
     });
 
-    pipeline.push({
-      $lookup: {
-        from: "metalstocks",
-        localField: "entries.stocks.stock",
-        foreignField: "_id",
-        as: "entriesMetalStock",
-      },
-    });
-
-    // Step 6: Unwind joined data (preserve null for optional relationships)
+    /* ------------------------------------------
+       Step 6: Unwind joined data (safe unwind)
+    ------------------------------------------ */
     pipeline.push({ $unwind: { path: "$metaltransactions", preserveNullAndEmptyArrays: true } });
     pipeline.push({ $unwind: { path: "$entries", preserveNullAndEmptyArrays: true } });
-    pipeline.push({ $unwind: { path: "$fundtransfers", preserveNullAndEmptyArrays: true } });
+    pipeline.push({ $unwind: { path: "$metalstocks", preserveNullAndEmptyArrays: true } });
+
+    /* ------------------------------------------
+       Step 7: Sort by transactionDate to ensure consistent $first selection (optional)
+    ------------------------------------------ */
+    pipeline.push({ $sort: { transactionDate: 1 } }); // Sort ascending to get the earliest entry
+
+    /* ------------------------------------------
+       Step 8: First Group by full reference to take first value per unique voucher
+    ------------------------------------------ */
+    pipeline.push({
+      $group: {
+        _id: "$reference", // Group by full reference (e.g., PF0006, PR0001) to consolidate voucher entries
+        totalValue: { $first: { $ifNull: ["$value", 0] } }, // Take the first value for this voucher
+        totalGrossWeight: { $first: { $ifNull: ["$grossWeight", 0] } }, // Take the first gross weight
+        totalDebit: { $first: { $ifNull: ["$debit", 0] } }, // Take the first debit
+        totalCredit: { $first: { $ifNull: ["$credit", 0] } }, // Take the first credit
+        transactionCount: { $sum: 1 }, // Count of registry entries per voucher
+        latestTransactionDate: { $max: "$transactionDate" }, // Latest date for this voucher
+      },
+    });
+
+    /* ------------------------------------------
+       Step 9: Second Group by prefix to sum across unique vouchers
+    ------------------------------------------ */
+    pipeline.push({
+      $group: {
+        _id: {
+          $let: {
+            vars: {
+              prefix: {
+                $switch: {
+                  branches: [
+                    { case: { $regexMatch: { input: { $ifNull: ["$_id", ""] }, regex: /^PR\d+/i } }, then: "PR" },
+                    { case: { $regexMatch: { input: { $ifNull: ["$_id", ""] }, regex: /^PF/i } }, then: "PF" },
+                    { case: { $regexMatch: { input: { $ifNull: ["$_id", ""] }, regex: /^SR/i } }, then: "SR" },
+                    { case: { $regexMatch: { input: { $ifNull: ["$_id", ""] }, regex: /^SF/i } }, then: "SF" },
+                    { case: { $regexMatch: { input: { $ifNull: ["$_id", ""] }, regex: /^OSB/i } }, then: "OSB" },
+                    { case: { $regexMatch: { input: { $ifNull: ["$_id", ""] }, regex: /^PRM\d+/i} }, then: "PRM" },
+                  ],
+                  default: "UNKNOWN",
+                },
+              },
+            },
+            in: "$$prefix",
+          },
+        },
+        totalValue: { $sum: "$totalValue" }, // Sum the first values across unique vouchers (e.g., PF0006 + PF0007)
+        totalGrossWeight: { $sum: "$totalGrossWeight" }, // Sum the first gross weights
+        totalDebit: { $sum: "$totalDebit" }, // Sum the first debits
+        totalCredit: { $sum: "$totalCredit" }, // Sum the first credits
+        transactionCount: { $sum: "$transactionCount" }, // Total count of registry entries across vouchers
+        latestTransactionDate: { $max: "$latestTransactionDate" }, // Latest date across vouchers
+      },
+    });
+
+    /* ------------------------------------------
+       Step 10: Project to format the output
+    ------------------------------------------ */
+    pipeline.push({
+      $project: {
+        _id: 0,
+        category: "$_id",
+        description: {
+          $switch: {
+            branches: [
+              { case: { $eq: ["$_id", "OSB"] }, then: "Opening Balance" },
+              { case: { $eq: ["$_id", "PF"] }, then: "Purchase Fixing" },
+              { case: { $eq: ["$_id", "SF"] }, then: "Sales Fixing" },
+              { case: { $eq: ["$_id", "PR"] }, then: "Purchase Return" },
+              { case: { $eq: ["$_id", "SR"] }, then: "Sales Return" },
+              { case: { $eq: ["$_id", "PRM"] }, then: "Purchase" },
+              { case: { $eq: ["$_id", "UNKNOWN"] }, then: "Unknown Category" },
+            ],
+            default: "Unknown Category",
+          },
+        },
+        totalValue: 1,
+        netGrossWeight: { $subtract: ["$totalDebit", "$totalCredit"] },
+        totalGrossWeight: 1,
+        transactionCount: 1,
+        latestTransactionDate: 1,
+      },
+    });
+
+    /* ------------------------------------------
+       Step 11: Sort by category
+    ------------------------------------------ */
+    pipeline.push({
+      $sort: { category: 1 }, // Sort alphabetically by category
+    });
+
+    return pipeline;
 
     // Step 7: Filter by transactionType if provided
     if (filters.transactionType && filters.transactionType !== "all") {
@@ -3007,7 +3090,7 @@ export class ReportService {
         }
       });
     }
-   
+
 
     if (filters.groupByRange?.karat?.length > 0) {
       pipeline.push({
@@ -3082,6 +3165,7 @@ export class ReportService {
       },
     });
 
+    return pipeline
 
 
     // Step 13: Project the required fields
