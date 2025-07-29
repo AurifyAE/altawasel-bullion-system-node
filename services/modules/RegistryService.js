@@ -76,7 +76,7 @@ class RegistryService {
           .populate('updatedBy')
           .populate('party')
           // .populate('costCenter', 'code name')
-          .sort(sortConfig)
+          .sort({ transactionDate: -1 })
           .skip(skip)
           .limit(limit),
         Registry.countDocuments(query)
