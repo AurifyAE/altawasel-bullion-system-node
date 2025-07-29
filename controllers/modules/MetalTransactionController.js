@@ -104,8 +104,10 @@ export const createMetalTransaction = async (req, res, next) => {
       notes: notes?.trim(),
       voucherType: voucherType,
       voucherNumber: voucherNumber
+      
     };
-    console.log("Creating Metal Transaction with data:", transactionData);
+    
+    // console.log("Creating Metal Transaction with data:", transactionData);
     const metalTransaction = await MetalTransactionService.createMetalTransaction(
       transactionData,
       req.admin.id
@@ -201,7 +203,7 @@ export const updateMetalTransaction = async (req, res, next) => {
         400,
         "MISSING_TRANSACTION_ID"
       );
-
+console.log(updateData)
     const updatedTransaction =
       await MetalTransactionService.updateMetalTransaction(
         id,
