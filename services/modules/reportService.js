@@ -232,9 +232,6 @@ export class ReportService {
 
       // Validate and format input filters
       const validatedFilters = this.validateFilters(filters);
-      console.log('====================================');
-      console.log(validatedFilters);
-      console.log('====================================');
 
       // Construct MongoDB aggregation pipeline
       const pipeline = this.OwnStockPipeLine(validatedFilters);
@@ -3014,10 +3011,10 @@ export class ReportService {
     pipeline.push({
       $match: {
         $or: [
-          { reference: { $not: { $regex: "^(PRM|SAL)\\d+", $options: "i" } } }, // Keep all non-PRM/SAL
+          { reference: { $not: { $regex: "^(PRM|SAL|PR|SR)\\d+", $options: "i" } } }, // Keep all non-PRM/SAL
           {
             $and: [
-              { reference: { $regex: "^(PRM|SAL)\\d+", $options: "i" } }, // Match PRM or SAL
+              { reference: { $regex: "^(PRM|SAL|SR|PR)\\d+", $options: "i" } }, // Match PRM or SAL
               { "metaltransactions.fixed": true } // Only include if fixed is true
             ]
           }
