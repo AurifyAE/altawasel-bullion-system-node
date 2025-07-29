@@ -81,6 +81,7 @@ export const createKarat = async (req, res, next) => {
 
       // Also validate min < max
       if (minimum >= maximum) {
+
         throw createAppError(
           "Minimum value must be less than maximum value",
           400,
@@ -92,6 +93,9 @@ export const createKarat = async (req, res, next) => {
 
     // Common validation: minimum must be less than maximum
     if (!(minimum === 0 && maximum === 0) && minimum >= maximum) {
+      console.log('====================================');
+      console.log("here");
+      console.log('====================================');
       throw createAppError(
         "Minimum value must be less than maximum value",
         400,
@@ -220,7 +224,6 @@ export const updateKarat = async (req, res, next) => {
       }
       updateData.minimum = parseFloat(updateData.minimum);
     }
-    console.log("9");
 
     if (updateData.maximum !== undefined) {
       if (isNaN(updateData.maximum)) {
@@ -245,14 +248,14 @@ export const updateKarat = async (req, res, next) => {
     const finalMinimum = updateData.minimum !== undefined ? updateData.minimum : existingKarat.minimum;
     const finalMaximum = updateData.maximum !== undefined ? updateData.maximum : existingKarat.maximum;
 
-    if (finalMinimum >= finalMaximum) {
+    if (!(finalMinimum === 0 && finalMaximum === 0) && finalMinimum >= finalMaximum) {
       throw createAppError(
         "Minimum value must be less than maximum value",
         400,
         "INVALID_MIN_MAX_RANGE"
       );
     }
-    console.log("9");
+
 
     // Trim string fields if provided
     if (updateData.karatCode) {
@@ -263,7 +266,6 @@ export const updateKarat = async (req, res, next) => {
     }
 
 
-    console.log("9");
     const updatedKarat = await KaratMasterService.updateKarat(
       id,
       updateData,

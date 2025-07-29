@@ -3226,19 +3226,19 @@ export class ReportService {
     /* ------------------------------------------
        Step 7: Filter metaltransactions for fixed: true for PRM and SAL
     ------------------------------------------ */
-    pipeline.push({
-      $match: {
-        $or: [
-          { reference: { $not: { $regex: "^(PRM|SAL|PR|SR)\\d+", $options: "i" } } }, // Keep all non-PRM/SAL
-          {
-            $and: [
-              { reference: { $regex: "^(PRM|SAL|SR|PR)\\d+", $options: "i" } }, // Match PRM or SAL
-              { "metaltransactions.fixed": true } // Only include if fixed is true
-            ]
-          }
-        ]
-      }
-    });
+    // pipeline.push({
+    //   $match: {
+    //     $or: [
+    //       { reference: { $not: { $regex: "^(PRM|SAL|PR|SR)\\d+", $options: "i" } } }, // Keep all non-PRM/SAL
+    //       {
+    //         $and: [
+    //           { reference: { $regex: "^(PRM|SAL|SR|PR)\\d+", $options: "i" } }, // Match PRM or SAL
+    //           { "metaltransactions.fixed": true } // Only include if fixed is true
+    //         ]
+    //       }
+    //     ]
+    //   }
+    // });
 
     /* ------------------------------------------
        Step 8: Sort by transactionDate to ensure consistent $first selection (optional)
