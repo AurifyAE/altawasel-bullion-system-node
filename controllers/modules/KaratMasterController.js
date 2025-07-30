@@ -287,6 +287,9 @@ export const updateKarat = async (req, res, next) => {
 export const deleteKarat = async (req, res, next) => {
   try {
     const { id } = req.params;
+    console.log('====================================');
+    console.log(id);
+    console.log('====================================');
 
     if (!id) {
       throw createAppError("Karat ID is required", 400, "ID_REQUIRED");
