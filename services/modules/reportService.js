@@ -3105,6 +3105,7 @@ export class ReportService {
         reference: "$reference",
         description: "$description",
         pcs: { $ifNull: ["$metaltransactions.stockItems.pieces", 0] },
+        code: { $ifNull: ["$metaldetail.code", 0] },
         grossWeight: {
           $ifNull: [
             "$grossWeight",
@@ -3164,6 +3165,7 @@ export class ReportService {
             reference: "$reference",
             description: "$description",
             pcs: "$pcs",
+            code: "$code", 
             grossWeight: "$grossWeight",
             premium: "$premium",
             discount: "$discount",
