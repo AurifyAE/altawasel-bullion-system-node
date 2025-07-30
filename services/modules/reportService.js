@@ -925,8 +925,8 @@ export class ReportService {
       const profitMakingAmount = saleMakingCharge - purchaseMakingCharge;
   
       return {
-        stockCode: sale.stockCode,
-        code: sale.code,
+        id: sale.stockCode,
+        stockCode: sale.code,
         description: sale.description,
         pcs: sale.pcs,
         grossWeight: saleGrossWeight,
