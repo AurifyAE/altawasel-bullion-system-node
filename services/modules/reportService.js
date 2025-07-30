@@ -926,6 +926,7 @@ export class ReportService {
   
       return {
         stockCode: sale.stockCode,
+        code: sale.code,
         description: sale.description,
         pcs: sale.pcs,
         grossWeight: saleGrossWeight,
