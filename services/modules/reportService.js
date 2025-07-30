@@ -3017,6 +3017,7 @@ export class ReportService {
     pipeline.push({
       $project: {
         transactionId: "$transactionId",
+        reference: "$reference",
         description: "$description",
         pcs: { $ifNull: ["$metaltransactions.stockItems.pieces", 0] },
         grossWeight: { $ifNull: ["$grossWeight", "$metaltransactions.stockItems.grossWeight", 0] },
@@ -3052,6 +3053,7 @@ export class ReportService {
         transactions: {
           $push: {
             transactionId: "$transactionId",
+            reference: "$reference",
             description: "$description",
             pcs: "$pcs",
             grossWeight: "$grossWeight",
@@ -3092,9 +3094,6 @@ export class ReportService {
     });
 
     return pipeline
-
-
-
 
     // Dynamically add conditions based on non-empty arrays
     if (filters.groupByRange?.stockCode?.length > 0) {
