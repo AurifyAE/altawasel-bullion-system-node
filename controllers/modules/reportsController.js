@@ -97,7 +97,6 @@ export const getStockAnalysis = async (req, res) => {
 export const getSalesAnalysis = async (req, res) => {
   try {
     const filters = req.body;
-    console.log('Input Filters:', JSON.stringify(filters, null, 2));
 
     // Call service to get report data
     const reportData = await reportService.getSalesAnalysis(filters);

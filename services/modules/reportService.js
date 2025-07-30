@@ -65,26 +65,25 @@ export class ReportService {
       // Validate and format input filters
       const validatedFilters = this.saleValidateFilters(filters);
 
-      // Construct MongoDB aggregation pipeline
+      // Execute aggregation query for taking sales and purchase
+      const salesPipeline = this.buildSalesAnalysis(validatedFilters);
+      const purchasePipeline = this.buildSalesAnalysisPurchase();
 
       // Execute aggregation query
-      const pipeline = this.buildSalesAnalysis(validatedFilters);
-      console.log("Pipeline:", JSON.stringify(pipeline, null, 2));
+      const salesReport = await Registry.aggregate(salesPipeline).exec();
+      const purchaseReport = await Registry.aggregate(purchasePipeline).exec();
 
-      // Execute aggregation query
-      const reportData = await Registry.aggregate(pipeline).exec();
-      console.log("Aggregation Result:", JSON.stringify(reportData, null, 2));
+      // Calculate sales analysis
+      const reportData = this.calculateSalesAnalysis(salesReport, purchaseReport);
 
       return {
-        success: false,
+        success: true,
+        message: "Sales analysis report generated successfully",
         data: reportData,
-        filters: validatedFilters,
-        totalRecords: reportData.length,
+        totalRecords: reportData.transactions ? reportData.transactions.length : 0,
       };
     } catch (error) {
-      throw new Error(
-        `Failed to generate metal stock ledger report: ${error.message}`
-      );
+      throw new Error(`Failed to generate sales analysis report: ${error.message}`);
     }
   }
   async getPurchaseMetalReport(filters) {
@@ -374,18 +373,24 @@ export class ReportService {
   }
 
   saleValidateFilters(filters) {
+
     if (!filters.fromDate || !filters.toDate) {
       throw new Error("From date and to date are required");
     }
-    const fromDate = new Date(filters.fromDate);
-    const toDate = new Date(filters.toDate);
-    if (fromDate > toDate) {
+
+    // Convert and normalize using moment
+    const startDate = moment(filters.fromDate).startOf("day").toDate(); // 00:00:00
+    const endDate = moment(filters.toDate).endOf("day").toDate();       // 23:59:59.999
+
+    // Validate range
+    if (startDate > endDate) {
       throw new Error("From date cannot be greater than to date");
     }
+
     return {
       ...filters,
-      fromDate: fromDate.toISOString(),
-      toDate: toDate.toISOString(),
+      fromDate: startDate.toISOString(),
+      toDate: endDate.toISOString(),
       groupBy: filters.groupBy || ["stockCode"],
       groupByRange: {
         stockCode: filters.groupByRange?.stockCode || [],
@@ -625,498 +630,570 @@ export class ReportService {
   }
 
   buildSalesAnalysis(filters) {
-    // Enhanced input validation
-    if (!filters || typeof filters !== "object") {
-      throw new Error("Filters object is required");
-    }
-    if (!filters.fromDate || !filters.toDate) {
-      throw new Error("fromDate and toDate are required");
-    }
-
     const pipeline = [];
-    const currentDate = new Date();
-    let fromDate, toDate;
 
-    // Date validation
-    try {
-      fromDate = new Date(filters.fromDate);
-      toDate = new Date(filters.toDate);
-      if (isNaN(fromDate.getTime()) || isNaN(toDate.getTime())) {
-        throw new Error("Invalid date format");
+    // Step 1: Base match condition
+    const matchConditions = {
+      isActive: true,
+    };
+
+    // Step 2: Add date filters (optional startDate and endDate)
+    if (filters.startDate || filters.endDate) {
+      matchConditions.transactionDate = {};
+      if (filters.startDate) {
+        matchConditions.transactionDate.$gte = new Date(filters.startDate);
       }
-      if (fromDate > toDate) {
-        throw new Error("fromDate cannot be greater than toDate");
+      if (filters.endDate) {
+        matchConditions.transactionDate.$lte = new Date(filters.endDate);
       }
-    } catch (error) {
-      throw new Error(`Date validation failed: ${error.message}`);
     }
 
-    // Adjust dates
-    if (fromDate > currentDate)
-      fromDate = new Date(currentDate.getFullYear(), 0, 1);
-    if (toDate > currentDate) toDate = currentDate;
-    const financialYearStart = new Date(currentDate.getFullYear(), 0, 1);
+    // Step 3: Filter by reference starting with "SAL"
+    matchConditions.reference = {
+      $regex: '^SAL', // Matches references starting with "SAL"
+      $options: 'i', // Case-insensitive
+    };
 
-    // Convert stock codes to ObjectId
-    const stockCodes =
-      filters.groupByRange?.stockCode?.map((id) => {
-        try {
-          return new mongoose.Types.ObjectId(id);
-        } catch (error) {
-          throw new Error(`Invalid ObjectId in stockCode filter: ${id}`);
-        }
-      }) || [];
+    // Step 4: Include documents where metalTransactionId exists
+    matchConditions.metalTransactionId = { $exists: true, $ne: null };
 
-    // Use $facet to process sales and purchases separately
+    // Step 5: Apply the initial match
+    pipeline.push({ $match: matchConditions });
+
+    // Step 6: Group by reference to select the first record
     pipeline.push({
-      $facet: {
-        // Sales pipeline
-        salesData: [
-          {
-            $match: {
-              isActive: true,
-              transactionDate: { $gte: fromDate, $lte: toDate },
-              ...(filters.division?.length > 0 && {
-                costCenter: { $in: filters.division },
-              }),
-              ...(filters.voucher?.length > 0 && {
-                $or: filters.voucher.map((voucher) => ({
-                  reference: {
-                    $regex: String(voucher).replace(
-                      /[.*+?^${}()|[\]\\]/g,
-                      "\\$&"
-                    ),
-                    $options: "i",
-                  },
-                })),
-              }),
-            },
-          },
-          {
-            $lookup: {
-              from: "metaltransactions",
-              let: { metalTxnId: "$metalTransactionId" },
-              pipeline: [
-                {
-                  $match: {
-                    $expr: { $eq: ["$_id", "$$metalTxnId"] },
-                    transactionType: "sale",
-                    isActive: true,
-                    status: { $in: ["confirmed", "completed", "draft"] },
-                  },
-                },
-              ],
-              as: "metalTxnInfo",
-            },
-          },
-          { $match: { "metalTxnInfo.0": { $exists: true } } },
-          { $unwind: "$metalTxnInfo" },
-          {
-            $addFields: {
-              "metalTxnInfo.stockItems": {
-                $ifNull: ["$metalTxnInfo.stockItems", []],
-              },
-            },
-          },
-          {
-            $unwind: {
-              path: "$metalTxnInfo.stockItems",
-              preserveNullAndEmptyArrays: false,
-            },
-          },
-          {
-            $lookup: {
-              from: "metalstocks",
-              let: { stockCode: "$metalTxnInfo.stockItems.stockCode" },
-              pipeline: [
-                { $match: { $expr: { $eq: ["$_id", "$$stockCode"] } } },
-              ],
-              as: "stockDetails",
-            },
-          },
-          {
-            $unwind: {
-              path: "$stockDetails",
-              preserveNullAndEmptyArrays: true,
-            },
-          },
-          ...(stockCodes.length > 0
-            ? [{ $match: { "stockDetails._id": { $in: stockCodes } } }]
-            : []),
-          {
-            $group: {
-              _id: {
-                transactionId: "$transactionId",
-                description: "$description",
-                stockDescription: "$stockDetails.description",
-                stockCode: "$stockDetails._id",
-              },
-              salesMkgValue: {
-                $sum: {
-                  $toDouble: {
-                    $ifNull: [
-                      "$metalTxnInfo.stockItems.makingCharges.amount",
-                      0,
-                    ],
-                  },
-                },
-              },
-              salesGrossQty: {
-                $sum: {
-                  $toDouble: {
-                    $ifNull: ["$metalTxnInfo.stockItems.grossWeight", 0],
-                  },
-                },
-              },
-              salesPcs: {
-                $sum: {
-                  $toInt: { $ifNull: ["$metalTxnInfo.stockItems.pieces", 0] },
-                },
-              },
-            },
-          },
-          // Debugging stage for sales
-          {
-            $project: {
-              _id: 1,
-              salesMkgValue: 1,
-              salesGrossQty: 1,
-              salesPcs: 1,
-              debugSales: {
-                transactionId: "$_id.transactionId",
-                stockCode: "$_id.stockCode",
-                salesDateRange: {
-                  from: fromDate.toISOString(),
-                  to: toDate.toISOString(),
-                },
-              },
-            },
-          },
-        ],
-        // Purchase pipeline
-        purchaseData: [
-          {
-            $match: {
-              isActive: true,
-              transactionDate: {
-                $gte: "2025-01-01T00:00:00.000Z",
-                $lte: "2025-07-28T00:00:00.000Z",
-              },
-            },
-          },
-          {
-            $lookup: {
-              from: "metaltransactions",
-              let: { regMetalTxnId: "$metalTransactionId" },
-              pipeline: [
-                {
-                  $match: {
-                    $expr: { $eq: ["$_id", "$$regMetalTxnId"] },
-                    transactionType: "purchase",
-                    isActive: true,
-                    // Include status filter if necessary
-                    // status: { $in: ["confirmed", "completed"] },
-                  },
-                },
-              ],
-              as: "metalTxn",
-            },
-          },
-          { $match: { "metalTxn.0": { $exists: true } } },
-          { $unwind: "$metalTxn" },
-          { $unwind: "$metalTxn.stockItems" },
-          ...(stockCodes.length > 0
-            ? [
-                {
-                  $match: {
-                    "metalTxn.stockItems.stockCode": { $in: stockCodes },
-                  },
-                },
-              ]
-            : []),
-          {
-            $group: {
-              _id: null,
-              totalPurchaseMkgAmount: {
-                $sum: {
-                  $toDouble: {
-                    $ifNull: ["$metalTxn.stockItems.makingCharges.amount", 0],
-                  },
-                },
-              },
-              totalPurchaseGrossQty: {
-                $sum: {
-                  $toDouble: {
-                    $ifNull: ["$metalTxn.stockItems.grossWeight", 0],
-                  },
-                },
-              },
-              purchaseTransactionCount: { $sum: 1 },
-            },
-          },
-          // Debugging stage for purchases
-          {
-            $project: {
-              totalPurchaseMkgAmount: 1,
-              totalPurchaseGrossQty: 1,
-              purchaseTransactionCount: 1,
-              debugPurchases: {
-                dateRange: {
-                  from: financialYearStart.toISOString(),
-                  to: currentDate.toISOString(),
-                },
-                stockCodes: stockCodes,
-              },
-            },
-          },
-        ],
+      $group: {
+        _id: "$reference",
+        transactionId: { $first: "$transactionId" },
+        metalTransactionId: { $first: "$metalTransactionId" },
+        description: { $first: "$description" },
+        transactionDate: { $first: "$transactionDate" },
       },
     });
 
-    // Merge sales and purchase data
-    pipeline.push({
-      $project: {
-        salesData: "$salesData",
-        purchaseInfo: {
-          $ifNull: [
-            { $arrayElemAt: ["$purchaseData", 0] },
-            {
-              totalPurchaseMkgAmount: 0,
-              totalPurchaseGrossQty: 0,
-              purchaseTransactionCount: 0,
-              debugPurchases: {
-                dateRange: {
-                  from: financialYearStart.toISOString(),
-                  to: currentDate.toISOString(),
-                },
-                stockCodes: stockCodes,
-              },
-            },
-          ],
-        },
-      },
-    });
-
-    // Unwind sales data
-    pipeline.push({
-      $unwind: { path: "$salesData", preserveNullAndEmptyArrays: true },
-    });
-
-    // Calculate purchase cost per unit
-    pipeline.push({
-      $addFields: {
-        purchaseCostPerUnit: {
-          $cond: [
-            {
-              $and: [
-                { $gt: ["$purchaseInfo.totalPurchaseGrossQty", 0] },
-                { $gt: ["$purchaseInfo.totalPurchaseMkgAmount", 0] },
-              ],
-            },
-            {
-              $divide: [
-                "$purchaseInfo.totalPurchaseMkgAmount",
-                "$purchaseInfo.totalPurchaseGrossQty",
-              ],
-            },
-            0,
-          ],
-        },
-        salesMkgValue: "$salesData.salesMkgValue",
-        salesGrossQty: "$salesData.salesGrossQty",
-        salesPcs: "$salesData.salesPcs",
-        _id: "$salesData._id",
-        debugSales: "$salesData.debugSales",
-        debugPurchases: "$purchaseInfo.debugPurchases",
-      },
-    });
-
-    // Calculate cost and sales rate per unit
-    pipeline.push({
-      $addFields: {
-        cost: {
-          $cond: [
-            {
-              $and: [
-                { $gt: ["$salesGrossQty", 0] },
-                { $gt: ["$purchaseCostPerUnit", 0] },
-              ],
-            },
-            { $multiply: ["$purchaseCostPerUnit", "$salesGrossQty"] },
-            0,
-          ],
-        },
-        salesRatePerUnit: {
-          $cond: [
-            { $gt: ["$salesGrossQty", 0] },
-            { $divide: ["$salesMkgValue", "$salesGrossQty"] },
-            0,
-          ],
-        },
-      },
-    });
-
-    // Calculate gross profit
-    pipeline.push({
-      $addFields: {
-        grossProfit: {
-          MkgAmount: { $subtract: ["$salesMkgValue", "$cost"] },
-          MkgRate: { $subtract: ["$salesRatePerUnit", "$purchaseCostPerUnit"] },
-        },
-      },
-    });
-
-    // Apply cost filter
-    if (
-      filters.costFilter?.amount &&
-      typeof filters.costFilter.amount === "number"
-    ) {
-      pipeline.push({
-        $match: { salesMkgValue: { $gt: filters.costFilter.amount } },
-      });
-    }
-
-    // Final projection
+    // Step 7: Project to restore fields for lookup
     pipeline.push({
       $project: {
         _id: 0,
-        CODE: { $ifNull: ["$_id.transactionId", "N/A"] },
-        DESCRIPTION: { $ifNull: ["$_id.description", "N/A"] },
-        STOCK_NAME: { $ifNull: ["$_id.stockDescription", "N/A"] },
-        STOCK_CODE: { $ifNull: ["$_id.stockCode", null] },
-        Sales: {
-          MkgValue: { $round: [{ $ifNull: ["$salesMkgValue", 0] }, 2] },
-          GrossQty: { $round: [{ $ifNull: ["$salesGrossQty", 0] }, 3] },
-          Pcs: { $ifNull: ["$salesPcs", 0] },
-        },
-        COST: { $round: [{ $ifNull: ["$cost", 0] }, 2] },
-        Gross_Profit: {
-          MkgAmount: {
-            $round: [{ $ifNull: ["$grossProfit.MkgAmount", 0] }, 2],
-          },
-          MkgRate: { $round: [{ $ifNull: ["$grossProfit.MkgRate", 0] }, 4] },
-        },
-        Metrics: {
-          purchaseCostPerUnit: {
-            $round: [{ $ifNull: ["$purchaseCostPerUnit", 0] }, 4],
-          },
-          salesRatePerUnit: {
-            $round: [{ $ifNull: ["$salesRatePerUnit", 0] }, 4],
-          },
-          profitMargin: {
-            $cond: [
-              { $gt: ["$salesMkgValue", 0] },
-              {
-                $round: [
-                  {
-                    $multiply: [
-                      { $divide: ["$grossProfit.MkgAmount", "$salesMkgValue"] },
-                      100,
-                    ],
-                  },
-                  2,
-                ],
-              },
-              0,
-            ],
-          },
-        },
-        Debug: {
-          totalPurchaseMkgAmount: {
-            $ifNull: ["$purchaseInfo.totalPurchaseMkgAmount", 0],
-          },
-          totalPurchaseGrossQty: {
-            $ifNull: ["$purchaseInfo.totalPurchaseGrossQty", 0],
-          },
-          purchaseTransactionCount: {
-            $ifNull: ["$purchaseInfo.purchaseTransactionCount", 0],
-          },
-          dateInfo: {
-            financialYearStart: financialYearStart.toISOString(),
-            currentDate: currentDate.toISOString(),
-            salesDateRange: {
-              from: fromDate.toISOString(),
-              to: toDate.toISOString(),
-            },
-          },
-          debugSales: "$debugSales",
-          debugPurchases: "$debugPurchases",
-        },
+        transactionId: 1,
+        metalTransactionId: 1,
+        reference: "$_id",
+        description: 1,
+        transactionDate: 1,
       },
     });
 
-    // Handle empty results
+    // Step 8: Lookup metalTransaction data
     pipeline.push({
-      $facet: {
-        data: [],
-        summary: [
-          {
-            $group: {
-              _id: null,
-              totalRecords: { $sum: 1 },
-              totalSales: { $sum: "$Sales.MkgValue" },
-              totalCost: { $sum: "$COST" },
-              totalProfit: { $sum: "$Gross_Profit.MkgAmount" },
-            },
-          },
-        ],
+      $lookup: {
+        from: "metaltransactions",
+        localField: "metalTransactionId",
+        foreignField: "_id",
+        as: "metaltransactions",
       },
     });
 
+    // Step 9: Unwind metaltransactions
+    pipeline.push({
+      $unwind: {
+        path: "$metaltransactions",
+        preserveNullAndEmptyArrays: false, // Only keep documents with valid metaltransactions
+      },
+    });
+
+    // Step 10: Filter for sales transactions only
+    pipeline.push({
+      $match: {
+        "metaltransactions.transactionType": "sale",
+      },
+    });
+
+    // Step 11: Unwind stockItems from metaltransactions
+    pipeline.push({
+      $unwind: {
+        path: "$metaltransactions.stockItems",
+        preserveNullAndEmptyArrays: false, // Only keep documents with valid stockItems
+      },
+    });
+
+    // Step 12: Lookup metalstocks for stock details
+    pipeline.push({
+      $lookup: {
+        from: "metalstocks",
+        localField: "metaltransactions.stockItems.stockCode",
+        foreignField: "_id",
+        as: "metaldetail",
+      },
+    });
+
+    // Step 13: Unwind metaldetail
+    pipeline.push({
+      $unwind: {
+        path: "$metaldetail",
+        preserveNullAndEmptyArrays: true,
+      },
+    });
+
+    // Step 14: Lookup karat details
+    pipeline.push({
+      $lookup: {
+        from: "karatmasters",
+        localField: "metaldetail.karat",
+        foreignField: "_id",
+        as: "karatDetails",
+      },
+    });
+
+    // Step 15: Unwind karatDetails
+    pipeline.push({
+      $unwind: {
+        path: "$karatDetails",
+        preserveNullAndEmptyArrays: true,
+      },
+    });
+
+    // Step 16: Lookup metal rate details
+    pipeline.push({
+      $lookup: {
+        from: "metalratemasters",
+        localField: "metaltransactions.stockItems.metalRate",
+        foreignField: "_id",
+        as: "metalRate",
+      },
+    });
+
+    // Step 17: Unwind metalRate
+    pipeline.push({
+      $unwind: {
+        path: "$metalRate",
+        preserveNullAndEmptyArrays: true,
+      },
+    });
+
+
+    // Step 18: Project the required fields
     pipeline.push({
       $project: {
-        results: {
-          $cond: [
-            { $eq: [{ $size: "$data" }, 0] },
-            [
-              {
-                CODE: "NO_DATA",
-                DESCRIPTION:
-                  "No sales transactions found for the specified criteria",
-                STOCK_NAME: "N/A",
-                STOCK_CODE: null,
-                Sales: { MkgValue: 0, GrossQty: 0, Pcs: 0 },
-                COST: 0,
-                Gross_Profit: { MkgAmount: 0, MkgRate: 0 },
-                Metrics: {
-                  purchaseCostPerUnit: 0,
-                  salesRatePerUnit: 0,
-                  profitMargin: 0,
-                },
-                Debug: {
-                  totalPurchaseMkgAmount: 0,
-                  totalPurchaseGrossQty: 0,
-                  purchaseTransactionCount: 0,
-                  dateInfo: {
-                    financialYearStart: financialYearStart.toISOString(),
-                    currentDate: currentDate.toISOString(),
-                    salesDateRange: {
-                      from: fromDate.toISOString(),
-                      to: toDate.toISOString(),
-                    },
-                  },
-                },
-              },
-            ],
-            "$data",
-          ],
+        stockCode: "$metaltransactions.stockItems.stockCode",
+        code: "$metaldetail.code",
+        description: "$metaltransactions.stockItems.description",
+        pcs: { $ifNull: ["$metaltransactions.stockItems.pieces", 0] },
+        grossWeight: { $ifNull: ["$metaltransactions.stockItems.grossWeight", 0] },
+        premium: { $ifNull: ["$metaltransactions.stockItems.premium.amount", 0] },
+        makingCharge: { $ifNull: ["$metaltransactions.stockItems.makingCharges.amount", 0] },
+        discount: { $literal: 0 }, // Explicitly set to 0
+        purity: { $ifNull: ["$metaltransactions.stockItems.purity", 0] },
+        pureWeight: { $ifNull: ["$metaltransactions.stockItems.pureWeight", 0] },
+        totalAmount: {
+          $ifNull: ["$metaltransactions.totalAmountSession.totalAmountAED", 0],
         },
-        summary: { $arrayElemAt: ["$summary", 0] },
+        metalValue: { $ifNull: ["$metaltransactions.stockItems.metalRateRequirements.rate", 0] },
+        _id: 0,
       },
     });
 
-    pipeline.push({ $unwind: "$results" });
+    // Step 19: Group by stockCode to consolidate transactions
     pipeline.push({
-      $replaceRoot: {
-        newRoot: {
-          $mergeObjects: [
-            "$results",
-            { _summary: { $ifNull: ["$summary", null] } },
-          ],
+      $group: {
+        _id: "$stockCode",
+        description: { $first: "$description" }, // Take the first description
+        code: { $first: "$code" }, // Take the first description
+        pcs: { $sum: "$pcs" }, // Sum pieces
+        grossWeight: { $sum: "$grossWeight" }, // Sum gross weight
+        premium: { $sum: "$premium" }, // Sum premium
+        makingCharge: { $sum: "$makingCharge" }, // Sum making charges
+        discount: { $sum: "$discount" }, // Sum discount
+        purity: { $first: "$purity" }, // Take the first purity
+        pureWeight: { $sum: "$pureWeight" }, // Sum pure weight
+        metalValue: { $sum: "$metalValue" }, // Sum metal value
+        totalAmount: { $sum: "$totalAmount" }, // Sum total amount
+      },
+    });
+
+    // Step 20: Project to format the transactions array
+    pipeline.push({
+      $project: {
+        _id: 0,
+        stockCode: "$_id", // Use the grouped _id as stockCode
+        description: 1,
+        code: 1,
+        pcs: 1,
+        grossWeight: 1,
+        premium: 1,
+        makingCharge: 1,
+        discount: 1,
+        purity: 1,
+        pureWeight: 1,
+        metalValue: 1,
+        total: "$totalAmount",
+      },
+    });
+
+    // Step 21: Group to calculate totals and collect transactions
+    pipeline.push({
+      $group: {
+        _id: null,
+        transactions: {
+          $push: {
+            stockCode: "$stockCode",
+            description: "$description",
+            code: "$code",
+            pcs: "$pcs",
+            grossWeight: "$grossWeight",
+            premium: "$premium",
+            discount: "$discount",
+            purity: "$purity",
+            pureWeight: "$pureWeight",
+            metalValue: "$metalValue",
+            makingCharge: "$makingCharge",
+            total: "$total",
+          },
+        },
+        totalPcs: { $sum: "$pcs" },
+        totalGrossWeight: { $sum: "$grossWeight" },
+        totalPremium: { $sum: "$premium" },
+        totalDiscount: { $sum: "$discount" },
+        totalPureWeight: { $sum: "$pureWeight" },
+        totalMetalValue: { $sum: "$metalValue" },
+        totalMakingCharge: { $sum: "$makingCharge" },
+      },
+    });
+
+    // Step 22: Project the final output
+    pipeline.push({
+      $project: {
+        _id: 0,
+        transactions: 1,
+        totals: {
+          totalPcs: "$totalPcs",
+          totalGrossWeight: "$totalGrossWeight",
+          totalPremium: "$totalPremium",
+          totalDiscount: "$totalDiscount",
+          totalPureWeight: "$totalPureWeight",
+          totalMetalValue: "$totalMetalValue",
+          totalMakingCharge: "$totalMakingCharge",
         },
       },
     });
-    pipeline.push({ $sort: { CODE: 1, "Sales.MkgValue": -1 } });
+
+    return pipeline;
+  }
+
+   calculateSalesAnalysis(salesReport, purchaseReport) {
+    const salesTransactions = salesReport[0]?.transactions || [];
+    const purchaseTransactions = purchaseReport[0]?.transactions || [];
+  
+    // Create purchase map by stockCode
+    const purchaseMap = new Map();
+    purchaseTransactions.forEach(p => {
+      purchaseMap.set(p.stockCode.toString(), {
+        makingCharge: p.makingCharge || 0,
+        grossWeight: p.grossWeight || 0,
+        total: p.total || 0,
+      });
+    });
+  
+    // Calculate and combine
+    const combinedTransactions = salesTransactions.map(sale => {
+      const stockCode = sale.stockCode.toString();
+      const purchase = purchaseMap.get(stockCode) || {
+        makingCharge: 0,
+        grossWeight: 0,
+        total: 0,
+      };
+  
+      const saleGrossWeight = sale.grossWeight || 0;
+      const saleMakingCharge = sale.makingCharge || 0;
+  
+      const purchaseGrossWeight = purchase.grossWeight || 0;
+      const purchaseMakingCharge = purchase.makingCharge || 0;
+  
+      // Avg making charges
+      const avgPurchaseMakingCharge = purchaseGrossWeight > 0
+        ? purchaseMakingCharge / purchaseGrossWeight
+        : 0;
+  
+      const avgSaleMakingCharge = saleGrossWeight > 0
+        ? saleMakingCharge / saleGrossWeight
+        : 0;
+  
+      // Cost of sale
+      const cost = avgPurchaseMakingCharge * saleGrossWeight;
+  
+      // Profit metrics
+      const profitMakingRate = avgSaleMakingCharge - avgPurchaseMakingCharge;
+      const profitMakingAmount = saleMakingCharge - purchaseMakingCharge;
+  
+      return {
+        stockCode: sale.stockCode,
+        description: sale.description,
+        pcs: sale.pcs,
+        grossWeight: saleGrossWeight,
+        saleMakingCharge: saleMakingCharge,
+        purchaseMakingCharge: purchaseMakingCharge,
+        avgPurchaseMakingCharge: avgPurchaseMakingCharge,
+        avgSaleMakingCharge: avgSaleMakingCharge,
+        cost: cost,
+        profitMakingRate: profitMakingRate,
+        profitMakingAmount: profitMakingAmount,
+        totalSale: sale.total,
+        totalPurchase: purchase.total,
+        profit: sale.total - purchase.total,
+      };
+    });
+  
+    // Totals (if needed)
+    const totals = {
+      totalPcs: combinedTransactions.reduce((sum, t) => sum + (t.pcs || 0), 0),
+      totalGrossWeight: combinedTransactions.reduce((sum, t) => sum + (t.grossWeight || 0), 0),
+      totalMakingCharge: combinedTransactions.reduce((sum, t) => sum + (t.saleMakingCharge || 0), 0),
+      totalCost: combinedTransactions.reduce((sum, t) => sum + (t.cost || 0), 0),
+      totalProfitMakingAmount: combinedTransactions.reduce((sum, t) => sum + (t.profitMakingAmount || 0), 0),
+      totalProfit: combinedTransactions.reduce((sum, t) => sum + (t.profit || 0), 0),
+    };
+  
+    return {
+      transactions: combinedTransactions,
+      totals,
+    };
+  }
+  
+
+  buildSalesAnalysisPurchase() {
+    const pipeline = [];
+
+    // Step 1: Base match condition
+    const matchConditions = {
+      isActive: true,
+      transactionDate: {
+        $gte: new Date('2025-01-01T00:00:00.000Z'), // Financial year start
+        $lte: new Date('2025-07-30T23:59:59.999Z'), // Current date
+      },
+    };
+
+
+    // Step 3: Filter by reference starting with "SAL"
+    matchConditions.reference = {
+      $regex: '^PRM', // Matches references starting with "SAL"
+      $options: 'i', // Case-insensitive
+    };
+
+    // Step 4: Include documents where metalTransactionId exists
+    matchConditions.metalTransactionId = { $exists: true, $ne: null };
+
+    // Step 5: Apply the initial match
+    pipeline.push({ $match: matchConditions });
+
+    // Step 6: Group by reference to select the first record
+    pipeline.push({
+      $group: {
+        _id: "$reference",
+        transactionId: { $first: "$transactionId" },
+        metalTransactionId: { $first: "$metalTransactionId" },
+        description: { $first: "$description" },
+        transactionDate: { $first: "$transactionDate" },
+      },
+    });
+
+    // Step 7: Project to restore fields for lookup
+    pipeline.push({
+      $project: {
+        _id: 0,
+        transactionId: 1,
+        metalTransactionId: 1,
+        reference: "$_id",
+        description: 1,
+        transactionDate: 1,
+      },
+    });
+
+    // Step 8: Lookup metalTransaction data
+    pipeline.push({
+      $lookup: {
+        from: "metaltransactions",
+        localField: "metalTransactionId",
+        foreignField: "_id",
+        as: "metaltransactions",
+      },
+    });
+
+    // Step 9: Unwind metaltransactions
+    pipeline.push({
+      $unwind: {
+        path: "$metaltransactions",
+        preserveNullAndEmptyArrays: false, // Only keep documents with valid metaltransactions
+      },
+    });
+
+    // Step 10: Filter for sales transactions only
+    pipeline.push({
+      $match: {
+        "metaltransactions.transactionType": "purchase",
+      },
+    });
+
+    // Step 11: Unwind stockItems from metaltransactions
+    pipeline.push({
+      $unwind: {
+        path: "$metaltransactions.stockItems",
+        preserveNullAndEmptyArrays: false, // Only keep documents with valid stockItems
+      },
+    });
+
+    // Step 12: Lookup metalstocks for stock details
+    pipeline.push({
+      $lookup: {
+        from: "metalstocks",
+        localField: "metaltransactions.stockItems.stockCode",
+        foreignField: "_id",
+        as: "metaldetail",
+      },
+    });
+
+    // Step 13: Unwind metaldetail
+    pipeline.push({
+      $unwind: {
+        path: "$metaldetail",
+        preserveNullAndEmptyArrays: true,
+      },
+    });
+
+    // Step 14: Lookup karat details
+    pipeline.push({
+      $lookup: {
+        from: "karatmasters",
+        localField: "metaldetail.karat",
+        foreignField: "_id",
+        as: "karatDetails",
+      },
+    });
+
+    // Step 15: Unwind karatDetails
+    pipeline.push({
+      $unwind: {
+        path: "$karatDetails",
+        preserveNullAndEmptyArrays: true,
+      },
+    });
+
+    // Step 16: Lookup metal rate details
+    pipeline.push({
+      $lookup: {
+        from: "metalratemasters",
+        localField: "metaltransactions.stockItems.metalRate",
+        foreignField: "_id",
+        as: "metalRate",
+      },
+    });
+
+    // Step 17: Unwind metalRate
+    pipeline.push({
+      $unwind: {
+        path: "$metalRate",
+        preserveNullAndEmptyArrays: true,
+      },
+    });
+
+    // Step 18: Project the required fields
+    pipeline.push({
+      $project: {
+        stockCode: "$metaltransactions.stockItems.stockCode",
+        description: "$metaltransactions.stockItems.description",
+        pcs: { $ifNull: ["$metaltransactions.stockItems.pieces", 0] },
+        grossWeight: { $ifNull: ["$metaltransactions.stockItems.grossWeight", 0] },
+        premium: { $ifNull: ["$metaltransactions.stockItems.premium.amount", 0] },
+        makingCharge: { $ifNull: ["$metaltransactions.stockItems.makingCharges.amount", 0] },
+        discount: { $literal: 0 }, // Explicitly set to 0
+        purity: { $ifNull: ["$metaltransactions.stockItems.purity", 0] },
+        pureWeight: { $ifNull: ["$metaltransactions.stockItems.pureWeight", 0] },
+        totalAmount: {
+          $ifNull: ["$metaltransactions.totalAmountSession.totalAmountAED", 0],
+        },
+        metalValue: { $ifNull: ["$metaltransactions.stockItems.metalRateRequirements.rate", 0] },
+        _id: 0,
+      },
+    });
+
+    // Step 19: Group by stockCode to consolidate transactions
+    pipeline.push({
+      $group: {
+        _id: "$stockCode",
+        description: { $first: "$description" }, // Take the first description
+        pcs: { $sum: "$pcs" }, // Sum pieces
+        grossWeight: { $sum: "$grossWeight" }, // Sum gross weight
+        premium: { $sum: "$premium" }, // Sum premium
+        makingCharge: { $sum: "$makingCharge" }, // Sum making charges
+        discount: { $sum: "$discount" }, // Sum discount
+        purity: { $first: "$purity" }, // Take the first purity
+        pureWeight: { $sum: "$pureWeight" }, // Sum pure weight
+        metalValue: { $sum: "$metalValue" }, // Sum metal value
+        totalAmount: { $sum: "$totalAmount" }, // Sum total amount
+      },
+    });
+
+    // Step 20: Project to format the transactions array
+    pipeline.push({
+      $project: {
+        _id: 0,
+        stockCode: "$_id", // Use the grouped _id as stockCode
+        description: 1,
+        pcs: 1,
+        grossWeight: 1,
+        premium: 1,
+        makingCharge: 1,
+        discount: 1,
+        purity: 1,
+        pureWeight: 1,
+        metalValue: 1,
+        total: "$totalAmount",
+      },
+    });
+
+    // Step 21: Group to calculate totals and collect transactions
+    pipeline.push({
+      $group: {
+        _id: null,
+        transactions: {
+          $push: {
+            stockCode: "$stockCode",
+            description: "$description",
+            pcs: "$pcs",
+            grossWeight: "$grossWeight",
+            premium: "$premium",
+            discount: "$discount",
+            purity: "$purity",
+            pureWeight: "$pureWeight",
+            metalValue: "$metalValue",
+            makingCharge: "$makingCharge",
+            total: "$total",
+          },
+        },
+        totalPcs: { $sum: "$pcs" },
+        totalGrossWeight: { $sum: "$grossWeight" },
+        totalPremium: { $sum: "$premium" },
+        totalDiscount: { $sum: "$discount" },
+        totalPureWeight: { $sum: "$pureWeight" },
+        totalMetalValue: { $sum: "$metalValue" },
+        totalMakingCharge: { $sum: "$makingCharge" },
+      },
+    });
+
+    // Step 22: Project the final output
+    pipeline.push({
+      $project: {
+        _id: 0,
+        transactions: 1,
+        totals: {
+          totalPcs: "$totalPcs",
+          totalGrossWeight: "$totalGrossWeight",
+          totalPremium: "$totalPremium",
+          totalDiscount: "$totalDiscount",
+          totalPureWeight: "$totalPureWeight",
+          totalMetalValue: "$totalMetalValue",
+          totalMakingCharge: "$totalMakingCharge",
+        },
+      },
+    });
 
     return pipeline;
   }
@@ -3861,8 +3938,8 @@ export class ReportService {
       dateRange:
         filters.startDate && filters.endDate
           ? `${moment(filters.startDate).format("DD/MM/YYYY")} to ${moment(
-              filters.endDate
-            ).format("DD/MM/YYYY")}`
+            filters.endDate
+          ).format("DD/MM/YYYY")}`
           : "All dates",
       hasStockFilter: filters.stock.length > 0,
       hasKaratFilter: filters.karat.length > 0,
