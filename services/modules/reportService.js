@@ -1478,7 +1478,7 @@ buildSalesAnalysis(filters) {
   buildStockMovementPipeline(filters) {
     const pipeline = [];
 
-    // 1. Match only active + opening stock
+    // 1. Match only active + GOLD_STOCK transactions
     const matchConditions = {
       isActive: true,
       type: "GOLD_STOCK",
@@ -1597,13 +1597,15 @@ buildSalesAnalysis(filters) {
     pipeline.push({
       $unwind: { path: "$karat", preserveNullAndEmptyArrays: true },
     });
-    // return pipeline
 
-    // 10. Project clean fields
+    // 10. Project clean fields with opening stock flag and debug info
     pipeline.push({
       $project: {
         grossWeight: 1,
         pureWeight: 1,
+        transactionId: 1, // For debugging
+        reference: 1, // For debugging
+        voucherType: "$metalTxnInfo.voucherType", // For debugging
         stockId: {
           $ifNull: ["$metalInfo._id", "$metalTxnInfo.stockItems.stockCode"],
         },
@@ -1619,23 +1621,58 @@ buildSalesAnalysis(filters) {
         description: {
           $ifNull: ["$metalInfo.description", "$metaldetail.description"],
         },
+        totalValue: {
+          $ifNull: ["$metalInfo.totalValue", "$metaldetail.totalValue",0],
+        },
+        pcs: {
+          $ifNull: ["$metalInfo.pcs", "$metaldetail.pcs", false],
+        },
+        isOpeningStock: {
+          $cond: {
+            if: {
+              $or: [
+                { $eq: ["$reference", "OSB0001"] },
+                { $eq: ["$metalTxnInfo.voucherType", "OPENING-STOCK-BALANCE"] },
+                { $regexMatch: { input: "$description", regex: "OPENING STOCK", options: "i" } },
+              ],
+            },
+            then: true,
+            else: false,
+          },
+        },
       },
     });
 
-    // 11. Group by CODE only (or stockId if groupBy includes stockCode)
+    // 11. Group by CODE or stockId, separating opening and total weights
     const groupId = filters.groupBy?.includes("stockCode")
       ? "$stockId"
       : "$code";
 
+      
     pipeline.push({
       $group: {
         _id: groupId,
         code: { $first: "$code" },
         purity: { $first: "$purity" },
         description: { $first: "$description" },
+        totalValue: { $first: "$totalValue" },
+        pcs: { $first: "$pcs" },
+        openingGrossWeight: {
+          $sum: {
+            $cond: [{ $eq: ["$isOpeningStock", true] }, "$grossWeight", 0],
+          },
+        },
+        openingPureWeight: {
+          $sum: {
+            $cond: [{ $eq: ["$isOpeningStock", true] }, "$pureWeight", 0],
+          },
+        },
         totalGrossWeight: { $sum: "$grossWeight" },
         totalPureWeight: { $sum: "$pureWeight" },
         totalPcs: { $sum: { $ifNull: ["$pcs", 0] } },
+        transactionIds: { $push: "$transactionId" }, // For debugging
+        references: { $push: "$reference" }, // For debugging
+        voucherTypes: { $push: "$voucherType" }, // For debugging
       },
     });
 
@@ -1759,11 +1796,12 @@ buildSalesAnalysis(filters) {
         code: { $ifNull: ["$code", "N/A"] },
         purity: { $ifNull: ["$purity", "N/A"] },
         description: { $ifNull: ["$description", "No Description"] },
-        description: { $ifNull: ["$description", "No Description"] },
+        totalValue: { $ifNull: ["$totalValue", "No TotalValue"] },
+        pcs: { $ifNull: ["$pcs", "No TotalValue"] },
         opening: {
           pcs: "$totalPcs",
-          grossWeight: "$totalGrossWeight",
-          pureWeight: "$totalPureWeight",
+          grossWeight: "$openingGrossWeight",
+          pureWeight: "$openingPureWeight",
         },
         Weight: {
           pcs: "$totalPcs",
@@ -1772,12 +1810,12 @@ buildSalesAnalysis(filters) {
           net: "$totalPureWeight",
         },
         payment: {
-          pcs: null, // You can add pcs calculation if needed
+          pcs: null,
           grossWeight: { $ifNull: ["$paymentGross", 0] },
           pureWeight: { $ifNull: ["$paymentPure", 0] },
         },
         receipt: {
-          pcs: null, // You can add pcs calculation if needed
+          pcs: null,
           grossWeight: { $ifNull: ["$receiptGross", 0] },
           pureWeight: { $ifNull: ["$receiptPure", 0] },
         },
@@ -1804,6 +1842,12 @@ buildSalesAnalysis(filters) {
               },
             ],
           },
+        },
+        debug: {
+          // For debugging
+          transactionIds: "$transactionIds",
+          references: "$references",
+          voucherTypes: "$voucherTypes",
         },
       },
     });
@@ -2860,6 +2904,7 @@ buildSalesAnalysis(filters) {
     pipeline.push({
       $project: {
         transactionId: "$transactionId",
+        reference: "$reference",
         description: "$description",
         pcs: { $ifNull: ["$metaltransactions.stockItems.pieces", 0] },
         grossWeight: {
@@ -2918,6 +2963,7 @@ buildSalesAnalysis(filters) {
         transactions: {
           $push: {
             transactionId: "$transactionId",
+            reference: "$reference",
             description: "$description",
             pcs: "$pcs",
             grossWeight: "$grossWeight",
@@ -2957,7 +3003,7 @@ buildSalesAnalysis(filters) {
       },
     });
 
-    return pipeline;
+    return pipeline
 
     // Dynamically add conditions based on non-empty arrays
     if (filters.groupByRange?.stockCode?.length > 0) {
@@ -3145,23 +3191,19 @@ buildSalesAnalysis(filters) {
     /* ------------------------------------------
        Step 7: Filter metaltransactions for fixed: true for PRM and SAL
     ------------------------------------------ */
-    pipeline.push({
-      $match: {
-        $or: [
-          {
-            reference: {
-              $not: { $regex: "^(PRM|SAL|PR|SR)\\d+", $options: "i" },
-            },
-          }, // Keep all non-PRM/SAL
-          {
-            $and: [
-              { reference: { $regex: "^(PRM|SAL|SR|PR)\\d+", $options: "i" } }, // Match PRM or SAL
-              { "metaltransactions.fixed": true }, // Only include if fixed is true
-            ],
-          },
-        ],
-      },
-    });
+    // pipeline.push({
+    //   $match: {
+    //     $or: [
+    //       { reference: { $not: { $regex: "^(PRM|SAL|PR|SR)\\d+", $options: "i" } } }, // Keep all non-PRM/SAL
+    //       {
+    //         $and: [
+    //           { reference: { $regex: "^(PRM|SAL|SR|PR)\\d+", $options: "i" } }, // Match PRM or SAL
+    //           { "metaltransactions.fixed": true } // Only include if fixed is true
+    //         ]
+    //       }
+    //     ]
+    //   }
+    // });
 
     /* ------------------------------------------
        Step 8: Sort by transactionDate to ensure consistent $first selection (optional)

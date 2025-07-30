@@ -2421,143 +2421,189 @@ class MetalTransactionService {
     const session = await mongoose.startSession();
     try {
       session.startTransaction();
-
-      // Fetch the existing transaction
-      const transaction = await MetalTransaction.findById(
-        transactionId
-      ).session(session);
-      if (!transaction || !transaction.isActive) {
-        throw createAppError(
-          "Metal transaction not found",
-          404,
-          "TRANSACTION_NOT_FOUND"
-        );
+      console.log(`[UPDATE_TRANSACTION] Starting update for transaction ${transactionId} by admin ${adminId}`);
+  
+      // Validate input parameters
+      if (!transactionId || !mongoose.isValidObjectId(transactionId)) {
+        throw createAppError("Invalid transaction ID", 400, "INVALID_TRANSACTION_ID");
       }
-
-      // Store the old transaction data for reversal
+      if (!adminId || !mongoose.isValidObjectId(adminId)) {
+        throw createAppError("Invalid admin ID", 400, "INVALID_ADMIN_ID");
+      }
+  
+      // Fetch the existing transaction
+      console.log(`[UPDATE_TRANSACTION] Fetching transaction ${transactionId}`);
+      const transaction = await MetalTransaction.findById(transactionId).session(session);
+      if (!transaction) {
+        throw createAppError("Metal transaction not found", 404, "TRANSACTION_NOT_FOUND");
+      }
+      if (!transaction.isActive) {
+        throw createAppError("Metal transaction is inactive", 400, "TRANSACTION_INACTIVE");
+      }
+  
+      // Store original transaction data for potential reversal
       const oldPartyId = transaction.partyCode;
       const oldStockItems = [...transaction.stockItems];
       const oldSessionTotals = { ...transaction.totalAmountSession };
-
+      console.log(`[UPDATE_TRANSACTION] Original party: ${oldPartyId}, stock items count: ${oldStockItems.length}`);
+  
       // Check if partyCode is changing
-      const isPartyChanged =
-        updateData.partyCode &&
+      const isPartyChanged = updateData.partyCode && 
         transaction.partyCode.toString() !== updateData.partyCode.toString();
-
-      // Fetch old and new parties (if partyCode is changing)
+      console.log(`[UPDATE_TRANSACTION] Party change detected: ${isPartyChanged}`);
+  
+      // Fetch party data
       let oldParty = null;
       let newParty = null;
       if (isPartyChanged) {
-        oldParty = await Account.findById(oldPartyId).session(session);
-        newParty = await Account.findById(updateData.partyCode).session(
-          session
-        );
+        console.log(`[UPDATE_TRANSACTION] Fetching old party ${oldPartyId} and new party ${updateData.partyCode}`);
+        [oldParty, newParty] = await Promise.all([
+          Account.findById(oldPartyId).session(session),
+          Account.findById(updateData.partyCode).session(session)
+        ]);
+  
         if (!oldParty || !oldParty.isActive) {
           throw createAppError(
-            "Old party not found or inactive",
+            `Old party ${oldPartyId} not found or inactive`,
             404,
             "OLD_PARTY_NOT_FOUND"
           );
         }
         if (!newParty || !newParty.isActive) {
           throw createAppError(
-            "New party not found or inactive",
+            `New party ${updateData.partyCode} not found or inactive`,
             400,
             "NEW_PARTY_NOT_FOUND"
           );
         }
-        // Validate old party's balances before reversal
+  
+        // Validate old party balances
         const oldTransaction = {
           ...transaction.toObject(),
           stockItems: oldStockItems,
           totalAmountSession: oldSessionTotals,
           partyCode: oldPartyId,
         };
+        console.log(`[UPDATE_TRANSACTION] Validating balances for old party ${oldPartyId}`);
         await this.validatePartyBalances(oldParty, oldTransaction, true);
         console.log(
-          `Party changed from ${oldParty.customerName} (${oldParty.accountCode}) to ${newParty.customerName} (${newParty.accountCode})`
+          `[UPDATE_TRANSACTION] Party changed from ${oldParty.customerName} (${oldParty.accountCode}) ` +
+          `to ${newParty.customerName} (${newParty.accountCode})`
         );
       } else {
-        // If partyCode is not changing, fetch the current party
+        console.log(`[UPDATE_TRANSACTION] Fetching current party ${oldPartyId}`);
         oldParty = await Account.findById(oldPartyId).session(session);
         newParty = oldParty;
         if (!oldParty || !oldParty.isActive) {
           throw createAppError(
-            "Party not found or inactive",
+            `Party ${oldPartyId} not found or inactive`,
             404,
             "PARTY_NOT_FOUND"
           );
         }
       }
-
+  
       // Update transaction with new data
-      Object.assign(transaction, { ...updateData, updatedBy: adminId });
-
+      console.log(`[UPDATE_TRANSACTION] Applying updates to transaction ${transactionId}`);
+      Object.assign(transaction, { 
+        ...updateData, 
+        updatedBy: adminId,
+        updatedAt: new Date()
+      });
+  
       // Recalculate session totals if stock items changed
       if (updateData.stockItems) {
+        console.log(`[UPDATE_TRANSACTION] Recalculating session totals for transaction ${transactionId}`);
         transaction.calculateSessionTotals();
       }
-
-      // Save the updated transaction
+  
+      // Save updated transaction
+      console.log(`[UPDATE_TRANSACTION] Saving updated transaction ${transactionId}`);
       await transaction.save({ session });
-
+  
       // Handle registry entries and balance updates
-      if (
-        updateData.stockItems ||
-        updateData.totalAmountSession ||
-        isPartyChanged
-      ) {
-        // Step 1: Delete old registry entries
-        await this.DeleteRegistryEntry(transaction);
-
-        // Step 2: Create new registry entries for the updated transaction
-        const newRegistryEntries = this.buildRegistryEntries(
-          transaction,
-          newParty,
-          adminId
-        );
+      if (updateData.stockItems || updateData.totalAmountSession || isPartyChanged) {
+        console.log(`[UPDATE_TRANSACTION] Processing registry and balance updates for transaction ${transactionId}`);
+  
+        // Delete old registry entries
+        console.log(`[UPDATE_TRANSACTION] Deleting old registry entries`);
+        await this.deleteRegistryEntry(transaction);
+  
+        // Create new registry entries
+        console.log(`[UPDATE_TRANSACTION] Creating new registry entries`);
+        const newRegistryEntries = this.buildRegistryEntries(transaction, newParty, adminId);
         if (newRegistryEntries.length > 0) {
-          await Registry.insertMany(newRegistryEntries, {
-            session,
-            ordered: false,
-          });
+          console.log(`[UPDATE_TRANSACTION] Inserting ${newRegistryEntries.length} new registry entries`);
+          await Registry.insertMany(newRegistryEntries, { session, ordered: false });
         }
-
-        // Step 3: Reverse balances for the old transaction (always)
+  
+        // Reverse old balances
         const oldTransaction = {
           ...transaction.toObject(),
           stockItems: oldStockItems,
           totalAmountSession: oldSessionTotals,
           partyCode: oldPartyId,
         };
+        console.log(`[UPDATE_TRANSACTION] Reversing balances for old party ${oldPartyId}`);
         await this.updateTradeDebtorsBalances(
           oldParty._id,
           oldTransaction,
           session,
-          false, // Not an update, but a reversal
-          true // Reversal flag
+          false,
+          true
         );
-
-        // Step 4: Apply balances for the updated transaction
+  
+        // Apply new balances
+        console.log(`[UPDATE_TRANSACTION] Applying balances for new party ${newParty._id}`);
         await this.updateTradeDebtorsBalances(
           newParty._id,
           transaction,
           session,
-          true // Update flag
+          true
         );
       } else {
-        console.log(
-          `No balance-affecting fields updated for transaction ${transactionId}`
-        );
+        console.log(`[UPDATE_TRANSACTION] No balance-affecting fields updated for transaction ${transactionId}`);
       }
-
+  
+      // Commit transaction
+      console.log(`[UPDATE_TRANSACTION] Committing transaction for ${transactionId}`);
       await session.commitTransaction();
-      return await this.getMetalTransactionById(transactionId);
+      
+      // Fetch and return final transaction
+      console.log(`[UPDATE_TRANSACTION] Fetching final transaction data for ${transactionId}`);
+      const finalTransaction = await this.getMetalTransactionById(transactionId);
+      console.log(`[UPDATE_TRANSACTION] Update completed successfully for transaction ${transactionId}`);
+      
+      return finalTransaction;
     } catch (error) {
+      console.error(`[UPDATE_TRANSACTION_ERROR] Error updating transaction ${transactionId}:`, {
+        message: error.message,
+        code: error.code,
+        stack: error.stack,
+        transactionId,
+        adminId,
+        updateData: JSON.stringify(updateData)
+      });
+  
       await session.abortTransaction();
-      throw this.handleError(error);
+      
+      // Enhance error with context
+      const enhancedError = createAppError(
+        error.message || "Failed to update metal transaction",
+        error.status || 500,
+        error.code || "UPDATE_TRANSACTION_FAILED",
+        {
+          transactionId,
+          adminId,
+          updateData,
+          originalError: error.message
+        }
+      );
+      
+      throw this.handleError(enhancedError);
     } finally {
-      session.endSession();
+      console.log(`[UPDATE_TRANSACTION] Ending session for transaction ${transactionId}`);
+      await session.endSession();
     }
   }
 
@@ -2586,21 +2632,21 @@ class MetalTransactionService {
         balanceChanges.discountBalance
       );
 
-      if (requiredGoldBalance > goldBalance) {
-        throw createAppError(
-          `Insufficient gold balance for reversal: ${goldBalance}g available, ${requiredGoldBalance}g required`,
-          400,
-          "INSUFFICIENT_GOLD_BALANCE"
-        );
-      }
+      // if (requiredGoldBalance > goldBalance) {
+      //   throw createAppError(
+      //     `Insufficient gold balance for reversal: ${goldBalance}g available, ${requiredGoldBalance}g required`,
+      //     400,
+      //     "INSUFFICIENT_GOLD_BALANCE"
+      //   );
+      // }
 
-      if (requiredCashBalance > cashBalance) {
-        throw createAppError(
-          `Insufficient cash balance for reversal: ${cashBalance} AED available, ${requiredCashBalance} AED required`,
-          400,
-          "INSUFFICIENT_CASH_BALANCE"
-        );
-      }
+      // if (requiredCashBalance > cashBalance) {
+      //   throw createAppError(
+      //     `Insufficient cash balance for reversal: ${cashBalance} AED available, ${requiredCashBalance} AED required`,
+      //     400,
+      //     "INSUFFICIENT_CASH_BALANCE"
+      //   );
+      // }
     }
   }
 
