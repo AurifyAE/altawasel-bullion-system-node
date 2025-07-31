@@ -4,7 +4,8 @@ import { createAppError } from "../../utils/errorHandler.js";
 // Create Transaction
 export const createTransaction = async (req, res, next) => {
   try {
-    const { partyId, price, quantityGm, type, metalType, notes ,voucherCode ,voucherType ,prefix} = req.body;
+    const { partyId, price, quantityGm, type, metalType, notes ,voucherCode ,voucherType ,prefix,goldBidValue} = req.body;
+   
     // Validation
     if (!partyId || !quantityGm || !type || !metalType) {
       throw createAppError(
@@ -39,7 +40,7 @@ export const createTransaction = async (req, res, next) => {
       price: parseFloat(price),
       voucherNumber:voucherCode,
       voucherType,
-      
+      goldBidValue
     };
 
     // Add optional fields if provided

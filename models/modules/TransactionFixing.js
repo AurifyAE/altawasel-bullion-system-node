@@ -26,6 +26,11 @@ const TransactionFixingSchema = new mongoose.Schema(
       index: true,
       // Allow null values but enforce uniqueness when present
     },
+    goldBidValue: {
+      type: Number,
+      default: null,
+      // min: [0, "Gold bid value cannot be negative"],
+    },
     partyId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Account", // Assuming you have a PartyMaster model

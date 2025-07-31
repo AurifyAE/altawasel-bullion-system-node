@@ -72,6 +72,11 @@ const RegistrySchema = new mongoose.Schema(
       required: [true, "Transaction value is required"],
       // min: [0, "Value cannot be negative"],
     },
+    goldBidValue: {
+      type: Number,
+      default: null,
+      // min: [0, "Gold bid value cannot be negative"],
+    },
     debit: {
       type: Number,
       default: 0,

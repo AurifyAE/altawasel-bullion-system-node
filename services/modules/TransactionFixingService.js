@@ -7,6 +7,9 @@ import mongoose from "mongoose";
 export const TransactionFixingService = {
   // Create Transaction with Registry Integration
   createTransaction: async (transactionData, adminId) => {
+    console.log('====================================');
+    console.log(transactionData);
+    console.log('====================================');
     const session = await mongoose.startSession();
     session.startTransaction();
 
@@ -88,8 +91,14 @@ export const TransactionFixingService = {
       if (!account) {
         throw createAppError("Account not found", 404, "ACCOUNT_NOT_FOUND");
       }
+      console.log('====================================');
+      console.log("On hereee");
+      console.log('====================================');
 
-
+      console.log('====================================');
+      console.log(transactionData);
+      console.log('====================================');
+   
       // Create the main transaction
       const transaction = new TransactionFixing({
         transactionId: transactionId, // Use the generated ID
@@ -110,14 +119,15 @@ export const TransactionFixingService = {
         // 3. PARTY_GOLD_BALANCE - Debit (party gives gold to us)
         const partyGoldBalanceEntry = new Registry({
           transactionId: `${registryTransactionId}-PARTY-GOLD`,
-          fixingTransactionId:transaction._id,
+          fixingTransactionId: transaction._id,
           type: "PARTY_GOLD_BALANCE",
           description: `Party gold balance - Purchase from ${account.customerName || account.accountCode
             }`,
           party: transactionData.partyId,
           isBullion: false,
+          goldBidValue: transactionData.goldBidValue,
           value: transactionData.quantityGm,
-          grossWeight:transactionData.quantityGm,
+          grossWeight: transactionData.quantityGm,
           debit: transactionData.quantityGm, // Party gives gold (debit from party perspective)
           goldCredit: transactionData.quantityGm,
           cashDebit: transactionData.price,
@@ -129,14 +139,15 @@ export const TransactionFixingService = {
 
         const partyGoldBalanceEntryFIX = new Registry({
           transactionId: `${registryTransactionId}-PARTY-GOLD`,
-          fixingTransactionId:transaction._id,
+          fixingTransactionId: transaction._id,
           type: "purchase-fixing",
           description: `Party gold balance - Purchase from ${account.customerName || account.accountCode
             }`,
           party: transactionData.partyId,
           isBullion: false,
+          goldBidValue: transactionData.goldBidValue,
           value: transactionData.quantityGm,
-          grossWeight:transactionData.quantityGm,
+          grossWeight: transactionData.quantityGm,
           debit: 0, // Party gives gold (debit from party perspective)
           goldCredit: transactionData.quantityGm,
           cashDebit: transactionData.price,
@@ -149,14 +160,15 @@ export const TransactionFixingService = {
         // 4. PARTY_CASH_BALANCE - Credit (we pay cash to party)
         const partyCashBalanceEntry = new Registry({
           transactionId: `${registryTransactionId}-PARTY-CASH`,
-          fixingTransactionId:transaction._id,
+          fixingTransactionId: transaction._id,
           type: "PARTY_CASH_BALANCE",
           description: `Party cash balance - Payment for gold purchase from ${account.customerName || account.accountCode
             }`,
           party: transactionData.partyId,
           isBullion: false,
+          goldBidValue: transactionData.goldBidValue,
           value: totalValue,
-          grossWeight:transactionData.quantityGm,
+          grossWeight: transactionData.quantityGm,
           debit: 0,
           goldCredit: transactionData.quantityGm,
           cashDebit: transactionData.price,
@@ -203,14 +215,15 @@ export const TransactionFixingService = {
         // 3. PARTY_GOLD_BALANCE - Credit (party receives gold from us)
         const partyGoldBalanceEntry = new Registry({
           transactionId: `${registryTransactionId}-PARTY-GOLD`,
-          fixingTransactionId:transaction._id,
+          fixingTransactionId: transaction._id,
           type: "PARTY_GOLD_BALANCE",
           description: `Party gold balance - Purchase from ${account.customerName || account.accountCode
             }`,
           party: transactionData.partyId,
           isBullion: false,
+          goldBidValue: transactionData.goldBidValue,
           value: transactionData.quantityGm,
-          grossWeight:transactionData.quantityGm,
+          grossWeight: transactionData.quantityGm,
           debit: 0, // Party gives gold (debit from party perspective)
           goldCredit: transactionData.quantityGm,
           cashDebit: transactionData.price,
@@ -222,14 +235,15 @@ export const TransactionFixingService = {
 
         const partyGoldBalanceEntryFIX = new Registry({
           transactionId: `${registryTransactionId}-PARTY-GOLD`,
-          fixingTransactionId:transaction._id,
+          fixingTransactionId: transaction._id,
           type: "sales-fixing",
           description: `Party gold balance - Purchase from ${account.customerName || account.accountCode
             }`,
           party: transactionData.partyId,
           isBullion: false,
           value: 0,
-          grossWeight:transactionData.quantityGm,
+          goldBidValue: transactionData.goldBidValue,
+          grossWeight: transactionData.quantityGm,
           debit: transactionData.quantityGm, // Party gives gold (debit from party perspective)
           goldDebit: transactionData.quantityGm,
           cashCredit: transactionData.price,
@@ -242,13 +256,14 @@ export const TransactionFixingService = {
         // 4. PARTY_CASH_BALANCE - Debit (party pays cash to us)
         const partyCashBalanceEntry = new Registry({
           transactionId: `${registryTransactionId}-PARTY-CASH`,
-          fixingTransactionId:transaction._id,
+          fixingTransactionId: transaction._id,
           type: "PARTY_CASH_BALANCE",
           description: `Party cash balance - Payment for gold sale to ${account.customerName || account.accountCode
             }`,
           party: transactionData.partyId,
           value: totalValue,
-          grossWeight:transactionData.quantityGm,
+          goldBidValue: transactionData.goldBidValue,
+          grossWeight: transactionData.quantityGm,
           debit: totalValue, // Party pays cas  h (debit from party)
           credit: 0,
           goldDebit: transactionData.quantityGm,
