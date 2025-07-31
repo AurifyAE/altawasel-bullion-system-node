@@ -3,6 +3,7 @@ import Registry from "../../models/modules/Registry.js";
 import moment from "moment";
 import { log } from "console";
 import Inventory from "../../models/modules/inventory.js";
+import Account from "../../models/modules/AccountType.js";
 
 // ReportService class to handle stock ledger and movement reports
 export class ReportService {
@@ -226,30 +227,34 @@ export class ReportService {
 
   async getOwnStockReport(filters) {
     try {
-      // Validate and format input filters
+      // 1. Validate and normalize filters
       const validatedFilters = this.validateFilters(filters);
 
-      // Construct MongoDB aggregation pipeline
-      const pipeline = this.OwnStockPipeLine(validatedFilters);
+      // 2. Construct aggregation pipelines
+      const stockPipeline = this.OwnStockPipeLine(validatedFilters);
+      const receivablesPayablesPipeline = this.getReceivablesAndPayables();
 
-      // Execute aggregation query
-      const reportData = await Registry.aggregate(pipeline);
+      // 3. Run both aggregations in parallel
 
-      // Format the retrieved data for response
-      const formattedData = this.formatReportData(reportData, validatedFilters);
+      const receivablesAndPayables = await Account.aggregate(receivablesPayablesPipeline)
+      const reportData = await Registry.aggregate(stockPipeline)
 
+      const finilized = this.formatedOwnStock(reportData,receivablesAndPayables)
+
+      // 5. Return structured response
       return {
         success: true,
-        data: reportData,
-        filters: validatedFilters,
-        totalRecords: reportData.length,
+        data: finilized,
       };
+
     } catch (error) {
+      console.error("Error generating stock report:", error);
       throw new Error(
         `Failed to generate metal stock ledger report: ${error.message}`
       );
     }
   }
+
 
 
   async getMetalFixingReports(filters) {
@@ -3332,6 +3337,94 @@ export class ReportService {
     return pipeline;
   }
 
+
+  getReceivablesAndPayables() {
+    const pipeline = [
+      {
+        $facet: {
+          receivables: [
+            {
+              $match: {
+                "balances.goldBalance.totalGrams": { $lt: 0 }
+              }
+            },
+            {
+              $group: {
+                _id: null,
+                totalReceivableGrams: {
+                  $sum: { $abs: "$balances.goldBalance.totalGrams" }
+                }
+              }
+            }
+          ],
+          payables: [
+            {
+              $match: {
+                "balances.goldBalance.totalGrams": { $gt: 0 }
+              }
+            },
+            {
+              $group: {
+                _id: null,
+                totalPayableGrams: {
+                  $sum: "$balances.goldBalance.totalGrams"
+                }
+              }
+            }
+          ]
+        }
+      },
+      {
+        $project: {
+          totalReceivableGrams: {
+            $ifNull: [{ $arrayElemAt: ["$receivables.totalReceivableGrams", 0] }, 0]
+          },
+          totalPayableGrams: {
+            $ifNull: [{ $arrayElemAt: ["$payables.totalPayableGrams", 0] }, 0]
+          }
+        }
+      }
+    ];
+
+    return pipeline;
+  }
+  formatedOwnStock(reportData, receivablesAndPayables) {
+    const summary = {
+      totalGrossWeight: 0,
+      netGrossWeight: 0,
+      totalValue: 0,
+      totalReceivableGrams: 0,
+      totalPayableGrams: 0
+    };
+  
+    // Extract receivable/payable safely
+    if (receivablesAndPayables?.length) {
+      summary.totalReceivableGrams = receivablesAndPayables[0].totalReceivableGrams || 0;
+      summary.totalPayableGrams = receivablesAndPayables[0].totalPayableGrams || 0;
+    }
+  
+    const categories = reportData.map((item) => {
+      summary.totalGrossWeight += item.totalGrossWeight || 0;
+      summary.netGrossWeight += item.netGrossWeight || 0;
+      summary.totalValue += item.totalValue || 0;
+  
+      return {
+        category: item.category,
+        description: item.description,
+        transactionCount: item.transactionCount,
+        totalValue: item.totalValue,
+        totalGrossWeight: item.totalGrossWeight,
+        netGrossWeight: item.netGrossWeight,
+        latestTransactionDate: item.latestTransactionDate,
+      };
+    });
+  
+    return {
+      summary,
+      categories
+    };
+  }
+  
 
   OwnStockPipeLine(filters) {
     const pipeline = [];
