@@ -14,22 +14,18 @@ const InventorySchema = new mongoose.Schema(
         pcsCount: {
             type: Number,
             default: 0,
-            validate: {
-                validator: function (value) {
-                    return !this.pcs || Number.isInteger(value);
-                },
-                message: "pcsCount must be a non-negative integer when pcs is true",
-            },
+        },
+         pcsValue: {
+            type: Number,
+            default: 0,
         },
         grossWeight: {
             type: Number,
             default: 0,
-            min: [0, "Gross weight cannot be negative"],
         },
         pureWeight: {
             type: Number,
-            default: 0,
-            min: [0, "Pure weight cannot be negative"],
+            default: 0, 
         },
         purity: {
             type: Number,

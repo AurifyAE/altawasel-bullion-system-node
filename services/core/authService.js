@@ -41,7 +41,6 @@ export const verifyToken = (token) => {
       issuer: "bullion-system",
       audience: "bullion-admin",
     });
-
   } catch (error) {
     if (error.name === "TokenExpiredError") {
       throw createAppError(
@@ -55,9 +54,7 @@ export const verifyToken = (token) => {
 
     if (error.name === "JsonWebTokenError") {
       throw createAppError(
-        type === "refresh"
-          ? "Invalid refresh token"
-          : "Invalid access token",
+        type === "refresh" ? "Invalid refresh token" : "Invalid access token",
         401,
         type === "refresh" ? "INVALID_REFRESH_TOKEN" : "INVALID_ACCESS_TOKEN"
       );
@@ -66,8 +63,6 @@ export const verifyToken = (token) => {
     throw createAppError("Token verification failed", 401, "TOKEN_ERROR");
   }
 };
-
-
 
 export const loginAdmin = async (email, password, ipAddress = null) => {
   try {
@@ -174,7 +169,6 @@ export const loginAdmin = async (email, password, ipAddress = null) => {
   }
 };
 
-
 export const refreshAccessToken = async (refreshToken) => {
   try {
     if (!refreshToken) {
@@ -187,9 +181,9 @@ export const refreshAccessToken = async (refreshToken) => {
 
     // Verify refresh token
     const decoded = verifyToken(refreshToken);
-    console.log('====================================');
+    console.log("====================================");
     console.log(decoded);
-    console.log('====================================');
+    console.log("====================================");
 
     if (decoded.type !== "refresh") {
       throw createAppError("Invalid token type", 401, "INVALID_TOKEN_TYPE");
@@ -233,7 +227,6 @@ export const refreshAccessToken = async (refreshToken) => {
     throw createAppError("Token refresh failed", 500, "TOKEN_REFRESH_ERROR");
   }
 };
-
 
 export const logoutAdmin = async (adminId) => {
   try {

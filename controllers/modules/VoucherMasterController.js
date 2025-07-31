@@ -92,7 +92,7 @@ export const updateVoucher = async (req, res, next) => {
 export const getAllVouchers = async (req, res, next) => {
   try {
     const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
+    const limit = parseInt(req.query.limit) || 100;
     const filters = {
       status: req.query.status,
       isActive: req.query.isActive,
@@ -173,9 +173,9 @@ export const getVouchersByModule = async (req, res, next) => {
     }
 
     const result = await VoucherMasterService.getVouchersByModule(
-      module, 
-      voucherType, 
-      parseInt(page), 
+      module,
+      voucherType,
+      parseInt(page),
       parseInt(limit)
     );
 
@@ -199,7 +199,7 @@ export const getVouchersByModule = async (req, res, next) => {
 export const generateVoucherNumber = async (req, res, next) => {
   try {
     const { module } = req.params;
-    const { transactionType, entryType } = req.query;
+    const { transactionType, entryType } = req.body;
 
     console.log("Generating voucher number for module:", module);
     console.log("Transaction Type:", transactionType);
@@ -211,13 +211,15 @@ export const generateVoucherNumber = async (req, res, next) => {
 
     // Determine the actual transaction type based on module and query params
     let actualTransactionType = transactionType;
-    
+
     // For entry modules, use entryType as transactionType
     if (module.toLowerCase().includes('entry') && entryType) {
       actualTransactionType = entryType;
     }
 
     const result = await VoucherMasterService.generateVoucherNumber(module, actualTransactionType);
+    console.log(result);
+
 
     res.status(200).json({
       success: true,
@@ -241,7 +243,7 @@ export const getVoucherInfoByModule = async (req, res, next) => {
 
     // Determine the actual transaction type based on module and query params
     let actualTransactionType = transactionType;
-    
+
     // For entry modules, use entryType as transactionType if provided
     if (module.toLowerCase().includes('entry') && entryType) {
       actualTransactionType = entryType;
@@ -271,7 +273,7 @@ export const getVoucherInfoByModule = async (req, res, next) => {
       }
     } else if (moduleLC.includes('entry')) {
       if (actualTransactionType) {
-        const validEntryTypes = ["metal receipt", "metal payment", "cash receipt", "cash payment"];
+        const validEntryTypes = ["metal-receipt", "metal-payment", "cash receipt", "cash payment","currency-receipt"];
         if (validEntryTypes.includes(actualTransactionType.toLowerCase())) {
           result = await VoucherMasterService.getEntryVoucherInfo(module, actualTransactionType);
         } else {

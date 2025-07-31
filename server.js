@@ -21,6 +21,8 @@ import accountRoutes from "./routes/modules/accountMasterRoutes.js";
 import entryRoutes from "./routes/modules/entryMasterRoutes.js";
 import fundTransferRoutes from "./routes/modules/fundTransferRoutes.js";
 import inventoryRoutes from "./routes/modules/inventoryRoutes.js";
+import reportsRoutes from "./routes/modules/reportsRoutes.js";
+
 
 import { mongodb } from "./config/db.js";
 import { errorHandler } from "./utils/errorHandler.js";
@@ -42,7 +44,8 @@ const corsOptions = {
       "http://localhost:5173",
       "http://localhost:3000",
       "http://localhost:8080",
-      "https://bullion-system-react2.onrender.com"
+      "https://bullion-system-react2.onrender.com",
+      "https://altawasel.bullionpro.net"
     ];
 
     if (!origin || allowedOrigins.includes(origin)) {
@@ -74,7 +77,7 @@ app.use("/api/v1/currency-master", currencyMasterRoutes);
 app.use("/api/v1/account-type", accountTypeRoutes);
 app.use("/api/v1/metal-stocks", metalStockRoutes);
 app.use("/api/v1/cost-centers", costCenterMasterRoutes);
-app.use("/api/v1/metal-transaction", metalTransaction);
+app.use("/api/v1/metal-transaction", metalTransaction); 
 app.use("/api/v1/metal-transaction-fix", transactionFixingRoutes);
 app.use("/api/v1/registry", RegistryRouter);
 app.use("/api/v1/voucher", VoucherRoute);
@@ -82,6 +85,7 @@ app.use("/api/v1/account", accountRoutes);
 app.use("/api/v1/entry", entryRoutes);
 app.use("/api/v1/fund-transfer", fundTransferRoutes);
 app.use("/api/v1/inventory", inventoryRoutes);
+app.use("/api/v1/reports", reportsRoutes)
 
 // Global error handling middleware
 app.use(errorHandler);

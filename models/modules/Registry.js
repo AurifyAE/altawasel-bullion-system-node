@@ -7,7 +7,23 @@ const RegistrySchema = new mongoose.Schema(
       required: [true, "Transaction ID is required"],
       trim: true,
       uppercase: true,
-    
+
+    },
+    metalTransactionId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "MetalTransaction",
+    },
+    fixingTransactionId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "TransactionFixing",
+    },
+    EntryTransactionId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Entry",
+    },
+    TransferTransactionId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "FundTransfer",
     },
     costCenter: {
       type: String,
@@ -31,24 +47,61 @@ const RegistrySchema = new mongoose.Schema(
       ref: "Account",
       default: null,
     },
-     isBullion: {
+    isBullion: {
       type: Boolean,
       default: null,
+    },
+    cashDebit: {
+      type: Number,
+      default: 0
+    },
+    cashCredit: {
+      type: Number,
+      default: 0
+    },
+    goldDebit: {
+      type: Number,
+      default: 0
+    },
+    goldCredit: {
+      type: Number,
+      default: 0
     },
     value: {
       type: Number,
       required: [true, "Transaction value is required"],
-      min: [0, "Value cannot be negative"],
+      // min: [0, "Value cannot be negative"],
+    },
+    goldBidValue: {
+      type: Number,
+      default: null,
+      // min: [0, "Gold bid value cannot be negative"],
     },
     debit: {
       type: Number,
       default: 0,
-      min: [0, "Debit cannot be negative"],
+      // min: [0, "Debit cannot be negative"],
     },
     credit: {
       type: Number,
       default: 0,
-      min: [0, "Credit cannot be negative"],
+      // min: [0, "Credit cannot be negative"],
+    },
+    metalId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'MetalStock', // Reference to metal master for inv update
+    },
+    purity: {
+      type: Number,
+      default: null,
+    },
+    pureWeight: {
+      type: Number,
+      default: null,
+    },
+    grossWeight: {
+      type: Number,
+      default: null,
     },
     runningBalance: {
       type: Number,
@@ -61,7 +114,7 @@ const RegistrySchema = new mongoose.Schema(
     transactionDate: {
       type: Date,
       required: [true, "Transaction date is required"],
-      default: Date.now,
+      default: () => new Date(),
     },
     reference: {
       type: String,

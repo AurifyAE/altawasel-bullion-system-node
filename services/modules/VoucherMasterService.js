@@ -1,7 +1,11 @@
 import VoucherMaster from "../../models/modules/VoucherMaster.js";
 import MetalTransaction from "../../models/modules/MetalTransaction.js";
+import TransactionFix from "../../models/modules/TransactionFixing.js";
 import Entry from "../../models/modules/EntryModel.js";
 import { createAppError } from "../../utils/errorHandler.js";
+import FundTransfer from "../../models/modules/FundTransfer.js";
+import MetalStock from "../../models/modules/MetalStock.js";
+import Registry from "../../models/modules/Registry.js";
 
 class VoucherMasterService {
   // Cache for voucher configurations to reduce DB queries
@@ -19,7 +23,7 @@ class VoucherMasterService {
   static async getVoucherConfig(module) {
     const cacheKey = module.toLowerCase();
     const cached = this.voucherCache.get(cacheKey);
-    
+
     if (cached && (Date.now() - cached.timestamp) < this.cacheExpiry) {
       return cached.data;
     }
@@ -57,53 +61,117 @@ class VoucherMasterService {
   }
 
   // Optimized transaction count method
-static async getTransactionCount(module, transactionType) {
+  static async getTransactionCount(module, transactionType) {
     const moduleLC = module.toLowerCase();
     console.log(`[getTransactionCount] INPUT: module="${module}", transactionType="${transactionType}"`);
 
-    // List of modules that should use Entry model
-    const entryModules = [
-      "metal-payment",
-      "metal-receipt",
-      "currency-payment",
-      "currency-receipt",
-      "entry"
-    ];
     try {
+      // Entry-based modules
+      const entryModules = ["metal-payment", "metal-receipt", "currency-payment", "currency-receipt", "entry"];
       if (entryModules.includes(moduleLC)) {
         console.log(`[getTransactionCount] Using model: Entry`);
-        const validEntryTypes = ["metal-receipt", "metal-payment", "currency-receipt", "currency-payment"];
-        console.log(`[getTransactionCount] validEntryTypes:`, validEntryTypes);
 
-        if (transactionType && validEntryTypes.includes(transactionType.toLowerCase())) {
-          const query = {
-            type: { $regex: `^${transactionType}$`, $options: "i" }
-          };
-          console.log(`[getTransactionCount] Entry Query:`, query);
-          const count = await Entry.countDocuments(query);
-          console.log(`[getTransactionCount] Entry Count:`, count);
-          return count;
-        }
-        const count = await Entry.countDocuments();
-        console.log(`[getTransactionCount] Entry (all) Count:`, count);
-        return count;
-      } else if (moduleLC.includes('metal')) {
-        console.log(`[getTransactionCount] Using model: MetalTransaction`);
-        if (transactionType) {
-          const query = {
-            transactionType: { $regex: `^${transactionType}$`, $options: "i" }
-          };
-          console.log(`[getTransactionCount] MetalTransaction Query:`, query);
-          const count = await MetalTransaction.countDocuments(query);
-          console.log(`[getTransactionCount] MetalTransaction Count:`, count);
-          return count;
-        }
-        const count = await MetalTransaction.countDocuments();
-        console.log(`[getTransactionCount] MetalTransaction (all) Count:`, count);
+        const query = transactionType
+          ? { type: { $regex: `^${transactionType}$`, $options: "i" } }
+          : {};
+
+        console.log(`[getTransactionCount] Entry Query:`, query);
+        const count = await Entry.countDocuments(query);
+        console.log(`[getTransactionCount] Entry Count:`, count);
         return count;
       }
 
-      console.log(`[getTransactionCount] No matching model for module="${module}". Returning 0.`);
+      // MetalTransaction-based modules
+      const metalTxnModules = ["metal-purchase", "metal-sale", "purchase-return", "sales-return"];
+      if (metalTxnModules.includes(moduleLC)) {
+        console.log(`[getTransactionCount] Using model: MetalTransaction`);
+
+        const query = transactionType
+          ? { transactionType: { $regex: `^${transactionType}$`, $options: "i" } }
+          : {};
+
+        console.log(`[getTransactionCount] MetalTransaction Query:`, query);
+        const count = await MetalTransaction.countDocuments(query);
+        console.log(`[getTransactionCount] MetalTransaction Count:`, count);
+        return count;
+      }
+
+      // TransactionFix-based modules
+      const fixModules = ["sales-fixing", "purchase-fixing"];
+      if (fixModules.includes(moduleLC)) {
+        console.log(`[getTransactionCount] Using model: TransactionFix`);
+
+        const query = transactionType
+          ? { type: { $regex: `^${transactionType}$`, $options: "i" } }
+          : {};
+
+        console.log(`[getTransactionCount] TransactionFix Query:`, query);
+        const count = await TransactionFix.countDocuments(query);
+        console.log(`[getTransactionCount] TransactionFix Count:`, count);
+        return count;
+      }
+
+      // Transfer module
+      if (moduleLC === "transfer") {
+        console.log(`[getTransactionCount] Using model: FundTransfer`);
+
+        const query = transactionType
+          ? { type: { $regex: `^${transactionType}$`, $options: "i" } }
+          : {};
+
+        console.log(`[getTransactionCount] FundTransfer Query:`, query);
+        const count = await FundTransfer.countDocuments(query);
+        console.log(`[getTransactionCount] FundTransfer Count:`, count);
+        return count;
+      }
+
+      // Opening Balance
+      if (moduleLC === "opening-balance") {
+        console.log(`[getTransactionCount] Using model: FundTransfer`);
+
+        const query = transactionType
+          ? { type: { $regex: `^${transactionType}$`, $options: "i" } }
+          : {};
+
+        console.log(`[getTransactionCount] FundTransfer Query:`, query);
+        const count = await FundTransfer.countDocuments(query);
+        console.log(`[getTransactionCount] FundTransfer Count:`, count);
+        return count;
+      }
+
+      // Metal Stock
+      if (moduleLC === "metal-stock") {
+        console.log(`[getTransactionCount] Using model: MetalStock`);
+
+        const query = transactionType
+          ? { referenceType: { $regex: `^${transactionType}$`, $options: "i" } }
+          : {};
+
+        console.log(`[getTransactionCount] MetalStock Query:`, query);
+        const count = await MetalStock.countDocuments(query);
+        console.log(`[getTransactionCount] MetalStock Count:`, count);
+        return count;
+      }
+      if (moduleLC === "opening-stock-balance") {
+        console.log(`[getTransactionCount] Using model: registry`);
+
+        const query = {
+          $or: [
+            { costCenter: "INVENTORY" },
+            { reference: { $regex: "^OSB", $options: "i" } },
+          ],
+        };
+
+        console.log(`[getTransactionCount] Registry Query:`, query);
+
+        const count = await Registry.countDocuments(query);
+        console.log(`[getTransactionCount] Registry Count:`, count);
+
+        return count;
+      }
+
+
+      console.warn(`[getTransactionCount] No matching model for module="${module}". Returning 0.`);
       return 0;
     } catch (error) {
       console.error(`[getTransactionCount] ERROR for module="${module}":`, error);
@@ -111,10 +179,11 @@ static async getTransactionCount(module, transactionType) {
     }
   }
 
+
   // Format date based on voucher date format
   static formatDate(dateFormat) {
     const today = new Date();
-    
+
     switch (dateFormat) {
       case "DD/MM/YYYY":
         return `${today.getDate().toString().padStart(2, "0")}/${(today.getMonth() + 1).toString().padStart(2, "0")}/${today.getFullYear()}`;
@@ -135,9 +204,11 @@ static async getTransactionCount(module, transactionType) {
 
     // Get voucher configuration (with caching)
     const voucher = await this.getVoucherConfig(module);
-
     // Get transaction count
     const transactionCount = await this.getTransactionCount(module, transactionType);
+    console.log('====================================');
+    console.log(transactionCount);
+    console.log('====================================');
 
     // Generate next voucher number
     const nextSequence = transactionCount + 1;
@@ -215,8 +286,8 @@ static async getTransactionCount(module, transactionType) {
   }
 
   static async getEntryVoucherInfo(module, entryType) {
-    const validEntryTypes = ["metal receipt", "metal payment", "cash receipt", "cash payment"];
-    
+    const validEntryTypes = ["metal-receipt", "metal-payment", "cash receipt", "cash payment", "currency-receipt"];
+
     if (!validEntryTypes.includes(entryType.toLowerCase())) {
       throw createAppError(
         `Invalid entry type. Valid types: ${validEntryTypes.join(', ')}`,
@@ -233,7 +304,7 @@ static async getTransactionCount(module, transactionType) {
   static async getAllEntryTypesVoucherInfo(module = "entry") {
     try {
       const voucher = await this.getVoucherConfig(module);
-      const entryTypes = ["metal receipt", "metal payment", "cash receipt", "cash payment"];
+      const entryTypes = ["metal-receipt", "metal-payment", "cash receipt", "cash payment"];
       const entryTypesInfo = {};
 
       // Get counts for all entry types in parallel
@@ -241,10 +312,10 @@ static async getTransactionCount(module, transactionType) {
         const count = await Entry.countDocuments({
           type: { $regex: `^${type}$`, $options: "i" }
         });
-        
+
         const nextSequence = count + 1;
         const nextVoucherNumber = `${voucher.prefix}${nextSequence.toString().padStart(voucher.numberLength, "0")}`;
-        
+
         return {
           type,
           data: {
@@ -299,10 +370,10 @@ static async getTransactionCount(module, transactionType) {
     });
 
     await voucher.save();
-    
+
     // Clear cache for this module
     this.clearCache(module);
-    
+
     return voucher;
   }
 
@@ -329,10 +400,10 @@ static async getTransactionCount(module, transactionType) {
 
     Object.assign(voucher, { ...updateData, updatedBy });
     await voucher.save();
-    
+
     // Clear cache for this module
     this.clearCache(voucher.module);
-    
+
     return voucher;
   }
 
@@ -383,10 +454,10 @@ static async getTransactionCount(module, transactionType) {
     voucher.status = "inactive";
     voucher.updatedBy = updatedBy;
     await voucher.save();
-    
+
     // Clear cache for this module
     this.clearCache(voucher.module);
-    
+
     return voucher;
   }
 
@@ -395,13 +466,13 @@ static async getTransactionCount(module, transactionType) {
     if (!voucher) {
       throw createAppError("Voucher not found", 404, "VOUCHER_NOT_FOUND");
     }
-    
+
     const module = voucher.module;
     await VoucherMaster.findByIdAndDelete(id);
-    
+
     // Clear cache for this module
     this.clearCache(module);
-    
+
     return { message: "Voucher permanently deleted" };
   }
 
@@ -410,12 +481,12 @@ static async getTransactionCount(module, transactionType) {
       throw createAppError("Module is required", 400, "MISSING_MODULE");
     }
 
-    const query = { 
+    const query = {
       module: { $regex: `^${module}$`, $options: "i" },
       isActive: true,
       status: "active"
     };
-    
+
     if (voucherType) {
       query.voucherType = { $regex: `^${voucherType}$`, $options: "i" };
     }

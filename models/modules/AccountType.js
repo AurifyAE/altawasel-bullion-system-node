@@ -5,10 +5,11 @@ const AccountSchema = new mongoose.Schema(
     // Basic Account Information
     accountType: {
       type: String,
-      enum: ["DEBTOR","SUPPLIER"],
+      default: "DEBTOR",
+      // enum: ["DEBTOR", "SUPPLIER"],
       required: [true, "Account type is required"],
       trim: true
-    },    
+    },
     title: {
       type: String,
       required: [true, "Title is required"],
@@ -66,7 +67,7 @@ const AccountSchema = new mongoose.Schema(
         }],
         required: [true, "At least one currency is required"],
         validate: {
-          validator: function(currencies) {
+          validator: function (currencies) {
             return currencies && currencies.length > 0;
           },
           message: "At least one currency must be specified"
@@ -86,10 +87,10 @@ const AccountSchema = new mongoose.Schema(
       type: [{
         creditDaysAmt: { type: Number, min: 0, default: 0 },
         creditDaysMtl: { type: Number, min: 0, default: 0 },
-        shortMargin: { 
-          type: Number, 
-          min: 0, 
-          max: 100, 
+        shortMargin: {
+          type: Number,
+          min: 0,
+          max: 100,
           required: [true, "Short margin is required"]
         },
         longMargin: { type: Number, min: 0, max: 100, default: 0 }
@@ -107,9 +108,9 @@ const AccountSchema = new mongoose.Schema(
         phoneNumber1: { type: String, trim: true, match: /^[0-9]{10,15}$/, default: null },
         phoneNumber2: { type: String, trim: true, match: /^[0-9]{10,15}$/, default: null },
         phoneNumber3: { type: String, trim: true, match: /^[0-9]{10,15}$/, default: null },
-        email: { 
-          type: String, 
-          trim: true, 
+        email: {
+          type: String,
+          trim: true,
           lowercase: true,
           match: [/^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/, "Please enter a valid email"],
           default: null
@@ -126,9 +127,9 @@ const AccountSchema = new mongoose.Schema(
       type: [{
         name: { type: String, trim: true, maxlength: 100, default: null },
         designation: { type: String, trim: true, maxlength: 50, default: null },
-        email: { 
-          type: String, 
-          trim: true, 
+        email: {
+          type: String,
+          trim: true,
           lowercase: true,
           match: [/^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/, "Please enter a valid email"],
           default: null
@@ -144,10 +145,10 @@ const AccountSchema = new mongoose.Schema(
     // VAT/GST Details - FIXED: Made completely optional
     vatGstDetails: {
       type: {
-        vatStatus: { 
-          type: String, 
-          enum: ["REGISTERED", "UNREGISTERED", "EXEMPTED"], 
-          default: null 
+        vatStatus: {
+          type: String,
+          enum: ["REGISTERED", "UNREGISTERED", "EXEMPTED"],
+          default: null
         },
         vatNumber: { type: String, trim: true, maxlength: 50, default: null },
         documents: {
@@ -187,8 +188,8 @@ const AccountSchema = new mongoose.Schema(
       type: [{
         documentType: { type: String, trim: true, default: null },
         documentNumber: { type: String, trim: true, maxlength: 50, default: null },
-        issueDate: { 
-          type: Date, 
+        issueDate: {
+          type: Date,
           default: null  // FIXED: Made optional
         },
         expiryDate: {
@@ -215,6 +216,8 @@ const AccountSchema = new mongoose.Schema(
       }],
       default: []
     },
+    
+    isSupplier: { type: Boolean, default: false },
 
     // Status and Activity
     isActive: { type: Boolean, default: true },
@@ -317,7 +320,7 @@ AccountSchema.methods.updateGoldBalance = function (grams, value) {
 
 AccountSchema.methods.updateCashBalance = function (amount, currency = null) {
   const targetCurrency = currency || this.getDefaultCurrency();
-  
+
   Object.assign(this.balances.cashBalance, {
     currency: targetCurrency,
     amount: amount,
@@ -349,24 +352,24 @@ AccountSchema.methods.setDefaultCashCurrency = function (currencyId) {
     lastUpdated: new Date()
   });
   this.balances.lastBalanceUpdate = new Date();
-  
+
   // Update A/C Definition
   if (this.acDefinition?.currencies) {
     // Reset all to non-default
     this.acDefinition.currencies.forEach(curr => curr.isDefault = false);
-    
+
     // Set new default or add if doesn't exist
     const existingCurrency = this.acDefinition.currencies.find(
       curr => curr.currency?.toString() === currencyId.toString()
     );
-    
+
     if (existingCurrency) {
       existingCurrency.isDefault = true;
     } else {
       this.acDefinition.currencies.push({ currency: currencyId, isDefault: true });
     }
   }
-  
+
   return this.save();
 };
 

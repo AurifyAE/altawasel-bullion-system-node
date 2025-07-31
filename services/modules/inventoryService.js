@@ -1,5 +1,5 @@
 import mongoose from "mongoose";
-import Inventory from "../../models/modules/Inventory.js";
+import Inventory from "../../models/modules/inventory.js";
 import Registry from "../../models/modules/Registry.js";
 import { createAppError } from "../../utils/errorHandler.js";
 import MetalStock from "../../models/modules/MetalStock.js";
@@ -8,19 +8,54 @@ class InventoryService {
     static async fetchAllInventory() {
         try {
             return await Inventory.find()
-                .populate("metal createdBy")
+                .populate([
+                    {
+                        path: "metal",
+                        populate: [
+                            { path: "karat" },
+                            { path: "metalType" }
+                        ]
+                    },
+                    { path: "createdBy" }
+                ])
                 .sort({ createdAt: -1 });
         } catch (err) {
             throw createAppError("Failed to fetch inventory logs", 500, "FETCH_ERROR");
         }
     }
 
+    static async fetchInventoryById(inventoryId) {
+        try {
+            const inventory = await Inventory.findById(inventoryId)
+                .populate([
+                    {
+                        path: "metal",
+                        populate: [
+                            { path: "karat" },
+                            { path: "metalType" }
+                        ]
+                    },
+                    { path: "createdBy" }
+                ]);
+
+            if (!inventory) {
+                throw createAppError("Inventory not found", 404, "NOT_FOUND");
+            }
+
+            return inventory;
+        } catch (err) {
+            throw createAppError("Failed to fetch inventory", 500, "FETCH_SINGLE_ERROR");
+        }
+    }
+
+
     static async addInitialInventory(metal, createdBy) {
         try {
             const inventory = new Inventory({
                 metal: metal._id,
                 pcs: metal.pcs,
-                pcsCount: metal.pcsCount,
+                pcsCount: 0,
+                pcsValue: metal.totalValue,
                 grossWeight: 0,
                 pureWeight: 0,
                 purity: metal.karat?.standardPurity || 0,
@@ -34,13 +69,15 @@ class InventoryService {
         }
     }
 
-    static async updateInventoryByFrontendInput({ metalId, type, value, adminId }) {
+    static async updateInventoryByFrontendInput({ metalId, type, value, adminId, voucher }) {
         try {
             if (!metalId || !type || value === undefined) {
                 throw createAppError("Missing metalId, type, or value", 400, "MISSING_INPUT");
             }
 
             const inventory = await Inventory.findOne({ metal: new mongoose.Types.ObjectId(metalId) });
+
+
             if (!inventory) {
                 throw createAppError(`Inventory not found for metal ID: ${metalId}`, 404, "INVENTORY_NOT_FOUND");
             }
@@ -61,8 +98,9 @@ class InventoryService {
                 if (!Number.isInteger(qty) || qty < 0) {
                     throw createAppError("Piece count is required and must be a non-negative integer for piece-based stock", 400, "INVALID_PCS_COUNT");
                 }
+                inventory.grossWeight += qty * metal.totalValue;
                 inventory.pcsCount += qty;
-                description = `Inventory ${isAddition ? 'added' : 'removed'}: ${metal.code} - ${Math.abs(qty)} pieces`;
+                description = `Inventory ${isAddition ? 'added' : 'removed'}: ${metal.code} - ${Math.abs(qty)} pieces & ${metal.totalValue} grams`;
                 registryValue = Math.abs(qty) * (metal.pricePerPiece || 0);
 
             } else if (type === "grams") {
@@ -70,6 +108,7 @@ class InventoryService {
                     throw createAppError("Weight value must be a non-negative number", 400, "INVALID_GRAM_VALUE");
                 }
                 inventory.grossWeight += qty;
+                inventory.pcsCount = (inventory.grossWeight) / inventory.pcsValue
                 inventory.pureWeight = (inventory.grossWeight * inventory.purity) / 100;
                 description = `Inventory ${isAddition ? 'added' : 'removed'}: ${metal.code} - ${Math.abs(qty)} grams`;
                 registryValue = Math.abs(qty) * (metal.pricePerGram || 0);
@@ -77,22 +116,35 @@ class InventoryService {
                 throw createAppError("Invalid type. Use 'pcs' or 'grams'", 400, "INVALID_TYPE");
             }
             const savedInventory = await inventory.save();
+            let pureWeight
+
+            if (type == "pcs") {
+                value = savedInventory.pcsValue * value
+                pureWeight = value * savedInventory.purity
+            } else {
+                pureWeight = value * savedInventory.purity
+            }
 
             await this.createRegistryEntry({
                 transactionId: await Registry.generateTransactionId(),
-                type: "OPENING_STOCK_BALANCE",
+                metalId: metalId, // this is not Transaction id this is MetalID
+                type: "GOLD_STOCK",
                 description: `OPENING STOCK FOR ${metal.code}`,
                 value: value,
-                credit: 0,
-                reference: metal.code,
-                createdBy: adminId
+                isBullion: true,
+                credit: value,
+                reference: voucher.voucherCode,
+                createdBy: adminId,
+                purity: inventory.purity,
+                grossWeight: value,
+                pureWeight
             });
             return savedInventory
         } catch (error) {
             if (error.name === "AppError") throw error;
             throw createAppError(error.message || "Inventory update failed", 500, "INVENTORY_UPDATE_ERROR");
         }
-    }
+    } ho
 
     static async updateInventory(transaction, isSale = false) {
         try {
@@ -115,9 +167,9 @@ class InventoryService {
                 const weightDelta = factor * (item.grossWeight || 0);
 
                 // Pre-check to prevent negative values
-                if (inventory.pcsCount + pcsDelta < 0 || inventory.grossWeight + weightDelta < 0) {
-                    throw createAppError(`Insufficient stock for metal: ${item.stockCode.code}`, 400, "INSUFFICIENT_STOCK");
-                }
+                // if (inventory.pcsCount + pcsDelta < 0 || inventory.grossWeight + weightDelta < 0) {
+                //     throw createAppError(`Insufficient stock for metal: ${item.stockCode.code}`, 400, "INSUFFICIENT_STOCK");
+                // }
 
                 inventory.pcsCount += pcsDelta;
                 inventory.grossWeight += weightDelta;
@@ -135,6 +187,7 @@ class InventoryService {
     }
     static async createRegistryEntry({
         transactionId,
+        metalId,
         type,
         description,
         value,
@@ -144,23 +197,30 @@ class InventoryService {
         party = null,
         isBullion = null,
         costCenter = "INVENTORY",
-        createdBy
+        createdBy,
+        purity,
+        grossWeight,
+        pureWeight
     }) {
         try {
 
             const registryEntry = new Registry({
                 transactionId,
+                metalId,
                 costCenter,
                 type,
                 description,
                 value,
-                debit,
-                credit,
+                debit:value,
+                credit:0,
                 reference,
                 party,
                 isBullion,
                 createdBy,
-                status: "completed"
+                status: "completed",
+                purity,
+                grossWeight,
+                pureWeight
             });
 
             return await registryEntry.save();

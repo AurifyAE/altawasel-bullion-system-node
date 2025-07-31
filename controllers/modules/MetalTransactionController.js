@@ -19,6 +19,7 @@ export const createMetalTransaction = async (req, res, next) => {
       totalAmountSession,
       status,
       notes,
+      voucher
     } = req.body;
     console.log(req.body)
     // Validation (already handled by middleware, but ensuring critical fields)
@@ -37,7 +38,7 @@ export const createMetalTransaction = async (req, res, next) => {
       );
     }
 
-    if (!["purchase", "sale"].includes(transactionType)) {
+    if (!["purchase", "sale", "purchaseReturn", "saleReturn"].includes(transactionType)) {
       throw createAppError(
         "Invalid transaction type. Must be 'purchase' or 'sale'",
         400,
@@ -53,9 +54,9 @@ export const createMetalTransaction = async (req, res, next) => {
       transactionType,
       fixed: isFixTransaction ? true : false,
       unfix: isUnfixTransaction ? true : false,
-      voucherType: voucherType?.trim(),
+      voucherType: voucherType,
       voucherDate: voucherDate ? new Date(voucherDate) : new Date(),
-      voucherNumber: voucherNumber?.trim(),
+      voucherNumber: voucherNumber,
       partyCode: partyCode.trim(),
       partyCurrency: partyCurrency.trim(),
       itemCurrency: itemCurrency?.trim(),
@@ -101,16 +102,22 @@ export const createMetalTransaction = async (req, res, next) => {
       },
       status: status || "draft",
       notes: notes?.trim(),
+      voucherType: voucherType,
+      voucherNumber: voucherNumber
+
     };
 
+    // console.log("Creating Metal Transaction with data:", transactionData);
     const metalTransaction = await MetalTransactionService.createMetalTransaction(
       transactionData,
       req.admin.id
     );
 
     if (metalTransaction.transactionType === "sale") {
+      // update inventory if sale happen
       await InventoryService.updateInventory(metalTransaction, true);
     } else {
+      // update inventory if Purchase happen
       await InventoryService.updateInventory(metalTransaction);
     }
 
@@ -196,19 +203,15 @@ export const updateMetalTransaction = async (req, res, next) => {
         400,
         "MISSING_TRANSACTION_ID"
       );
-
-    const updatedTransaction =
-      await MetalTransactionService.updateMetalTransaction(
-        id,
-        updateData,
-        req.admin.id
-      );
+    console.log(updateData)
+    const updatedTransaction = await MetalTransactionService.updateMetalTransaction(id, updateData, req.admin.id);
 
     res.status(200).json({
       success: true,
       message: "Metal transaction updated successfully",
       data: updatedTransaction,
     });
+    
   } catch (error) {
     next(error);
   }

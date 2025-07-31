@@ -9,7 +9,6 @@ export const createTradeDebtor = async (req, res, next) => {
     console.log("Files by field:", req.filesByField);
 
     const {
-      accountType,
       title,
       accountCode,
       customerName,
@@ -23,6 +22,7 @@ export const createTradeDebtor = async (req, res, next) => {
       bankDetails,
       kycDetails,
     } = req.body;
+    let accountType = "DEBTOR"
 
     // Basic validation - only required fields
     if (!accountCode || !customerName || !title || !accountType) {
@@ -390,6 +390,16 @@ export const updateTradeDebtor = async (req, res, next) => {
   try {
     const { id } = req.params;
     let updateData = { ...req.body };
+    const { updatetype } = req.query;
+    // for updating type
+    if (updatetype === "true") {
+      const updatedTradeDebtor = await AccountTypeService.updateTradeDebtor(
+        id,
+        updateData,
+        req.admin.id
+      );
+      return res.status(200).json({ message: "Type updated", data: updatedTradeDebtor });
+    }
 
     if (!id) {
       throw createAppError("Trade debtor ID is required", 400, "MISSING_ID");

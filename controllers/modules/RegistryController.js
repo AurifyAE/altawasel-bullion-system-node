@@ -22,21 +22,20 @@ export const createRegistry = async (req, res, next) => {
 // Get all registries with filters and search
 export const getAllRegistries = async (req, res, next) => {
   try {
-    const {
-      page = 1,
-      limit = 50,
-      search,
-      type,
-      costCenter,
-      status,
-      startDate,
-      endDate,
-      sortBy = 'transactionDate',
-      sortOrder = 'desc'
-    } = req.query;
+    let { page = 1, limit = 50, search, costCenter, status, startDate, endDate, sortBy = 'transactionDate', sortOrder = 'desc' } = req.query;
+
+    let type = req.query.type || req.query['type[]']; 
 
     const filters = {};
-    if (type) filters.type = type;
+    //  Handle multiple types
+    if (type) {
+      if (Array.isArray(type)) {
+        filters.type = type;
+      } else {
+        filters.type = [type];
+      }
+    }
+
     if (costCenter) filters.costCenter = costCenter.toUpperCase();
     if (status) filters.status = status;
     if (startDate) filters.startDate = startDate;
@@ -58,6 +57,7 @@ export const getAllRegistries = async (req, res, next) => {
       summary: result.summary
     });
   } catch (error) {
+    console.error("Error in getAllRegistries controller:", error);
     next(error);
   }
 };
@@ -393,7 +393,7 @@ export const getRegistriesByPartyId = async (req, res, next) => {
   try {
     const partyId = req.params.partyId;
     const page = parseInt(req.query.page, 10) || 1;
-    const limit = parseInt(req.query.limit, 10) || 10;
+    const limit = parseInt(req.query.limit, 5000000) || 5000000;
 
     if (!partyId) {
       return res.status(400).json({ success: false, message: 'Party ID is required' });
@@ -410,7 +410,7 @@ export const getRegistriesByPartyId = async (req, res, next) => {
     console.error("Error fetching registries by party ID:", error);
     res.status(500).json({ success: false, message: error.message });
   }
-};   
+};
 
 
 // Get registries by type "PREMIUM" or "DISCOUNT" (case-insensitive)

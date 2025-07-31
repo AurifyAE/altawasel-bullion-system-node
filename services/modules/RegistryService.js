@@ -31,8 +31,8 @@ class RegistryService {
       const query = { isActive: true };
 
       // Apply filters
-      if (filters.type) {
-        query.type = filters.type;
+      if (filters.type && Array.isArray(filters.type)) {
+        query.type = { $in: filters.type };
       }
 
       if (filters.costCenter) {
@@ -76,7 +76,7 @@ class RegistryService {
           .populate('updatedBy')
           .populate('party')
           // .populate('costCenter', 'code name')
-          .sort(sortConfig)
+          .sort({ transactionDate: -1 })
           .skip(skip)
           .limit(limit),
         Registry.countDocuments(query)
@@ -188,9 +188,9 @@ class RegistryService {
   static async getRegistriesByType(page, limit, filters, sort) {
     try {
       const skip = (page - 1) * limit;
-      const query = { 
+      const query = {
         type: filters.type,
-        isActive: true 
+        isActive: true
       };
 
       // Apply additional filters
@@ -269,9 +269,9 @@ class RegistryService {
   static async getRegistriesByCostCenter(page, limit, filters, sort) {
     try {
       const skip = (page - 1) * limit;
-      const query = { 
+      const query = {
         costCenter: filters.costCenter,
-        isActive: true 
+        isActive: true
       };
 
       // Apply additional filters
@@ -449,7 +449,7 @@ class RegistryService {
       ];
 
       const result = await Registry.aggregate(statisticsPipeline);
-      
+
       return {
         overall: result[0].overall[0] || {
           totalDebit: 0,
@@ -492,9 +492,9 @@ class RegistryService {
   // Get balance for cost center (optionally filtered by type)
   static async getRegistryBalance(costCenter, type = null) {
     try {
-      const query = { 
+      const query = {
         costCenter: costCenter,
-        isActive: true 
+        isActive: true
       };
 
       if (type) {
@@ -533,207 +533,208 @@ class RegistryService {
 
   // Getting stock balance 
 
-   static async getStockBalanceRegistries({ page = 1, limit = 10, search = '' }) {
-  try {
-    const filter = {
-      type: { $in: ["STOCK_BALANCE", "stock_balance"] },
-      isActive: true,
-    };
+  static async getStockBalanceRegistries({ page = 1, limit = 10, search = '' }) {
+    try {
+      const filter = {
+        type: { $in: ["STOCK_BALANCE", "stock_balance"] },
+        isActive: true,
+      };
 
-    if (search) {
-      filter.$or = [
-        { 'costCenter.name': { $regex: search, $options: 'i' } },
-        { 'costCenter.code': { $regex: search, $options: 'i' } },
-        // Add more fields as needed
-      ];
+      if (search) {
+        filter.$or = [
+          { 'costCenter.name': { $regex: search, $options: 'i' } },
+          { 'costCenter.code': { $regex: search, $options: 'i' } },
+          // Add more fields as needed
+        ];
+      }
+
+      const skip = (page - 1) * limit;
+
+      // Count total items
+      const totalItems = await Registry.countDocuments(filter);
+
+      // Fetch paginated data
+      const registries = await Registry.find(filter)
+        .populate('createdBy', 'name email')
+        .populate('updatedBy', 'name email')
+        // .populate('costCenter', 'code name')
+        .sort({ transactionDate: -1 })
+        .skip(skip)
+        .limit(limit);
+
+      // Example summary calculation (customize as needed)
+      const summary = {
+        totalDebit: 0,
+        totalCredit: 0,
+        totalTransactions: totalItems,
+        avgValue: 0,
+      };
+
+      const totalPages = Math.ceil(totalItems / limit);
+
+      return { registries, totalItems, totalPages, summary };
+    } catch (error) {
+      throw error;
     }
-
-    const skip = (page - 1) * limit;
-
-    // Count total items
-    const totalItems = await Registry.countDocuments(filter);
-
-    // Fetch paginated data
-    const registries = await Registry.find(filter)
-      .populate('createdBy', 'name email')
-      .populate('updatedBy', 'name email')
-      // .populate('costCenter', 'code name')
-      .sort({ transactionDate: -1 })
-      .skip(skip)
-      .limit(limit);
-
-    // Example summary calculation (customize as needed)
-    const summary = {
-      totalDebit: 0,
-      totalCredit: 0,
-      totalTransactions: totalItems,
-      avgValue: 0,
-    };
-
-    const totalPages = Math.ceil(totalItems / limit);
-
-    return { registries, totalItems, totalPages, summary };
-  } catch (error) {
-    throw error;
   }
-}
 
 
-// getting premium discount registries
+  // getting premium discount registries
 
-static async getPremiumDiscountRegistries({ page = 1, limit = 10, search = '' }) {
-  try {
-    const filter = {
-      type: { $in: ["PREMIUM-DISCOUNT", "premium-discount"] },
-      isActive: true,
-    };
+  static async getPremiumDiscountRegistries({ page = 1, limit = 10, search = '' }) {
+    try {
+      const filter = {
+        type: { $in: ["PREMIUM-DISCOUNT", "premium-discount"] },
+        isActive: true,
+      };
 
-    if (search) {
-      filter.$or = [
-        { 'costCenter.name': { $regex: search, $options: 'i' } },
-        { 'costCenter.code': { $regex: search, $options: 'i' } },
-        // Add more fields as needed
-      ];
+      if (search) {
+        filter.$or = [
+          { 'costCenter.name': { $regex: search, $options: 'i' } },
+          { 'costCenter.code': { $regex: search, $options: 'i' } },
+          // Add more fields as needed
+        ];
+      }
+
+      const skip = (page - 1) * limit;
+
+      // Count total items
+      const totalItems = await Registry.countDocuments(filter);
+
+      // Fetch paginated data
+      const registries = await Registry.find(filter)
+        .populate('createdBy', 'name email')
+        .populate('updatedBy', 'name email')
+        .populate('costCenter', 'code name')
+        .sort({ transactionDate: -1 })
+        .skip(skip)
+        .limit(limit);
+
+      // Example summary calculation (customize as needed)
+      const summary = {
+        totalDebit: 0,
+        totalCredit: 0,
+        totalTransactions: totalItems,
+        avgValue: 0,
+      };
+
+      const totalPages = Math.ceil(totalItems / limit);
+
+      return { registries, totalItems, totalPages, summary };
+    } catch (error) {
+      throw error;
     }
-
-    const skip = (page - 1) * limit;
-
-    // Count total items
-    const totalItems = await Registry.countDocuments(filter);
-
-    // Fetch paginated data
-    const registries = await Registry.find(filter)
-      .populate('createdBy', 'name email')
-      .populate('updatedBy', 'name email')
-      .populate('costCenter', 'code name')
-      .sort({ transactionDate: -1 })
-      .skip(skip)
-      .limit(limit);
-
-    // Example summary calculation (customize as needed)
-    const summary = {
-      totalDebit: 0,
-      totalCredit: 0,
-      totalTransactions: totalItems,
-      avgValue: 0,
-    };
-
-    const totalPages = Math.ceil(totalItems / limit);
-
-    return { registries, totalItems, totalPages, summary };
-  } catch (error) {
-    throw error;
   }
-}
 
 
-// getting all making charges
+  // getting all making charges
 
-static async getMakingChargesRegistries({ page = 1, limit = 10, search = '' }) {
-  try {
-    const filter = {
-      type: { $in: ["MAKING CHARGES", "making charges"] },
-      isActive: true,
-    };
+  static async getMakingChargesRegistries({ page = 1, limit = 10, search = '' }) {
+    try {
+      const filter = {
+        type: { $in: ["MAKING CHARGES", "making charges"] },
+        isActive: true,
+      };
 
-    if (search) {
-      filter.$or = [
-        { costCenter: { $regex: search, $options: 'i' } },
-        // Add more fields as needed
-      ];
+      if (search) {
+        filter.$or = [
+          { costCenter: { $regex: search, $options: 'i' } },
+          // Add more fields as needed
+        ];
+      }
+
+      const skip = (page - 1) * limit;
+
+      // Count total items
+      const totalItems = await Registry.countDocuments(filter);
+
+      // Fetch paginated data
+      const registries = await Registry.find(filter)
+        .populate('createdBy', 'name email')
+        .populate('updatedBy', 'name email')
+        // .populate('costCenter', 'code name') // REMOVE this line
+        .sort({ transactionDate: -1 })
+        .skip(skip)
+        .limit(limit);
+
+      // Example summary calculation (customize as needed)
+      const summary = {
+        totalDebit: 0,
+        totalCredit: 0,
+        totalTransactions: totalItems,
+        avgValue: 0,
+      };
+
+      const totalPages = Math.ceil(totalItems / limit);
+
+      return { registries, totalItems, totalPages, summary };
+    } catch (error) {
+      throw error;
     }
-
-    const skip = (page - 1) * limit;
-
-    // Count total items
-    const totalItems = await Registry.countDocuments(filter);
-
-    // Fetch paginated data
-    const registries = await Registry.find(filter)
-      .populate('createdBy', 'name email')
-      .populate('updatedBy', 'name email')
-      // .populate('costCenter', 'code name') // REMOVE this line
-      .sort({ transactionDate: -1 })
-      .skip(skip)
-      .limit(limit);
-
-    // Example summary calculation (customize as needed)
-    const summary = {
-      totalDebit: 0,
-      totalCredit: 0,
-      totalTransactions: totalItems,
-      avgValue: 0,
-    };
-
-    const totalPages = Math.ceil(totalItems / limit);
-
-    return { registries, totalItems, totalPages, summary };
-  } catch (error) {
-    throw error;
   }
-}
 
 
-// get registry by party id
+  // get registry by party id
 
-static async getRegistriesByPartyId(partyId, page = 1, limit = 10) {
-  try {
-    const filter = { party: partyId, isActive: true };
-    const skip = (page - 1) * limit;
+  static async getRegistriesByPartyId(partyId, page = 1, limit = 10) {
+    try {
+      const filter = { party: partyId, isActive: true };
+      const skip = (page - 1) * limit;
 
-    const totalItems = await Registry.countDocuments(filter);
+      const totalItems = await Registry.countDocuments(filter);
 
-    const registries = await Registry.find(filter)
-      .populate('party', 'name code')
-      .populate('createdBy', 'name email')
-      .populate('updatedBy', 'name email')
-      .sort({ transactionDate: -1 })
-      .skip(skip)
-      .limit(limit);
-
-    const totalPages = Math.ceil(totalItems / limit);
-
-    return { data: registries, totalItems, totalPages, currentPage: page };
-  } catch (error) {
-    throw new Error(`Failed to fetch registries: ${error.message}`);
-  }
-}
-
-
-static async getPremiumAndDiscountRegistries({ page = 1, limit = 50 }) {
-  try {
-    // Case-insensitive match for "PREMIUM" or "DISCOUNT"
-    const typeRegex = [/^premium$/i, /^discount$/i];
-
-    const filters = {
-      type: { $in: typeRegex },
-      isActive: true,
-    };
-
-    const skip = (page - 1) * limit;
-
-    const [registries, totalItems] = await Promise.all([
-      Registry.find(filters)
+      const registries = await Registry.find(filter)
+        .populate('party', 'name code')
         .populate('createdBy', 'name email')
         .populate('updatedBy', 'name email')
         .sort({ transactionDate: -1 })
         .skip(skip)
-        .limit(Number(limit)),
-      Registry.countDocuments(filters),
-    ]);
+        .limit(limit)
 
-    const pagination = {
-      totalItems,
-      totalPages: Math.ceil(totalItems / limit),
-      currentPage: Number(page),
-      itemsPerPage: Number(limit),
-    };
 
-    return { registries, pagination, summary: null }; // Add summary if needed
-  } catch (error) {
-    throw error;
+      const totalPages = Math.ceil(totalItems / limit);
+
+      return { data: registries, totalItems, totalPages, currentPage: page };
+    } catch (error) {
+      throw new Error(`Failed to fetch registries: ${error.message}`);
+    }
   }
-}
+
+
+  static async getPremiumAndDiscountRegistries({ page = 1, limit = 50 }) {
+    try {
+      // Case-insensitive match for "PREMIUM" or "DISCOUNT"
+      const typeRegex = [/^premium$/i, /^discount$/i];
+
+      const filters = {
+        type: { $in: typeRegex },
+        isActive: true,
+      };
+
+      const skip = (page - 1) * limit;
+
+      const [registries, totalItems] = await Promise.all([
+        Registry.find(filters)
+          .populate('createdBy', 'name email')
+          .populate('updatedBy', 'name email')
+          .sort({ transactionDate: -1 })
+          .skip(skip)
+          .limit(Number(limit)),
+        Registry.countDocuments(filters),
+      ]);
+
+      const pagination = {
+        totalItems,
+        totalPages: Math.ceil(totalItems / limit),
+        currentPage: Number(page),
+        itemsPerPage: Number(limit),
+      };
+
+      return { registries, pagination, summary: null }; // Add summary if needed
+    } catch (error) {
+      throw error;
+    }
+  }
 
 
 
