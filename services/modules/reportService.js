@@ -3353,7 +3353,8 @@ export class ReportService {
                 _id: null,
                 totalReceivableGrams: {
                   $sum: { $abs: "$balances.goldBalance.totalGrams" }
-                }
+                },
+                accountCount: { $sum: 1 } // Count number of accounts
               }
             }
           ],
@@ -3368,7 +3369,8 @@ export class ReportService {
                 _id: null,
                 totalPayableGrams: {
                   $sum: "$balances.goldBalance.totalGrams"
-                }
+                },
+                accountCount: { $sum: 1 } // Count number of accounts
               }
             }
           ]
@@ -3381,13 +3383,41 @@ export class ReportService {
           },
           totalPayableGrams: {
             $ifNull: [{ $arrayElemAt: ["$payables.totalPayableGrams", 0] }, 0]
+          },
+          avgReceivableGrams: {
+            $cond: {
+              if: {
+                $eq: [{ $arrayElemAt: ["$receivables.accountCount", 0] }, 0]
+              },
+              then: 0,
+              else: {
+                $divide: [
+                  { $ifNull: [{ $arrayElemAt: ["$receivables.totalReceivableGrams", 0] }, 0] },
+                  { $ifNull: [{ $arrayElemAt: ["$receivables.accountCount", 0] }, 1] }
+                ]
+              }
+            }
+          },
+          avgPayableGrams: {
+            $cond: {
+              if: {
+                $eq: [{ $arrayElemAt: ["$payables.accountCount", 0] }, 0]
+              },
+              then: 0,
+              else: {
+                $divide: [
+                  { $ifNull: [{ $arrayElemAt: ["$payables.totalPayableGrams", 0] }, 0] },
+                  { $ifNull: [{ $arrayElemAt: ["$payables.accountCount", 0] }, 1] }
+                ]
+              }
+            }
           }
         }
       }
     ];
 
     return pipeline;
-  }
+}
   formatedOwnStock(reportData, receivablesAndPayables) {
     const summary = {
       totalGrossWeight: 0,
@@ -3395,13 +3425,17 @@ export class ReportService {
       totalValue: 0,
       totalReceivableGrams: 0,
       totalPayableGrams: 0,
-      avgGrossWeight:0
+      avgGrossWeight:0,
+      avgReceivableGrams:0,
+      avgPayableGrams:0
     };
   
     // Extract receivable/payable safely
     if (receivablesAndPayables?.length) {
       summary.totalReceivableGrams = receivablesAndPayables[0].totalReceivableGrams || 0;
       summary.totalPayableGrams = receivablesAndPayables[0].totalPayableGrams || 0;
+      summary.avgReceivableGrams = receivablesAndPayables[0].avgReceivableGrams || 0;
+      summary.avgPayableGrams = receivablesAndPayables[0].avgPayableGrams || 0;
     }
   
     const categories = reportData.map((item) => {
