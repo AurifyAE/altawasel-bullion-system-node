@@ -3394,7 +3394,8 @@ export class ReportService {
       netGrossWeight: 0,
       totalValue: 0,
       totalReceivableGrams: 0,
-      totalPayableGrams: 0
+      totalPayableGrams: 0,
+      avgGrossWeight:0
     };
   
     // Extract receivable/payable safely
@@ -3413,6 +3414,7 @@ export class ReportService {
         description: item.description,
         transactionCount: item.transactionCount,
         totalValue: item.totalValue,
+        avgGrossWeight:item.avgGrossWeight,
         totalGrossWeight: item.totalGrossWeight,
         netGrossWeight: item.netGrossWeight,
         latestTransactionDate: item.latestTransactionDate,
@@ -3428,17 +3430,6 @@ export class ReportService {
 
   OwnStockPipeLine(filters) {
     const pipeline = [];
-
-    // Step 3: Date filtering (optional, based on filters)
-    if (filters.startDate || filters.endDate) {
-      matchConditions.transactionDate = {};
-      if (filters.startDate) {
-        matchConditions.transactionDate.$gte = new Date(filters.startDate);
-      }
-      if (filters.endDate) {
-        matchConditions.transactionDate.$lte = new Date(filters.endDate);
-      }
-    }
 
     // Step 1: Define match conditions for specific reference prefixes
     const referenceRegex = [
@@ -3460,13 +3451,23 @@ export class ReportService {
       ],
     };
 
+    // Step 3: Date filtering (optional, based on filters)
+    if (filters.startDate || filters.endDate) {
+      matchConditions.transactionDate = {};
+      if (filters.startDate) {
+        matchConditions.transactionDate.$gte = new Date(filters.startDate);
+      }
+      if (filters.endDate) {
+        matchConditions.transactionDate.$lte = new Date(filters.endDate);
+      }
+    }
+
     // Step 4: Push $match to pipeline
     pipeline.push({ $match: matchConditions });
 
     /* ------------------------------------------
        Step 5: Lookup related collections
     ------------------------------------------ */
-
     // metaltransactions
     pipeline.push({
       $lookup: {
@@ -3511,29 +3512,12 @@ export class ReportService {
     });
 
     /* ------------------------------------------
-       Step 7: Filter metaltransactions for fixed: true for PRM and SAL
-    ------------------------------------------ */
-    // pipeline.push({
-    //   $match: {
-    //     $or: [
-    //       { reference: { $not: { $regex: "^(PRM|SAL|PR|SR)\\d+", $options: "i" } } }, // Keep all non-PRM/SAL
-    //       {
-    //         $and: [
-    //           { reference: { $regex: "^(PRM|SAL|SR|PR)\\d+", $options: "i" } }, // Match PRM or SAL
-    //           { "metaltransactions.fixed": true } // Only include if fixed is true
-    //         ]
-    //       }
-    //     ]
-    //   }
-    // });
-
-    /* ------------------------------------------
-       Step 8: Sort by transactionDate to ensure consistent $first selection (optional)
+       Step 7: Sort by transactionDate to ensure consistent $first selection
     ------------------------------------------ */
     pipeline.push({ $sort: { transactionDate: 1 } }); // Sort ascending to get the earliest entry
 
     /* ------------------------------------------
-       Step 9: First Group by full reference to take first value per unique voucher
+       Step 8: First Group by full reference to take first value per unique voucher
     ------------------------------------------ */
     pipeline.push({
       $group: {
@@ -3542,13 +3526,12 @@ export class ReportService {
         totalGrossWeight: { $first: { $ifNull: ["$grossWeight", 0] } }, // Take the first gross weight
         totalDebit: { $first: { $ifNull: ["$debit", 0] } }, // Take the first debit
         totalCredit: { $first: { $ifNull: ["$credit", 0] } }, // Take the first credit
-        transactionCount: { $sum: 1 }, // Count of registry entries per voucher
         latestTransactionDate: { $max: "$transactionDate" }, // Latest date for this voucher
       },
     });
 
     /* ------------------------------------------
-       Step 10: Second Group by prefix to sum across unique vouchers
+       Step 9: Second Group by prefix to sum across unique vouchers
     ------------------------------------------ */
     pipeline.push({
       $group: {
@@ -3629,17 +3612,17 @@ export class ReportService {
             in: "$$prefix",
           },
         },
-        totalValue: { $sum: "$totalValue" }, // Sum the first values across unique vouchers (e.g., PF0006 + PF0007)
+        totalValue: { $sum: "$totalValue" }, // Sum the first values across unique vouchers
         totalGrossWeight: { $sum: "$totalGrossWeight" }, // Sum the first gross weights
         totalDebit: { $sum: "$totalDebit" }, // Sum the first debits
         totalCredit: { $sum: "$totalCredit" }, // Sum the first credits
-        transactionCount: { $sum: "$transactionCount" }, // Total count of registry entries across vouchers
+        transactionCount: { $sum: 1 }, // Count unique vouchers (e.g., OSB001, OSB002, OSB003)
         latestTransactionDate: { $max: "$latestTransactionDate" }, // Latest date across vouchers
       },
     });
 
     /* ------------------------------------------
-       Step 11: Project to format the output
+       Step 10: Project to format the output with average
     ------------------------------------------ */
     pipeline.push({
       $project: {
@@ -3663,315 +3646,27 @@ export class ReportService {
         totalValue: 1,
         netGrossWeight: { $subtract: ["$totalDebit", "$totalCredit"] },
         totalGrossWeight: 1,
+        avgGrossWeight: {
+          $cond: {
+            if: { $eq: ["$transactionCount", 0] },
+            then: 0,
+            else: { $divide: ["$totalGrossWeight", "$transactionCount"] },
+          },
+        },
         transactionCount: 1,
         latestTransactionDate: 1,
       },
     });
 
     /* ------------------------------------------
-       Step 12: Sort by category
+       Step 11: Sort by category
     ------------------------------------------ */
     pipeline.push({
       $sort: { category: 1 }, // Sort alphabetically by category
     });
 
     return pipeline;
-
-    // Step 7: Filter by transactionType if provided
-    if (filters.transactionType && filters.transactionType !== "all") {
-      pipeline.push({
-        $match: {
-          "metaltransactions.transactionType": filters.transactionType,
-        },
-      });
-    }
-
-    if (filters.groupByRange?.stockCode?.length > 0) {
-      pipeline.push({
-        $match: {
-          $or: [
-            { "entries.stocks.stock": { $in: filters.groupByRange.stockCode } },
-            {
-              "metaltransactions.stockItems.stockCode": {
-                $in: filters.groupByRange.stockCode,
-              },
-            },
-          ],
-        },
-      });
-    }
-
-    if (filters.groupByRange?.karat?.length > 0) {
-      pipeline.push({
-        $match: {
-          $or: [
-            { "metalInfo._id": { $in: filters.groupByRange.stockCode } },
-            {
-              "metalTxnInfo.stockItems.stockCode": {
-                $in: filters.groupByRange.stockCode,
-              },
-            },
-          ],
-        },
-      });
-    }
-
-    // Step 8: Unwind stockItems from metaltransactions
-    pipeline.push({
-      $unwind: {
-        path: "$metaltransactions.stockItems",
-        preserveNullAndEmptyArrays: true,
-      },
-    });
-
-    // Step 9: Lookup metalstocks for stock details
-    pipeline.push({
-      $lookup: {
-        from: "metalstocks",
-        localField: "metaltransactions.stockItems.stockCode",
-        foreignField: "_id",
-        as: "metaldetail",
-      },
-    });
-
-    // Step 10: Unwind metaldetail
-    pipeline.push({
-      $unwind: {
-        path: "$metaldetail",
-        preserveNullAndEmptyArrays: true,
-      },
-    });
-
-    // Step 11: Lookup karat details (optional, as purity is available in stockItems)
-    pipeline.push({
-      $lookup: {
-        from: "karatmasters",
-        localField: "metaldetail.karat",
-        foreignField: "_id",
-        as: "karatDetails",
-      },
-    });
-
-    // Step 12: Unwind karatDetails
-    pipeline.push({
-      $unwind: {
-        path: "$karatDetails",
-        preserveNullAndEmptyArrays: true,
-      },
-    });
-
-    pipeline.push({
-      $lookup: {
-        from: "metalratemasters",
-        localField: "metaltransactions.stockItems.metalRate",
-        foreignField: "_id",
-        as: "metalRate",
-      },
-    });
-
-    // Step 12: Unwind karatDetails
-    pipeline.push({
-      $unwind: {
-        path: "$metalRate",
-        preserveNullAndEmptyArrays: true,
-      },
-    });
-
-    return pipeline;
-
-    // Step 13: Project the required fields
-    pipeline.push({
-      $project: {
-        transactionId: "$transactionId",
-        description: "$description",
-        pcs: { $ifNull: ["$metaltransactions.stockItems.pieces", 0] },
-        grossWeight: {
-          $ifNull: [
-            "$grossWeight",
-            "$metaltransactions.stockItems.grossWeight",
-            0,
-          ],
-        },
-        premium: {
-          $ifNull: ["$metaltransactions.stockItems.premium.amount", 0],
-        },
-        makingCharge: {
-          $ifNull: ["$metaltransactions.stockItems.makingCharges.amount", 0],
-        },
-        discount: { $literal: 0 }, // Explicitly set to 0 using $literal
-        purity: {
-          $ifNull: ["$purity", "$metaltransactions.stockItems.purity", 0],
-        },
-        pureWeight: {
-          $ifNull: [
-            "$pureWeight",
-            "$metaltransactions.stockItems.pureWeight",
-            0,
-          ],
-        },
-        totalAmount: {
-          $ifNull: [
-            "$metaltransactions.totalAmountSession.totalAmountAED",
-            "$entries.totalAmount",
-            0,
-          ],
-        },
-        metalValue: {
-          $ifNull: [
-            "$metaltransactions.stockItems.metalRateRequirements.rate",
-            0,
-          ],
-        },
-        _id: 0,
-      },
-    });
-
-    // Step 14: Group to calculate totals
-    pipeline.push({
-      $group: {
-        _id: null,
-        transactions: {
-          $push: {
-            transactionId: "$transactionId",
-            description: "$description",
-            pcs: "$pcs",
-            grossWeight: "$grossWeight",
-            premium: "$premium",
-            discount: "$discount",
-            purity: "$purity",
-            pureWeight: "$pureWeight",
-            metalValue: "$metalValue",
-            makingCharge: "$makingCharge",
-            total: "$totalAmount",
-          },
-        },
-        totalPcs: { $sum: "$pcs" },
-        totalGrossWeight: { $sum: "$grossWeight" },
-        totalPremium: { $sum: "$premium" },
-        totalDiscount: { $sum: "$discount" },
-        totalPureWeight: { $sum: "$pureWeight" },
-        totalMetalValue: { $sum: "$metalValue" },
-        totalMakingCharge: { $sum: "$makingCharge" },
-      },
-    });
-
-    // Step 15: Project the final output
-    pipeline.push({
-      $project: {
-        _id: 0,
-        transactions: 1,
-        totals: {
-          totalPcs: "$totalPcs",
-          totalGrossWeight: "$totalGrossWeight",
-          totalPremium: "$totalPremium",
-          totalDiscount: "$totalDiscount",
-          totalPureWeight: "$totalPureWeight",
-          totalMetalValue: "$totalMetalValue",
-          totalMakingCharge: "$totalMakingCharge",
-        },
-      },
-    });
-
-    return pipeline;
-
-    // Dynamically add conditions based on non-empty arrays
-    if (filters.groupByRange?.stockCode?.length > 0) {
-      groupByMatch["metalInfo.code"] = { $in: filters.groupByRange.stockCode };
-    }
-
-    if (filters.groupByRange?.categoryCode?.length > 0) {
-      groupByMatch["metalInfo.category"] = {
-        $in: filters.groupByRange.categoryCode,
-      };
-    }
-
-    if (filters.groupByRange?.karat?.length > 0) {
-      groupByMatch["metalInfo.karat"] = { $in: filters.groupByRange.karat };
-    }
-
-    if (filters.groupByRange?.type?.length > 0) {
-      groupByMatch["metalInfo.type"] = { $in: filters.groupByRange.type };
-    }
-
-    if (filters.groupByRange?.size?.length > 0) {
-      groupByMatch["metalInfo.size"] = { $in: filters.groupByRange.size };
-    }
-
-    if (filters.groupByRange?.color?.length > 0) {
-      groupByMatch["metalInfo.color"] = { $in: filters.groupByRange.color };
-    }
-
-    if (filters.groupByRange?.brand?.length > 0) {
-      groupByMatch["metalInfo.brand"] = { $in: filters.groupByRange.brand };
-    }
-
-    // Only push $match if any filter was added
-    if (Object.keys(groupByMatch).length > 0) {
-      pipeline.push({ $match: groupByMatch });
-    }
-    pipeline.push({
-      $lookup: {
-        from: "karatmasters",
-        localField: "metalInfo.karat",
-        foreignField: "_id",
-        as: "karatDetails",
-      },
-    });
-
-    pipeline.push({
-      $group: {
-        _id: {
-          metalId: "$metalId",
-          code: "$metalInfo.code",
-          description: "$metalInfo.description",
-          metalType: "$metalInfo.metalType",
-          purity: "$purity",
-        },
-        metalName: { $first: "$metalInfo.code" },
-        totalGrossWeight: { $sum: "$grossWeight" },
-        totalPureWeight: { $sum: "$pureWeight" },
-
-        totalCredit: { $sum: "$credit" },
-        totalDebit: { $sum: "$debit" },
-
-        // Smart pcsCount computation
-        totalPcsCount: {
-          $sum: {
-            $cond: [
-              { $eq: ["$metalInfo.pcs", true] },
-              {
-                $round: [
-                  { $divide: ["$grossWeight", "$metalInfo.totalValue"] },
-                  0,
-                ],
-              },
-              0,
-            ],
-          },
-        },
-        logs: { $push: "$$ROOT" },
-      },
-    });
-
-    // Conditionally filter based on transactionType
-    if (filters.transactionType) {
-      pipeline.push({
-        $project: {
-          metalId: "$_id.metalId",
-          code: "$_id.code",
-          description: "$_id.description",
-          metalType: "$_id.metalType",
-          purity: "$_id.purity",
-          totalPcsCount: 1,
-          totalGrossWeight: 1,
-          totalPureWeight: 1,
-          totalValue: 1,
-          _id: 0,
-        },
-      });
-    }
-    return pipeline;
-  }
+}
 
   metalFxingPipeLine(filters) {
 
