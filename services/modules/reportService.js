@@ -251,7 +251,38 @@ export class ReportService {
     }
   }
 
-  validateFilters(filters, isStock) {
+
+  async getMetalFixingReports(filters) {
+    try {
+
+      // Validate and format input filters
+      const validatedFilters = this.validateFilters(filters);
+
+      // Construct MongoDB aggregation pipeline
+      const pipeline = this.metalFxingPipeLine(validatedFilters);
+
+      // Execute aggregation query
+      const reportData = await Registry.aggregate(pipeline);
+
+      // Format the retrieved data for response
+      const formattedData = this.formatReportData(reportData, validatedFilters);
+
+      return {
+        success: true,
+        data: reportData,
+        filters: validatedFilters,
+        totalRecords: reportData.length,
+      };
+    } catch (error) {
+      throw new Error(
+        `Failed to generate metal stock ledger report: ${error.message}`
+      );
+    }
+  }
+
+
+  validateFilters(filters = {}, isStock = false) {
+    // Provide default empty object if filters is undefined or null
     const {
       type,
       fromDate,
@@ -338,7 +369,7 @@ export class ReportService {
     if (endDate) result.endDate = endDate;
     if (transactionType) result.transactionType = transactionType;
 
-    // ✅ Conditionally add groupByRange if it has any non-empty array
+    // Conditionally add groupByRange if it has any non-empty array
     const hasGroupByRangeValues = Object.values(groupByRange).some(
       (arr) => Array.isArray(arr) && arr.length > 0
     );
@@ -347,12 +378,9 @@ export class ReportService {
       if (hasGroupByRangeValues) {
         const formattedGroupByRange = {};
         for (const [key, value] of Object.entries(groupByRange)) {
-          if (
-            ["karat", "categoryCode", "supplier", "type", "brand"].includes(key)
-          ) {
+          if (["karat", "categoryCode", "supplier", "type", "brand"].includes(key)) {
             formattedGroupByRange[key] = formatObjectIds(value);
           } else {
-            // For stockCode, size, color — keep them as-is (string arrays)
             formattedGroupByRange[key] = value;
           }
         }
@@ -360,7 +388,6 @@ export class ReportService {
       }
     } else {
       if (hasGroupByRangeValues) {
-        // Optionally, convert IDs to ObjectIds if needed
         const formattedGroupByRange = {};
         for (const [key, value] of Object.entries(groupByRange)) {
           formattedGroupByRange[key] = formatObjectIds(value);
@@ -879,10 +906,10 @@ export class ReportService {
     return pipeline;
   }
 
-   calculateSalesAnalysis(salesReport, purchaseReport) {
+  calculateSalesAnalysis(salesReport, purchaseReport) {
     const salesTransactions = salesReport[0]?.transactions || [];
     const purchaseTransactions = purchaseReport[0]?.transactions || [];
-  
+
     // Create purchase map by stockCode
     const purchaseMap = new Map();
     purchaseTransactions.forEach(p => {
@@ -892,7 +919,7 @@ export class ReportService {
         total: p.total || 0,
       });
     });
-  
+
     // Calculate and combine
     const combinedTransactions = salesTransactions.map(sale => {
       const stockCode = sale.stockCode.toString();
@@ -901,29 +928,29 @@ export class ReportService {
         grossWeight: 0,
         total: 0,
       };
-  
+
       const saleGrossWeight = sale.grossWeight || 0;
       const saleMakingCharge = sale.makingCharge || 0;
-  
+
       const purchaseGrossWeight = purchase.grossWeight || 0;
       const purchaseMakingCharge = purchase.makingCharge || 0;
-  
+
       // Avg making charges
       const avgPurchaseMakingCharge = purchaseGrossWeight > 0
         ? purchaseMakingCharge / purchaseGrossWeight
         : 0;
-  
+
       const avgSaleMakingCharge = saleGrossWeight > 0
         ? saleMakingCharge / saleGrossWeight
         : 0;
-  
+
       // Cost of sale
       const cost = avgPurchaseMakingCharge * saleGrossWeight;
-  
+
       // Profit metrics
       const profitMakingRate = avgSaleMakingCharge - avgPurchaseMakingCharge;
       const profitMakingAmount = saleMakingCharge - purchaseMakingCharge;
-  
+
       return {
         id: sale.stockCode,
         stockCode: sale.code,
@@ -942,7 +969,7 @@ export class ReportService {
         profit: sale.total - purchase.total,
       };
     });
-  
+
     // Totals (if needed)
     const totals = {
       totalPcs: combinedTransactions.reduce((sum, t) => sum + (t.pcs || 0), 0),
@@ -952,13 +979,13 @@ export class ReportService {
       totalProfitMakingAmount: combinedTransactions.reduce((sum, t) => sum + (t.profitMakingAmount || 0), 0),
       totalProfit: combinedTransactions.reduce((sum, t) => sum + (t.profit || 0), 0),
     };
-  
+
     return {
       transactions: combinedTransactions,
       totals,
     };
   }
-  
+
 
   buildSalesAnalysisPurchase() {
     const pipeline = [];
@@ -3166,7 +3193,7 @@ export class ReportService {
             reference: "$reference",
             description: "$description",
             pcs: "$pcs",
-            code: "$code", 
+            code: "$code",
             grossWeight: "$grossWeight",
             premium: "$premium",
             discount: "$discount",
@@ -3304,6 +3331,7 @@ export class ReportService {
     }
     return pipeline;
   }
+
 
   OwnStockPipeLine(filters) {
     const pipeline = [];
@@ -3849,6 +3877,86 @@ export class ReportService {
         },
       });
     }
+    return pipeline;
+  }
+
+  metalFxingPipeLine(filters) {
+
+    const pipeline = [];
+    const matchConditions = {};
+
+    // Step 1: Filter for specific transaction types
+    matchConditions.type = { $in: ["purchase-fixing", "sales-fixing"] };
+
+    // Step 2: Date filtering (optional, based on filters)
+    if (filters.startDate || filters.endDate) {
+      matchConditions.transactionDate = {};
+      if (filters.startDate) {
+        matchConditions.transactionDate.$gte = new Date(filters.startDate);
+      }
+      if (filters.endDate) {
+        matchConditions.transactionDate.$lte = new Date(filters.endDate);
+      }
+    }
+
+    // Add match stage to pipeline
+    pipeline.push({ $match: matchConditions });
+
+    // Step 3: Lookup parties from accounts collection
+    pipeline.push({
+      $lookup: {
+        from: "accounts", // Collection name for parties
+        localField: "party", // Field in the current collection
+        foreignField: "_id", // Field in the accounts collection
+        as: "parties" // Output array field
+      }
+    });
+
+    // Step 4: Unwind parties if you expect a single party per document
+    pipeline.push({
+      $unwind: {
+        path: "$parties",
+        preserveNullAndEmptyArrays: true // Keep documents even if no party is found
+      }
+    });
+
+    // Step 5: Sort by transactionDate in descending order (LIFO)
+    pipeline.push({
+      $sort: {
+        transactionDate: -1 // -1 for descending order (latest first)
+      }
+    });
+
+    // Step 6: Project to match the UI structure
+    pipeline.push({
+      $project: {
+        voucher: "$reference", // Maps to the voucher number (e.g., "PUR-2026")
+        date: {
+          $dateToString: {
+            format: "%d/%m/%Y",
+            date: "$transactionDate" // Maps to the transaction date (e.g., "31/07/2025")
+          }
+        },
+        partyName: "$parties.customerName", // Maps to the party name (e.g., "Amal Test New")
+        stockIn: "$goldCredit", // Maps to stock in (e.g., 0)
+        stockOut: "$goldDebit", // Maps to stock out (e.g., 2000)
+        balance: {
+          $subtract: [
+            "$runningBalance", // Adjust based on how balance is calculated
+            { $add: ["$goldDebit", { $ifNull: ["$goldCredit", 0] }] }
+          ]
+        }, // Maps to balance (e.g., -1000), adjust logic if needed
+        rate: "$goldBidValue", // Maps to rate (e.g., 377.98538), corrected from goldBidValue
+        value: {
+          $multiply: [
+            "$goldBidValue",
+            { $subtract: ["$goldCredit", "$goldDebit"] }
+          ]
+        }, // Maps to value (e.g., -755970.76), adjust if weight is involved
+        average: 307.12 // Placeholder; calculate based on context (e.g., weighted average of rates)
+      }
+    });
+
     return pipeline;
   }
 
