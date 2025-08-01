@@ -79,7 +79,7 @@ class InventoryService {
     value,
     adminId,
     voucher,
-    goldBidValue,
+    goldBidPrice,
   }) {
     try {
       if (!metalId || !type || value === undefined) {
@@ -172,7 +172,7 @@ class InventoryService {
         transactionId: await Registry.generateTransactionId(),
         metalId: metalId, // this is not Transaction id this is MetalID
         type: "GOLD_STOCK",
-        goldBidValue: goldBidValue,
+        goldBidValue: goldBidPrice,
         description: `OPENING STOCK FOR ${metal.code}`,
         value: value,
         isBullion: true,
