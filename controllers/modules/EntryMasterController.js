@@ -23,12 +23,17 @@ const createEntry = async (req, res) => {
       });
     }
 
+    console.log('====================================');
+    console.log("onnnnnnnnn",req.body);
+    console.log('====================================');
+
     // Prepare entry data based on type
     let entryData = {
       // voucherId: req.body.voucherId,
       type: req.body.type,
       voucherCode: req.body.voucherCode,
       voucherDate: req.body.voucherDate,
+      // voucherType: req.body.voucherType,
       party: req.body.party,
       enteredBy: req.admin.id,
       remarks: req.body.remarks,

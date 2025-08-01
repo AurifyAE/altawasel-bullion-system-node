@@ -4,7 +4,7 @@ const entrySchema = new mongoose.Schema({
     type: {
         type: String,
         required: [true, "Entry type is required"],
-        enum: ["metal-receipt", "metal-payment", "cash receipt", "cash payment" , "currency-receipt"]
+        enum: ["metal-receipt", "metal-payment", "cash receipt", "cash payment", "currency-receipt"]
     },
     voucherId: {
         type: mongoose.Schema.Types.ObjectId,
@@ -55,7 +55,7 @@ const entrySchema = new mongoose.Schema({
     },
 
     // Metal stocks array for metal-receipt/payment
-    stocks: [{
+    stockItems: [{
         stock: {
             type: mongoose.Schema.Types.ObjectId,
             ref: "MetalStock",

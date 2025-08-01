@@ -23,7 +23,7 @@ export class ReportService {
 
       return {
         success: true,
-        data: formattedData,
+        data: reportData,
         filters: validatedFilters,
         totalRecords: reportData.length,
       };
@@ -239,7 +239,7 @@ export class ReportService {
       const receivablesAndPayables = await Account.aggregate(receivablesPayablesPipeline)
       const reportData = await Registry.aggregate(stockPipeline)
 
-      const finilized = this.formatedOwnStock(reportData,receivablesAndPayables)
+      const finilized = this.formatedOwnStock(reportData, receivablesAndPayables)
 
       // 5. Return structured response
       return {
@@ -441,14 +441,18 @@ export class ReportService {
 
     const matchConditions = {
       isActive: true,
+      $or: [
+        { metalTransactionId: { $exists: true, $ne: null } },
+        { EntryTransactionId: { $exists: true, $ne: null } },
+      ],
     };
 
-    // Make `type` dynamic if provided
+    // Type filter
     if (filters.type) {
       matchConditions.type = filters.type;
     }
 
-    // Add date range filter if provided
+    // Date filter
     if (filters.startDate || filters.endDate) {
       matchConditions.transactionDate = {};
       if (filters.startDate) {
@@ -459,10 +463,10 @@ export class ReportService {
       }
     }
 
-    // Stage 1: Initial filtering
+    // Stage 1: Match base records
     pipeline.push({ $match: matchConditions });
 
-    // Stage 2: Join with metaltransactions collection
+    // Stage 2: Lookup metalTransaction
     pipeline.push({
       $lookup: {
         from: "metaltransactions",
@@ -472,36 +476,110 @@ export class ReportService {
       },
     });
 
-    // Stage 3: Unwind metalTransaction array
+    // Stage 3: Lookup entryInfo
     pipeline.push({
-      $unwind: {
-        path: "$metalTransaction",
-        preserveNullAndEmptyArrays: false,
+      $lookup: {
+        from: "entries",
+        localField: "EntryTransactionId",
+        foreignField: "_id",
+        as: "entryInfo",
       },
     });
 
-    // Conditionally filter based on transactionType
-    if (filters.transactionType) {
-      pipeline.push({
-        $match: {
-          "metalTransaction.transactionType": filters.transactionType,
-        },
-      });
-    }
+    // Stage 4: Unwind
+    pipeline.push(
+      { $unwind: { path: "$metalTransaction", preserveNullAndEmptyArrays: true } },
+      { $unwind: { path: "$entryInfo", preserveNullAndEmptyArrays: true } }
+    );
 
-    // Stage 4: Filter by voucher if provided
-    if (filters.voucher.length > 0) {
-      pipeline.push({
-        $match: {
-          $or: [
-            { "metalTransaction.voucherType": { $in: filters.voucher } },
-            { reference: { $in: filters.voucher.map((id) => id.toString()) } },
-          ],
+    // Stage 5: Normalize data into transactionData, partyCode, etc.
+    pipeline.push({
+      $addFields: {
+        transactionData: {
+          $cond: [{ $ifNull: ["$metalTransaction", false] }, "$metalTransaction", "$entryInfo"]
         },
-      });
-    }
+        partyCode: {
+          $ifNull: ["$metalTransaction.partyCode", "$entryInfo.party"]
+        },
+        voucher: {
+          $cond: [
+            { $ifNull: ["$metalTransaction", false] },
+            "$metalTransaction.voucherNumber",
+            "$entryInfo.voucherCode"
+          ]
+        }
+      }
+    });
 
-    // Stage 5: Filter by account type if provided
+    // Stage 6: Fallback stockItems (from entry `stocks`)
+    pipeline.push({
+      $addFields: {
+        "transactionData.stockItems": {
+          $cond: [
+            { $gt: [{ $size: { $ifNull: ["$transactionData.stockItems", []] } }, 0] },
+            "$transactionData.stockItems",
+            "$transactionData.stocks"
+          ]
+        }
+      }
+    });
+
+    // Stage 7: Lookup account info
+    pipeline.push({
+      $lookup: {
+        from: "accounts",
+        localField: "partyCode",
+        foreignField: "_id",
+        as: "partyAccount"
+      }
+    });
+
+    // Stage 8: Set partyName from account, fallback to "N/A"
+    pipeline.push({
+      $addFields: {
+        partyName: {
+          $ifNull: [{ $arrayElemAt: ["$partyAccount.customerName", 0] }, "N/A"]
+        }
+      }
+    });
+
+    // Stage 9: Unwind stockItems
+    pipeline.push({
+      $unwind: {
+        path: "$transactionData.stockItems",
+        preserveNullAndEmptyArrays: false
+      }
+    });
+
+    // Stage 10: Lookup stockDetails for both `stockItems.stockCode` and `stocks.stock`
+    pipeline.push({
+      $addFields: {
+        stockCodeToLookup: {
+          $ifNull: [
+            "$transactionData.stockItems.stockCode",
+            "$transactionData.stockItems.stock"
+          ]
+        }
+      }
+    });
+
+    pipeline.push({
+      $lookup: {
+        from: "metalstocks",
+        localField: "stockCodeToLookup",
+        foreignField: "_id",
+        as: "stockDetails"
+      }
+    });
+
+    pipeline.push({
+      $unwind: {
+        path: "$stockDetails",
+        preserveNullAndEmptyArrays: false
+      }
+    });
+
+
     if (filters.accountType.length > 0) {
       pipeline.push({
         $match: {
@@ -509,33 +587,6 @@ export class ReportService {
         },
       });
     }
-
-    // Stage 6: Unwind stock items
-    pipeline.push({
-      $unwind: {
-        path: "$metalTransaction.stockItems",
-        preserveNullAndEmptyArrays: false,
-      },
-    });
-
-    // Stage 7: Join with metalstocks collection
-    pipeline.push({
-      $lookup: {
-        from: "metalstocks",
-        localField: "metalTransaction.stockItems.stockCode",
-        foreignField: "_id",
-        as: "stockDetails",
-      },
-    });
-
-    // Stage 8: Unwind stockDetails array
-    pipeline.push({
-      $unwind: {
-        path: "$stockDetails",
-        preserveNullAndEmptyArrays: false,
-      },
-    });
-
     // Stage 9: Filter by stock if provided
     if (filters.stock.length > 0) {
       pipeline.push({
@@ -562,6 +613,57 @@ export class ReportService {
         },
       });
     }
+
+
+    // Stage 6: Project only required fields
+    pipeline.push({
+      $project: {
+        voucher: 1,
+        transactionDate: 1,
+        partyName: 1,
+        stockIn: "$debit",
+        stockOut: "$credit",
+        _id: 0,
+      },
+    });
+
+    // Stage 7: Sort by transactionDate for consistent ordering
+    pipeline.push({
+      $sort: {
+        transactionDate: 1,
+      },
+    });
+    return pipeline
+
+    // Stage 5: Filter by account type if provided
+
+    // Conditionally filter based on transactionType
+    //  if (filters.transactionType) {
+    //   pipeline.push({
+    //     $match: {
+    //       "metalTransaction.transactionType": filters.transactionType,
+    //     },
+    //   });
+    // }
+
+    return pipeline
+
+    // Stage 4: Filter by voucher if provided
+    // if (filters.voucher.length > 0) {
+    //   pipeline.push({
+    //     $match: {
+    //       $or: [
+    //         { "metalTransaction.voucherType": { $in: filters.voucher } },
+    //         { reference: { $in: filters.voucher.map((id) => id.toString()) } },
+    //       ],
+    //     },
+    //   });
+    // }
+
+
+
+
+
 
     // Stage 11.1: Apply groupByRange filters if present
     if (filters.groupByRange && typeof filters.groupByRange === "object") {
@@ -3417,7 +3519,7 @@ export class ReportService {
     ];
 
     return pipeline;
-}
+  }
   formatedOwnStock(reportData, receivablesAndPayables) {
     const summary = {
       totalGrossWeight: 0,
@@ -3425,11 +3527,11 @@ export class ReportService {
       totalValue: 0,
       totalReceivableGrams: 0,
       totalPayableGrams: 0,
-      avgGrossWeight:0,
-      avgReceivableGrams:0,
-      avgPayableGrams:0
+      avgGrossWeight: 0,
+      avgReceivableGrams: 0,
+      avgPayableGrams: 0
     };
-  
+
     // Extract receivable/payable safely
     if (receivablesAndPayables?.length) {
       summary.totalReceivableGrams = receivablesAndPayables[0].totalReceivableGrams || 0;
@@ -3437,30 +3539,30 @@ export class ReportService {
       summary.avgReceivableGrams = receivablesAndPayables[0].avgReceivableGrams || 0;
       summary.avgPayableGrams = receivablesAndPayables[0].avgPayableGrams || 0;
     }
-  
+
     const categories = reportData.map((item) => {
       summary.totalGrossWeight += item.totalGrossWeight || 0;
       summary.netGrossWeight += item.netGrossWeight || 0;
       summary.totalValue += item.totalValue || 0;
-  
+
       return {
         category: item.category,
         description: item.description,
         transactionCount: item.transactionCount,
         totalValue: item.totalValue,
-        avgGrossWeight:item.avgGrossWeight,
+        avgGrossWeight: item.avgGrossWeight,
         totalGrossWeight: item.totalGrossWeight,
         netGrossWeight: item.netGrossWeight,
         latestTransactionDate: item.latestTransactionDate,
       };
     });
-  
+
     return {
       summary,
       categories
     };
   }
-  
+
 
   OwnStockPipeLine(filters) {
     const pipeline = [];
@@ -3700,7 +3802,7 @@ export class ReportService {
     });
 
     return pipeline;
-}
+  }
 
   metalFxingPipeLine(filters) {
 
