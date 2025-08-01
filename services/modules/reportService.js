@@ -624,6 +624,7 @@ export class ReportService {
         stockIn: "$debit",
         stockOut: "$credit",
         _id: 0,
+        stockCode: "$stockDetails.code",
       },
     });
 
@@ -3529,7 +3530,8 @@ export class ReportService {
       totalPayableGrams: 0,
       avgGrossWeight: 0,
       avgReceivableGrams: 0,
-      avgPayableGrams: 0
+      avgPayableGrams: 0,
+      avgBidValue:0
     };
 
     // Extract receivable/payable safely
@@ -3552,6 +3554,7 @@ export class ReportService {
         totalValue: item.totalValue,
         avgGrossWeight: item.avgGrossWeight,
         totalGrossWeight: item.totalGrossWeight,
+        avgBidValue: item.avgBidValue,
         netGrossWeight: item.netGrossWeight,
         latestTransactionDate: item.latestTransactionDate,
       };
@@ -3660,6 +3663,7 @@ export class ReportService {
         _id: "$reference", // Group by full reference (e.g., PF0006, PR0001) to consolidate voucher entries
         totalValue: { $first: { $ifNull: ["$value", 0] } }, // Take the first value for this voucher
         totalGrossWeight: { $first: { $ifNull: ["$grossWeight", 0] } }, // Take the first gross weight
+        totalbidvalue: { $first: { $ifNull: ["$goldBidValue", 0] } }, // Take the first gross weight
         totalDebit: { $first: { $ifNull: ["$debit", 0] } }, // Take the first debit
         totalCredit: { $first: { $ifNull: ["$credit", 0] } }, // Take the first credit
         latestTransactionDate: { $max: "$transactionDate" }, // Latest date for this voucher
@@ -3750,6 +3754,7 @@ export class ReportService {
         },
         totalValue: { $sum: "$totalValue" }, // Sum the first values across unique vouchers
         totalGrossWeight: { $sum: "$totalGrossWeight" }, // Sum the first gross weights
+        totalbidvalue: { $sum: "$totalbidvalue" }, // Sum the first gross weights
         totalDebit: { $sum: "$totalDebit" }, // Sum the first debits
         totalCredit: { $sum: "$totalCredit" }, // Sum the first credits
         transactionCount: { $sum: 1 }, // Count unique vouchers (e.g., OSB001, OSB002, OSB003)
@@ -3787,6 +3792,13 @@ export class ReportService {
             if: { $eq: ["$transactionCount", 0] },
             then: 0,
             else: { $divide: ["$totalGrossWeight", "$transactionCount"] },
+          },
+        },
+        avgBidValue: {
+          $cond: {
+            if: { $eq: ["$transactionCount", 0] },
+            then: 0,
+            else: { $divide: ["$totalbidvalue", "$transactionCount"] },
           },
         },
         transactionCount: 1,
