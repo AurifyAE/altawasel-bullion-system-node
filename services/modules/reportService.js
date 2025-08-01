@@ -623,10 +623,30 @@ export class ReportService {
         partyName: 1,
         stockIn: "$debit",
         stockOut: "$credit",
+        value: {
+          $ifNull: [
+            "$transactionData.stockItems.itemTotal.baseAmount",
+            {
+              $ifNull: [
+                "$transactionData.stockItems.alternateAmount",
+                0
+              ]
+            }
+          ]
+        },
         _id: 0,
-        stockCode: "$stockDetails.code",
-      },
+        stockCode: {
+          $ifNull: [
+            "$stockDetails.code",
+            {
+              $ifNull: ["$stockDetails.altCode", "N/A"]
+            }
+          ]
+        }
+      }
     });
+    
+    
 
     // Stage 7: Sort by transactionDate for consistent ordering
     pipeline.push({
