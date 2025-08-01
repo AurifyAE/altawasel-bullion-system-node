@@ -21,7 +21,6 @@ export const createMetalTransaction = async (req, res, next) => {
       notes,
       voucher
     } = req.body;
-    console.log(req.body)
     // Validation (already handled by middleware, but ensuring critical fields)
     if (
       !transactionType ||
