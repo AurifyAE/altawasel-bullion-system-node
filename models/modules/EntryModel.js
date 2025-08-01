@@ -1,175 +1,195 @@
 import mongoose from "mongoose";
 
-const entrySchema = new mongoose.Schema({
+const entrySchema = new mongoose.Schema(
+  {
     type: {
-        type: String,
-        required: [true, "Entry type is required"],
-        enum: ["metal-receipt", "metal-payment", "cash receipt", "cash payment", "currency-receipt"]
+      type: String,
+      required: [true, "Entry type is required"],
+      enum: [
+        "metal-receipt",
+        "metal-payment",
+        "cash receipt",
+        "cash payment",
+        "currency-receipt",
+      ],
     },
     voucherId: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "VoucherMaster"
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "VoucherMaster",
     },
     voucherCode: {
-        type: String,
+      type: String,
     },
     voucherDate: {
-        type: Date
+      type: Date,
+      required: [true, "Voucher date is required"],
     },
     party: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "Account",
-        default: null
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Account",
+      default: null,
     },
     enteredBy: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "Admin",
-        required: true
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Admin",
+      required: true,
     },
     remarks: {
-        type: String,
+      type: String,
+      trim: true,
     },
-
-    // Total amount field (calculated from cash array)
     totalAmount: {
-        type: Number,
-        default: 0,
+      type: Number,
+      default: 0,
+      min: [0, "Total amount must be positive"],
     },
-
-    // Aggregate fields for metal entries (sum of stocks array)
     totalGrossWeight: {
-        type: Number,
-        default: 0,
+      type: Number,
+      default: 0,
+      min: [0, "Total gross weight must be positive"],
     },
     totalPurityWeight: {
-        type: Number,
-        default: 0,
+      type: Number,
+      default: 0,
+      min: [0, "Total purity weight must be positive"],
     },
     totalNetWeight: {
-        type: Number,
-        default: 0,
+      type: Number,
+      default: 0,
+      min: [0, "Total net weight must be positive"],
     },
     totalOzWeight: {
-        type: Number,
-        default: 0,
+      type: Number,
+      default: 0,
+      min: [0, "Total oz weight must be positive"],
     },
-
-    // Metal stocks array for metal-receipt/payment
-    stockItems: [{
+    stockItems: [
+      {
         stock: {
-            type: mongoose.Schema.Types.ObjectId,
-            ref: "MetalStock",
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "MetalStock",
+          required: [true, "Stock reference is required for stockItems"],
         },
         grossWeight: {
-            type: Number,
-            required: function () {
-                return this.parent().type === "metal-receipt" || this.parent().type === "metal-payment";
-            }
+          type: Number,
+          required: [true, "Gross weight is required for stockItems"],
+          min: [0, "Gross weight must be positive"],
         },
         purity: {
-            type: Number,
-            required: function () {
-                return this.parent().type === "metal-receipt" || this.parent().type === "metal-payment";
-            }
+          type: Number,
+          required: [true, "Purity is required for stockItems"],
+          min: [0, "Purity must be positive"],
         },
         purityWeight: {
-            type: Number,
-            required: function () {
-                return this.parent().type === "metal-receipt" || this.parent().type === "metal-payment";
-            }
+          type: Number,
+          required: [true, "Purity weight is required for stockItems"],
+          min: [0, "Purity weight must be positive"],
         },
         netWeight: {
-            type: Number,
-            required: function () {
-                return this.parent().type === "metal-receipt" || this.parent().type === "metal-payment";
-            }
+          type: Number,
+          required: [true, "Net weight is required for stockItems"],
+          min: [0, "Net weight must be positive"],
         },
         ozWeight: {
-            type: Number,
-            required: function () {
-                return this.parent().type === "metal-receipt" || this.parent().type === "metal-payment";
-            }
+          type: Number,
+          required: [true, "Oz weight is required for stockItems"],
+          min: [0, "Oz weight must be positive"],
+        },
+        pieces: {
+          type: Number,
+          default: 0,
+          min: [0, "Pieces must be non-negative"],
         },
         remarks: {
-            type: String,
+          type: String,
+          trim: true,
         },
-    }],
-
-    // Cash array for cash receipt/payment
-    cash: [{
+      },
+    ],
+    cash: [
+      {
         branch: {
-            type: mongoose.Schema.Types.ObjectId,
-            // ref: "Branch", // Uncomment when branch model is ready
-            default: null
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "Branch",
+          default: null,
         },
         cashType: {
-            type: mongoose.Schema.Types.ObjectId,
-            ref: "AccountMaster",
-            required: function () {
-                return this.parent().type === "cash receipt" || this.parent().type === "cash payment";
-            }
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "AccountMaster",
+          required: [true, "Cash type is required for cash entries"],
         },
         currency: {
-            type: mongoose.Schema.Types.ObjectId,
-            ref: "Currency", // Assuming you have a Currency model
-            required: function () {
-                return this.parent().type === "cash receipt" || this.parent().type === "cash payment";
-            }
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "Currency",
+          required: [true, "Currency is required for cash entries"],
         },
         amount: {
-            type: Number,
-            required: function () {
-                return this.parent().type === "cash receipt" || this.parent().type === "cash payment";
-            },
-            min: [0, "Amount must be positive"]
+          type: Number,
+          required: [true, "Amount is required for cash entries"],
+          min: [0, "Amount must be positive"],
         },
         amountWithTnr: {
-            type: Number,
-            default: 0,
+          type: Number,
+          default: 0,
+          min: [0, "Amount with TNR must be positive"],
         },
         remarks: {
-            type: String,
+          type: String,
+          trim: true,
         },
-    }]
-}, {
-    timestamps: true
+      },
+    ],
+  },
+  {
+    timestamps: true,
+  }
+);
+
+// Pre-save middleware to calculate totals and validate
+entrySchema.pre("save", function (next) {
+  // Validate required fields based on type
+  if (["metal-receipt", "metal-payment"].includes(this.type)) {
+    if (!this.stockItems?.length) {
+      return next(new Error("stockItems array cannot be empty for metal entries"));
+    }
+    // Clear cash array for metal entries
+    this.cash = undefined;
+  } else if (["cash-receipt", "cash-payment", "currency-receipt"].includes(this.type)) {
+    if (!this.cash?.length) {
+      return next(new Error("Cash array cannot be empty for cash entries"));
+    }
+    // Clear stockItems array for cash entries
+    this.stockItems = undefined;
+  }
+
+  // Calculate totals for metal entries
+  if (this.stockItems?.length) {
+    this.totalGrossWeight = this.stockItems.reduce((sum, item) => sum + (item.grossWeight || 0), 0);
+    this.totalPurityWeight = this.stockItems.reduce((sum, item) => sum + (item.purityWeight || 0), 0);
+    this.totalNetWeight = this.stockItems.reduce((sum, item) => sum + (item.netWeight || 0), 0);
+    this.totalOzWeight = this.stockItems.reduce((sum, item) => sum + (item.ozWeight || 0), 0);
+  } else {
+    this.totalGrossWeight = 0;
+    this.totalPurityWeight = 0;
+    this.totalNetWeight = 0;
+    this.totalOzWeight = 0;
+  }
+
+  // Calculate total amount for cash entries
+  if (this.cash?.length) {
+    this.totalAmount = this.cash.reduce((sum, cashItem) => sum + (cashItem.amount || 0), 0);
+  } else {
+    this.totalAmount = 0;
+  }
+
+  next();
 });
 
-// Pre-save middleware to calculate totals
-entrySchema.pre('save', function (next) {
-    // Calculate totals for metal entries
-    if (this.type === "metal-receipt" || this.type === "metal-payment") {
-        if (this.stocks && this.stocks.length > 0) {
-            this.totalGrossWeight = this.stocks.reduce((sum, stock) => sum + (stock.grossWeight || 0), 0);
-            this.totalPurityWeight = this.stocks.reduce((sum, stock) => sum + (stock.purityWeight || 0), 0);
-            this.totalNetWeight = this.stocks.reduce((sum, stock) => sum + (stock.netWeight || 0), 0);
-            this.totalOzWeight = this.stocks.reduce((sum, stock) => sum + (stock.ozWeight || 0), 0);
-        } else {
-            // Reset totals if no stocks
-            this.totalGrossWeight = 0;
-            this.totalPurityWeight = 0;
-            this.totalNetWeight = 0;
-            this.totalOzWeight = 0;
-        }
-    }
-
-    // Calculate total amount for cash entries
-    if (this.type === "cash receipt" || this.type === "cash payment") {
-        if (this.cash && this.cash.length > 0) {
-            this.totalAmount = this.cash.reduce((sum, cashItem) => sum + (cashItem.amount || 0), 0);
-        } else {
-            this.totalAmount = 0;
-        }
-    }
-
-    next();
-});
-
-// Index for better query performance
+// Indexes for better query performance
 entrySchema.index({ type: 1, voucherDate: -1 });
 entrySchema.index({ party: 1, createdAt: -1 });
 entrySchema.index({ enteredBy: 1, createdAt: -1 });
 
-const Entry = mongoose.model('Entry', entrySchema);
+const Entry = mongoose.model("Entry", entrySchema);
 
 export default Entry;
