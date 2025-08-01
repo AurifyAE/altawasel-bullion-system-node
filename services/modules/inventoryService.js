@@ -69,7 +69,7 @@ class InventoryService {
         }
     }
 
-    static async updateInventoryByFrontendInput({ metalId, type, value, adminId, voucher ,goldBidValue}) {
+    static async updateInventoryByFrontendInput({ metalId, type, value, adminId, voucher, goldBidPrice }) {
         try {
             if (!metalId || !type || value === undefined) {
                 throw createAppError("Missing metalId, type, or value", 400, "MISSING_INPUT");
@@ -129,7 +129,7 @@ class InventoryService {
                 transactionId: await Registry.generateTransactionId(),
                 metalId: metalId, // this is not Transaction id this is MetalID
                 type: "GOLD_STOCK",
-                goldBidValue:goldBidValue,
+                goldBidValue: goldBidPrice,
                 description: `OPENING STOCK FOR ${metal.code}`,
                 value: value,
                 isBullion: true,
@@ -213,8 +213,8 @@ class InventoryService {
                 goldBidValue,
                 description,
                 value,
-                debit:value,
-                credit:0,
+                debit: value,
+                credit: 0,
                 reference,
                 party,
                 isBullion,
