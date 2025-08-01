@@ -437,6 +437,9 @@ export class ReportService {
   }
 
   buildStockLedgerPipeline(filters) {
+    console.log('====================================');
+    console.log(filters);
+    console.log('====================================');
     const pipeline = [];
 
     const matchConditions = {

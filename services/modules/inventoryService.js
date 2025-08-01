@@ -69,7 +69,7 @@ class InventoryService {
         }
     }
 
-    static async updateInventoryByFrontendInput({ metalId, type, value, adminId, voucher }) {
+    static async updateInventoryByFrontendInput({ metalId, type, value, adminId, voucher ,goldBidValue}) {
         try {
             if (!metalId || !type || value === undefined) {
                 throw createAppError("Missing metalId, type, or value", 400, "MISSING_INPUT");
@@ -129,6 +129,7 @@ class InventoryService {
                 transactionId: await Registry.generateTransactionId(),
                 metalId: metalId, // this is not Transaction id this is MetalID
                 type: "GOLD_STOCK",
+                goldBidValue:goldBidValue,
                 description: `OPENING STOCK FOR ${metal.code}`,
                 value: value,
                 isBullion: true,
@@ -189,6 +190,7 @@ class InventoryService {
         transactionId,
         metalId,
         type,
+        goldBidValue,
         description,
         value,
         debit = 0,
@@ -203,12 +205,12 @@ class InventoryService {
         pureWeight
     }) {
         try {
-
             const registryEntry = new Registry({
                 transactionId,
                 metalId,
                 costCenter,
                 type,
+                goldBidValue,
                 description,
                 value,
                 debit:value,

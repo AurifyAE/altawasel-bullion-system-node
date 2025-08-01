@@ -37,7 +37,7 @@ export const createInventory = async (req, res, next) => {
 // update the inventory
 export const updateInventory = async (req, res, next) => {
     try {
-        let { type, value, metalId, voucher } = req.body;
+        let { type, value, metalId, voucher, goldBidValue } = req.body;
         value = parseFloat(value);
 
         if (!["pcs", "grams"].includes(type) || typeof value !== "number") {
@@ -47,7 +47,7 @@ export const updateInventory = async (req, res, next) => {
             });
         }
         const adminId = req.admin.id;
-        const updatedItem = await InventoryService.updateInventoryByFrontendInput({ metalId, type, value, adminId, voucher });
+        const updatedItem = await InventoryService.updateInventoryByFrontendInput({ metalId, type, value, adminId, voucher, goldBidValue });
 
         res.status(200).json({
             success: true,
