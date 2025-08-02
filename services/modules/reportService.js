@@ -465,8 +465,6 @@ export class ReportService {
       });
     }
 
-
-
     // Date filter
     if (filters.startDate || filters.endDate) {
       matchConditions.transactionDate = {};
