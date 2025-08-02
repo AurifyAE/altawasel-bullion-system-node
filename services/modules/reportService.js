@@ -8,6 +8,9 @@ import Account from "../../models/modules/AccountType.js";
 // ReportService class to handle stock ledger and movement reports
 export class ReportService {
   async getReportsData(filters) {
+    console.log('====================================');
+    console.log(filters);
+    console.log('====================================');
     try {
       // Validate and format input filters
       const validatedFilters = this.validateFilters(filters);
@@ -437,7 +440,7 @@ export class ReportService {
   }
 
   buildStockLedgerPipeline(filters) {
-
+    
     const pipeline = [];
 
     const matchConditions = {
