@@ -161,14 +161,17 @@ const handleMetalReceipt = async (entry) => {
             stockCode: {
               _id: stockItem.stock,
               code: stockItem.stock.toString(),
+
             },
             pieces: stockItem.pieces || 0,
             grossWeight: stockItem.grossWeight,
             purity: stockItem.purity,
+            voucherNumber: entry.voucherCode,
           },
         ],
       },
-      false
+      false,
+      entry.enteredBy, // ← this should be a valid user ID
     );
   }
 };
@@ -346,10 +349,12 @@ const handleMetalPayment = async (entry) => {
             pieces: stockItem.pieces || 0,
             grossWeight: stockItem.grossWeight,
             purity: stockItem.purity,
+            voucherNumber: entry.voucherCode,
           },
         ],
       },
-      true
+      true,
+      entry.enteredBy,
     );
   }
 };

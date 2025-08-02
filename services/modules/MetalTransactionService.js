@@ -3,6 +3,10 @@ import MetalTransaction from "../../models/modules/MetalTransaction.js";
 import Registry from "../../models/modules/Registry.js";
 import Account from "../../models/modules/AccountType.js";
 import { createAppError } from "../../utils/errorHandler.js";
+import InventoryLog from "../../models/modules/InventoryLog.js";
+import Inventory from "../../models/modules/inventory.js";
+import MetalStock from "../../models/modules/MetalStock.js";
+import InventoryService from "./inventoryService.js";
 
 class MetalTransactionService {
   static async createMetalTransaction(transactionData, adminId) {
@@ -78,6 +82,85 @@ class MetalTransactionService {
       metalTransactionId: metalTransaction._id,
     });
   }
+  static async deleteStcoks(voucherCode) {
+    try {
+      console.log(`[CLEANUP] Deleting data for voucher: ${voucherCode}`);
+      // Delete Inventory Logs
+      await InventoryLog.deleteMany({ voucherCode });
+      console.log(`[CLEANUP] Deletion complete for voucher: ${voucherCode}`);
+    } catch (error) {
+      console.error(`[CLEANUP_ERROR] Failed to delete data for voucher: ${voucherCode}`, error);
+      throw error;
+    }
+  }
+
+  static async updateInventory(transaction, isSale, admin) {
+    try {
+      const updated = [];
+
+      for (const item of transaction.stockItems || []) {
+        const metalId = item.stockCode?._id;
+        if (!metalId) continue;
+
+        const [inventory, metal] = await Promise.all([
+          Inventory.findOne({ metal: new mongoose.Types.ObjectId(metalId) }),
+          MetalStock.findById(metalId),
+        ]);
+
+        if (!inventory) {
+          throw createAppError(
+            `Inventory not found for metal: ${item.stockCode.code}`,
+            404,
+            "INVENTORY_NOT_FOUND"
+          );
+        }
+
+        const factor = isSale ? -1 : 1;
+        const pcsDelta = factor * (item.pieces || 0);
+        const weightDelta = factor * (item.grossWeight || 0);
+
+        // Optional: stock validation
+        // if (inventory.pcsCount + pcsDelta < 0 || inventory.grossWeight + weightDelta < 0) {
+        //   throw createAppError(`Insufficient stock for metal: ${metal.code}`, 400, "INSUFFICIENT_STOCK");
+        // }
+
+        inventory.pcsCount += pcsDelta;
+        inventory.grossWeight += weightDelta;
+        inventory.pureWeight = (inventory.grossWeight * inventory.purity) / 100;
+
+        await inventory.save();
+        updated.push(inventory);
+        console.log('====================================');
+        console.log(metal);
+        console.log("Onnnnn heereeeeeeeeee", transaction);
+        console.log('====================================');
+        // Inventory Log
+        await InventoryLog.create({
+          code: metal.code,
+          stockCode: metal._id,
+          voucherCode: transaction.voucherNumber || item.voucherNumber || '',
+          voucherDate: transaction.voucherDate || new Date(),
+          grossWeight: item.grossWeight || 0,
+          action: isSale ? "remove" : "add",
+          transactionType: transaction.transactionType || (isSale ? "sale" : "purchase"),
+          createdBy: transaction.createdBy || admin || null,
+          pcs: !!item.pieces,  // whether it's piece-based
+          note: isSale
+            ? "Inventory reduced due to sale transaction"
+            : "Inventory increased due to purchase transaction"
+        });
+      }
+
+      return updated;
+    } catch (error) {
+      if (error.name === "AppError") throw error;
+      throw createAppError(
+        error.message || "Failed to update inventory",
+        500,
+        "INVENTORY_UPDATE_FAILED"
+      );
+    }
+  }
 
   static buildRegistryEntries(metalTransaction, party, adminId) {
     const {
@@ -91,17 +174,17 @@ class MetalTransactionService {
       voucherNumber,
       metalRateRequirements
     } = metalTransaction;
-  
+
     const baseTransactionId = this.generateTransactionId();
     const mode = this.getTransactionMode(fixed, unfix);
-  
+
     const entries = [];
-  
+
     // Loop over each stock item
     for (let i = 0; i < stockItems.length; i++) {
       const item = stockItems[i];
       const totals = this.calculateTotals([item], totalAmountSession); // Pass only one item
-  
+
       switch (transactionType) {
         case "purchase":
           entries.push(
@@ -118,7 +201,7 @@ class MetalTransactionService {
             )
           );
           break;
-  
+
         case "sale":
           entries.push(
             ...this.buildSaleEntries(
@@ -134,7 +217,7 @@ class MetalTransactionService {
             )
           );
           break;
-  
+
         case "purchaseReturn":
           entries.push(
             ...this.buildPurchaseReturnEntries(
@@ -150,7 +233,7 @@ class MetalTransactionService {
             )
           );
           break;
-  
+
         case "saleReturn":
           entries.push(
             ...this.buildSaleReturnEntries(
@@ -168,10 +251,10 @@ class MetalTransactionService {
           break;
       }
     }
-  
+
     return entries.filter(Boolean);
   }
-  
+
 
   static getTransactionMode(fixed, unfix) {
     if (fixed && !unfix) return "fix";
@@ -2614,6 +2697,7 @@ class MetalTransactionService {
         // Delete old registry entries
         console.log(`[UPDATE_TRANSACTION] Deleting old registry entries`);
         await this.deleteRegistryEntry(transaction);
+        await this.deleteStcoks(transaction.voucherNumber)
 
         // Create new registry entries
         console.log(`[UPDATE_TRANSACTION] Creating new registry entries`);
@@ -2623,6 +2707,23 @@ class MetalTransactionService {
           await Registry.insertMany(newRegistryEntries, { session, ordered: false });
         }
 
+        switch (transaction.transactionType) {
+          case "purchase":
+          case "saleReturn":
+            await InventoryService.updateInventory(transaction, false);
+            break;
+        
+          case "sale":
+          case "purchaseReturn":
+            await InventoryService.updateInventory(transaction, true);
+            break;
+        
+          default:
+            throw new Error("Invalid transaction type");
+        }
+
+        // await this.updateInventory(transaction, false)
+        
         // Reverse old balances
         const oldTransaction = {
           ...transaction.toObject(),

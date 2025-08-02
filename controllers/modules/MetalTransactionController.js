@@ -112,12 +112,19 @@ export const createMetalTransaction = async (req, res, next) => {
       req.admin.id
     );
 
-    if (metalTransaction.transactionType === "sale") {
-      // update inventory if sale happen
-      await InventoryService.updateInventory(metalTransaction, true);
-    } else {
-      // update inventory if Purchase happen
-      await InventoryService.updateInventory(metalTransaction);
+    switch (metalTransaction.transactionType) {
+      case "purchase":
+      case "saleReturn":
+        await InventoryService.updateInventory(metalTransaction, false);
+        break;
+    
+      case "sale":
+      case "purchaseReturn":
+        await InventoryService.updateInventory(metalTransaction, true);
+        break;
+    
+      default:
+        throw new Error("Invalid transaction type");
     }
 
     res.status(201).json({
@@ -210,7 +217,7 @@ export const updateMetalTransaction = async (req, res, next) => {
       message: "Metal transaction updated successfully",
       data: updatedTransaction,
     });
-    
+
   } catch (error) {
     next(error);
   }

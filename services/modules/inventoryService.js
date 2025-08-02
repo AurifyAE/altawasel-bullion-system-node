@@ -3,19 +3,88 @@ import Inventory from "../../models/modules/inventory.js";
 import Registry from "../../models/modules/Registry.js";
 import { createAppError } from "../../utils/errorHandler.js";
 import MetalStock from "../../models/modules/MetalStock.js";
+import InventoryLog from "../../models/modules/InventoryLog.js";
 
 class InventoryService {
   static async fetchAllInventory() {
     try {
-      return await Inventory.find()
-        .populate([
-          {
-            path: "metal",
-            populate: [{ path: "karat" }, { path: "metalType" }],
-          },
-          { path: "createdBy" },
-        ])
-        .sort({ createdAt: -1 });
+      const logs = await InventoryLog.aggregate([
+        // Sort to ensure latest values
+        { $sort: { createdAt: -1 } },
+
+        // Group by stockCode
+        {
+          $group: {
+            _id: "$stockCode",
+            totalGrossWeight: {
+              $sum: {
+                $switch: {
+                  branches: [
+                    { case: { $eq: ["$transactionType", "sale"] }, then: { $multiply: ["$grossWeight", -1] } },
+                    { case: { $eq: ["$transactionType", "purchaseReturn"] }, then: { $multiply: ["$grossWeight", -1] } },
+                    { case: { $eq: ["$transactionType", "saleReturn"] }, then: "$grossWeight" },
+                    { case: { $eq: ["$transactionType", "purchase"] }, then: "$grossWeight" },
+                    { case: { $eq: ["$transactionType", "opening"] }, then: "$grossWeight" }
+                  ],
+                  default: 0
+                }
+              }
+            },
+            pcs: { $first: "$pcs" },
+            code: { $first: "$code" }
+          }
+        },
+
+        // Lookup stock details from metalstocks
+        {
+          $lookup: {
+            from: "metalstocks",
+            localField: "_id",
+            foreignField: "_id",
+            as: "stock"
+          }
+        },
+        { $unwind: { path: "$stock", preserveNullAndEmptyArrays: true } },
+
+        // Lookup karat purity from karatmasters
+        {
+          $lookup: {
+            from: "karatmasters",
+            localField: "stock.karat",
+            foreignField: "_id",
+            as: "karatInfo"
+          }
+        },
+        { $unwind: { path: "$karatInfo", preserveNullAndEmptyArrays: true } },
+
+        // Lookup metalType from divisionmasters
+        {
+          $lookup: {
+            from: "divisionmasters",
+            localField: "stock.metalType",
+            foreignField: "_id",
+            as: "metalTypeInfo"
+          }
+        },
+        { $unwind: { path: "$metalTypeInfo", preserveNullAndEmptyArrays: true } },
+
+        // Final projection
+        {
+          $project: {
+            _id: 0,
+            totalGrossWeight: 1,
+            code: 1,
+            totalValue: "$stock.totalValue",
+            metalId: "$stock._id",
+            StockName: "$stock.code",
+            pcs: "$stock.pcs",
+            purity: "$karatInfo.standardPurity",
+            metalType: "$metalTypeInfo.description"
+          }
+        }
+      ]);
+
+      return logs;
     } catch (err) {
       throw createAppError(
         "Failed to fetch inventory logs",
@@ -25,21 +94,109 @@ class InventoryService {
     }
   }
 
+  static async fetchInvLogs() {
+    try {
+      const logs = await InventoryLog.find()
+      return logs
+    } catch (error) {
+      throw createAppError(
+        "Failed to fetch inventory Logs",
+        500,
+        "FETCH_INVENTORY_LOG_ERROR"
+      );
+    }
+  }
+
   static async fetchInventoryById(inventoryId) {
     try {
-      const inventory = await Inventory.findById(inventoryId).populate([
+      const logs = await InventoryLog.aggregate([
+        // 🎯 Step 1: Match only logs for that stockId
         {
-          path: "metal",
-          populate: [{ path: "karat" }, { path: "metalType" }],
+          $match: {
+            stockCode: new mongoose.Types.ObjectId(inventoryId) // or just stockId if it's already ObjectId
+          }
         },
-        { path: "createdBy" },
+      
+        // 📌 Step 2: Sort (optional but helpful)
+        { $sort: { createdAt: -1 } },
+      
+        // 📌 Step 3: Group by stockCode
+        {
+          $group: {
+            _id: "$stockCode",
+            totalGrossWeight: {
+              $sum: {
+                $switch: {
+                  branches: [
+                    { case: { $eq: ["$transactionType", "sale"] }, then: { $multiply: ["$grossWeight", -1] } },
+                    { case: { $eq: ["$transactionType", "purchaseReturn"] }, then: { $multiply: ["$grossWeight", -1] } },
+                    { case: { $eq: ["$transactionType", "saleReturn"] }, then: "$grossWeight" },
+                    { case: { $eq: ["$transactionType", "purchase"] }, then: "$grossWeight" },
+                    { case: { $eq: ["$transactionType", "opening"] }, then: "$grossWeight" }
+                  ],
+                  default: 0
+                }
+              }
+            },
+            pcs: { $sum: "$pcs" },
+            code: { $first: "$code" }
+          }
+        },
+      
+        // 📌 Step 4: Lookup metal stock
+        {
+          $lookup: {
+            from: "metalstocks",
+            localField: "_id",
+            foreignField: "_id",
+            as: "stock"
+          }
+        },
+        { $unwind: { path: "$stock", preserveNullAndEmptyArrays: true } },
+      
+        // 📌 Step 5: Lookup Karat info
+        {
+          $lookup: {
+            from: "karatmasters",
+            localField: "stock.karat",
+            foreignField: "_id",
+            as: "karatInfo"
+          }
+        },
+        { $unwind: { path: "$karatInfo", preserveNullAndEmptyArrays: true } },
+      
+        // 📌 Step 6: Lookup Metal Type
+        {
+          $lookup: {
+            from: "divisionmasters",
+            localField: "stock.metalType",
+            foreignField: "_id",
+            as: "metalTypeInfo"
+          }
+        },
+        { $unwind: { path: "$metalTypeInfo", preserveNullAndEmptyArrays: true } },
+      
+        // 📌 Step 7: Final Projection
+        {
+          $project: {
+            _id: 0,
+            totalGrossWeight: 1,
+            code: 1,
+            totalValue: "$stock.totalValue",
+            metalId: "$stock._id",
+            StockName: "$stock.code",
+            pcs: 1,
+            purity: "$karatInfo.standardPurity",
+            karatDescription: "$karatInfo.description",
+            karatCode: "$karatInfo.karatCode",
+            metalType: "$metalTypeInfo.description"
+          }
+        }
       ]);
-
-      if (!inventory) {
-        throw createAppError("Inventory not found", 404, "NOT_FOUND");
-      }
-
-      return inventory;
+      
+      return logs?.[0] || null;
+      
+      
     } catch (err) {
       throw createAppError(
         "Failed to fetch inventory",
@@ -51,6 +208,7 @@ class InventoryService {
 
   static async addInitialInventory(metal, createdBy) {
     try {
+      // 1. Create inventory entry
       const inventory = new Inventory({
         metal: metal._id,
         pcs: metal.pcs,
@@ -63,7 +221,25 @@ class InventoryService {
         isActive: true,
         createdBy,
       });
-      return await inventory.save();
+
+      const savedInventory = await inventory.save();
+
+      // 2. Add inventory log
+      await InventoryLog.create({
+        code: metal.code,
+        pcs: metal.pcs,
+        stockCode: metal._id,
+        voucherCode: metal.voucherCode || 'INITIAL',
+        voucherDate: metal.voucherDate || new Date(),
+        grossWeight: 0,
+        action: 'add',
+        transactionType: 'initial',
+        createdBy: createdBy,
+        note: 'Initial inventory record created',
+      });
+
+      return savedInventory;
+
     } catch (error) {
       throw createAppError(
         "Error while saving to database",
@@ -72,6 +248,7 @@ class InventoryService {
       );
     }
   }
+
 
   static async updateInventoryByFrontendInput({
     metalId,
@@ -132,9 +309,8 @@ class InventoryService {
         }
         inventory.grossWeight += qty * metal.totalValue;
         inventory.pcsCount += qty;
-        description = `Inventory ${isAddition ? "added" : "removed"}: ${
-          metal.code
-        } - ${Math.abs(qty)} pieces & ${metal.totalValue} grams`;
+        description = `Inventory ${isAddition ? "added" : "removed"}: ${metal.code
+          } - ${Math.abs(qty)} pieces & ${metal.totalValue} grams`;
         registryValue = Math.abs(qty) * (metal.pricePerPiece || 0);
       } else if (type === "grams") {
         if (qty < 0) {
@@ -147,9 +323,8 @@ class InventoryService {
         inventory.grossWeight += qty;
         inventory.pcsCount = inventory.grossWeight / inventory.pcsValue;
         inventory.pureWeight = (inventory.grossWeight * inventory.purity) / 100;
-        description = `Inventory ${isAddition ? "added" : "removed"}: ${
-          metal.code
-        } - ${Math.abs(qty)} grams`;
+        description = `Inventory ${isAddition ? "added" : "removed"}: ${metal.code
+          } - ${Math.abs(qty)} grams`;
         registryValue = Math.abs(qty) * (metal.pricePerGram || 0);
       } else {
         throw createAppError(
@@ -167,6 +342,19 @@ class InventoryService {
       } else {
         pureWeight = value * savedInventory.purity;
       }
+
+      await InventoryLog.create({
+        code: metal.code,
+        transactionType: "opening",
+        pcs: type === "pcs",
+        stockCode: metal._id,
+        voucherCode: voucher?.voucherCode || "",
+        voucherDate: voucher?.voucherDate || new Date(),
+        grossWeight: value,
+        action: isAddition ? "add" : "remove",
+        createdBy: adminId,
+        note: `Inventory ${isAddition ? "added" : "removed"} by admin.`,
+      });
 
       await this.createRegistryEntry({
         transactionId: await Registry.generateTransactionId(),
@@ -193,21 +381,20 @@ class InventoryService {
       );
     }
   }
-  ho;
 
-  static async updateInventory(transaction, isSale = false) {
+  static async updateInventory(transaction, isSale, admin) {
     try {
       const updated = [];
 
       for (const item of transaction.stockItems || []) {
         const metalId = item.stockCode?._id;
-
         if (!metalId) continue;
 
-        const inventory = await Inventory.findOne({
-          metal: new mongoose.Types.ObjectId(metalId),
-        });
-        const metal = await MetalStock.findById(metalId);
+        const [inventory, metal] = await Promise.all([
+          Inventory.findOne({ metal: new mongoose.Types.ObjectId(metalId) }),
+          MetalStock.findById(metalId),
+        ]);
+
         if (!inventory) {
           throw createAppError(
             `Inventory not found for metal: ${item.stockCode.code}`,
@@ -220,9 +407,9 @@ class InventoryService {
         const pcsDelta = factor * (item.pieces || 0);
         const weightDelta = factor * (item.grossWeight || 0);
 
-        // Pre-check to prevent negative values
+        // Optional: stock validation
         // if (inventory.pcsCount + pcsDelta < 0 || inventory.grossWeight + weightDelta < 0) {
-        //     throw createAppError(`Insufficient stock for metal: ${item.stockCode.code}`, 400, "INSUFFICIENT_STOCK");
+        //   throw createAppError(`Insufficient stock for metal: ${metal.code}`, 400, "INSUFFICIENT_STOCK");
         // }
 
         inventory.pcsCount += pcsDelta;
@@ -231,6 +418,25 @@ class InventoryService {
 
         await inventory.save();
         updated.push(inventory);
+        console.log('====================================');
+        console.log(metal);
+        console.log("Onnnnn heereeeeeeeeee", transaction);
+        console.log('====================================');
+        // Inventory Log
+        await InventoryLog.create({
+          code: metal.code,
+          stockCode: metal._id,
+          voucherCode: transaction.voucherNumber || item.voucherNumber || '',
+          voucherDate: transaction.voucherDate || new Date(),
+          grossWeight: item.grossWeight || 0,
+          action: isSale ? "remove" : "add",
+          transactionType: transaction.transactionType || (isSale ? "sale" : "purchase"),
+          createdBy: transaction.createdBy || admin || null,
+          pcs: !!item.pieces,  // whether it's piece-based
+          note: isSale
+            ? "Inventory reduced due to sale transaction"
+            : "Inventory increased due to purchase transaction"
+        });
       }
 
       return updated;
@@ -243,6 +449,8 @@ class InventoryService {
       );
     }
   }
+
+
   static async createRegistryEntry({
     transactionId,
     metalId,

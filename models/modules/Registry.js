@@ -13,6 +13,10 @@ const RegistrySchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "MetalTransaction",
     },
+    InventoryLogID: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "InventoryLog",
+    },
     fixingTransactionId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "TransactionFixing",
