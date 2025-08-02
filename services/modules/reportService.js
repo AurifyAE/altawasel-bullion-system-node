@@ -437,9 +437,7 @@ export class ReportService {
   }
 
   buildStockLedgerPipeline(filters) {
-    console.log('====================================');
-    console.log(filters);
-    console.log('====================================');
+
     const pipeline = [];
 
     const matchConditions = {
@@ -453,6 +451,18 @@ export class ReportService {
     // Type filter
     if (filters.type) {
       matchConditions.type = filters.type;
+    }
+
+    if (filters.voucher && filters.voucher.length > 0) {
+      const regexFilters = filters.voucher.map((prefix) => ({
+        reference: { $regex: `^${prefix}\\d+$`, $options: "i" }
+      }));
+
+      pipeline.push({
+        $match: {
+          $or: regexFilters
+        }
+      });
     }
 
     // Date filter
@@ -626,9 +636,12 @@ export class ReportService {
         partyName: 1,
         stockIn: "$debit",
         stockOut: "$credit",
+        grossWeight: "$grossWeight",
+        purity: "$purity",
+        pureWeight: "$pureWeight",
         value: {
           $ifNull: [
-            "$transactionData.stockItems.itemTotal.baseAmount",
+            "$stockDetails.stockItems.itemTotal.baseAmount",
             {
               $ifNull: [
                 "$transactionData.stockItems.alternateAmount",
@@ -636,6 +649,43 @@ export class ReportService {
               ]
             }
           ]
+        },
+        pcs: {
+          $cond: {
+            if: {
+              $gt: [
+                {
+                  $ifNull: [
+                    "$stockDetails.totalValue",
+                    {
+                      $ifNull: [
+                        "$transactionData.stockItems.alternateAmount",
+                        0
+                      ]
+                    }
+                  ]
+                },
+                0
+              ]
+            },
+            then: {
+              $divide: [
+                "$grossWeight",
+                {
+                  $ifNull: [
+                    "$stockDetails.totalValue",
+                    {
+                      $ifNull: [
+                        "$transactionData.stockItems.alternateAmount",
+                        1 // fallback to 1 to avoid division by zero
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            else: 0
+          }
         },
         _id: 0,
         stockCode: {
@@ -648,8 +698,9 @@ export class ReportService {
         }
       }
     });
-    
-    
+
+
+
 
     // Stage 7: Sort by transactionDate for consistent ordering
     pipeline.push({
@@ -3554,7 +3605,7 @@ export class ReportService {
       avgGrossWeight: 0,
       avgReceivableGrams: 0,
       avgPayableGrams: 0,
-      avgBidValue:0
+      avgBidValue: 0
     };
 
     // Extract receivable/payable safely

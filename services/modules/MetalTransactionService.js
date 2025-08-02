@@ -91,73 +91,87 @@ class MetalTransactionService {
       voucherNumber,
       metalRateRequirements
     } = metalTransaction;
-
-    const totals = this.calculateTotals(stockItems, totalAmountSession);
+  
     const baseTransactionId = this.generateTransactionId();
     const mode = this.getTransactionMode(fixed, unfix);
-
+  
     const entries = [];
-    switch (transactionType) {
-      case "purchase":
-        entries.push(
-          ...this.buildPurchaseEntries(
-            mode,
-            _id,
-            totals,
-            party,
-            baseTransactionId,
-            voucherDate,
-            voucherNumber,
-            adminId
-          )
-        );
-        break;
-      case "sale":
-        entries.push(
-          ...this.buildSaleEntries(
-            mode,
-            _id,
-            totals,
-            party,
-            baseTransactionId,
-            voucherDate,
-            voucherNumber,
-            adminId
-          )
-        );
-        break;
-      case "purchaseReturn":
-        entries.push(
-          ...this.buildPurchaseReturnEntries(
-            mode,
-            _id,
-            totals,
-            party,
-            baseTransactionId,
-            voucherDate,
-            voucherNumber,
-            adminId
-          )
-        );
-        break;
-      case "saleReturn":
-        entries.push(
-          ...this.buildSaleReturnEntries(
-            mode,
-            _id,
-            totals,
-            party,
-            baseTransactionId,
-            voucherDate,
-            voucherNumber,
-            adminId
-          )
-        );
-        break;
+  
+    // Loop over each stock item
+    for (let i = 0; i < stockItems.length; i++) {
+      const item = stockItems[i];
+      const totals = this.calculateTotals([item], totalAmountSession); // Pass only one item
+  
+      switch (transactionType) {
+        case "purchase":
+          entries.push(
+            ...this.buildPurchaseEntries(
+              mode,
+              _id,
+              totals,
+              party,
+              baseTransactionId,
+              voucherDate,
+              voucherNumber,
+              adminId,
+              item // optionally pass item if needed
+            )
+          );
+          break;
+  
+        case "sale":
+          entries.push(
+            ...this.buildSaleEntries(
+              mode,
+              _id,
+              totals,
+              party,
+              baseTransactionId,
+              voucherDate,
+              voucherNumber,
+              adminId,
+              item
+            )
+          );
+          break;
+  
+        case "purchaseReturn":
+          entries.push(
+            ...this.buildPurchaseReturnEntries(
+              mode,
+              _id,
+              totals,
+              party,
+              baseTransactionId,
+              voucherDate,
+              voucherNumber,
+              adminId,
+              item
+            )
+          );
+          break;
+  
+        case "saleReturn":
+          entries.push(
+            ...this.buildSaleReturnEntries(
+              mode,
+              _id,
+              totals,
+              party,
+              baseTransactionId,
+              voucherDate,
+              voucherNumber,
+              adminId,
+              item
+            )
+          );
+          break;
+      }
     }
-
-    return entries.filter((entry) => entry);
+  
+    return entries.filter(Boolean);
   }
+  
 
   static getTransactionMode(fixed, unfix) {
     if (fixed && !unfix) return "fix";
