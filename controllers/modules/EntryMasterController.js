@@ -167,6 +167,7 @@ const handleMetalReceipt = async (entry) => {
             grossWeight: stockItem.grossWeight,
             purity: stockItem.purity,
             voucherNumber: entry.voucherCode,
+            transactionType:"metalReceipt"
           },
         ],
       },
@@ -350,6 +351,7 @@ const handleMetalPayment = async (entry) => {
             grossWeight: stockItem.grossWeight,
             purity: stockItem.purity,
             voucherNumber: entry.voucherCode,
+            transactionType:"metalPayment"
           },
         ],
       },

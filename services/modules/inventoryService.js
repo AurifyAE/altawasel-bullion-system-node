@@ -21,9 +21,11 @@ class InventoryService {
                 $switch: {
                   branches: [
                     { case: { $eq: ["$transactionType", "sale"] }, then: { $multiply: ["$grossWeight", -1] } },
+                    { case: { $eq: ["$transactionType", "metalPayment"] }, then: { $multiply: ["$grossWeight", -1] } },
                     { case: { $eq: ["$transactionType", "purchaseReturn"] }, then: { $multiply: ["$grossWeight", -1] } },
                     { case: { $eq: ["$transactionType", "saleReturn"] }, then: "$grossWeight" },
                     { case: { $eq: ["$transactionType", "purchase"] }, then: "$grossWeight" },
+                    { case: { $eq: ["$transactionType", "metalReceipt"] }, then: "$grossWeight" },
                     { case: { $eq: ["$transactionType", "opening"] }, then: "$grossWeight" }
                   ],
                   default: 0
@@ -418,10 +420,7 @@ class InventoryService {
 
         await inventory.save();
         updated.push(inventory);
-        console.log('====================================');
-        console.log(metal);
-        console.log("Onnnnn heereeeeeeeeee", transaction);
-        console.log('====================================');
+
         // Inventory Log
         await InventoryLog.create({
           code: metal.code,
@@ -430,7 +429,7 @@ class InventoryService {
           voucherDate: transaction.voucherDate || new Date(),
           grossWeight: item.grossWeight || 0,
           action: isSale ? "remove" : "add",
-          transactionType: transaction.transactionType || (isSale ? "sale" : "purchase"),
+          transactionType: transaction.transactionType || item.transactionType|| (isSale ? "sale" : "purchase"),
           createdBy: transaction.createdBy || admin || null,
           pcs: !!item.pieces,  // whether it's piece-based
           note: isSale

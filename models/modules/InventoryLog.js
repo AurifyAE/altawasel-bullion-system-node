@@ -8,7 +8,7 @@ const inventoryLogSchema = new mongoose.Schema({
     },
     transactionType: {
         type: String,
-        enum: ['sale', 'purchase', 'transfer', 'opening', 'adjustment','initial','saleReturn','purchaseReturn'],
+        enum: ['sale', 'purchase', 'transfer', 'opening', 'adjustment','initial','saleReturn','purchaseReturn','metalReceipt','metalPayment'],
         required: true,
     },
     pcs: {
