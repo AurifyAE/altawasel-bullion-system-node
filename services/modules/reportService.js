@@ -75,6 +75,7 @@ export class ReportService {
       // Execute aggregation query
       const salesReport = await Registry.aggregate(salesPipeline).exec();
       const purchaseReport = await Registry.aggregate(purchasePipeline).exec();
+      
 
       // Calculate sales analysis
       const reportData = this.calculateSalesAnalysis(salesReport, purchaseReport);
@@ -1172,13 +1173,28 @@ export class ReportService {
     const pipeline = [];
 
     // Step 1: Base match condition
+    const now = new Date();
+    const currentYear = now.getFullYear();
+
+    // If current month is Jan/Feb/Mar, financial year started last year
+    const financialYearStart = new Date(
+      now.getMonth() < 3 ? currentYear - 1 : currentYear,
+      3, // April is month 3 (0-indexed)
+      1,
+      0, 0, 0, 0
+    );
+
+    const todayEnd = new Date();
+    todayEnd.setHours(23, 59, 59, 999);
+
     const matchConditions = {
       isActive: true,
       transactionDate: {
-        $gte: new Date('2025-01-01T00:00:00.000Z'), // Financial year start
-        $lte: new Date('2025-07-30T23:59:59.999Z'), // Current date
+        $gte: financialYearStart,
+        $lte: todayEnd,
       },
     };
+
 
 
     // Step 3: Filter by reference starting with "SAL"
