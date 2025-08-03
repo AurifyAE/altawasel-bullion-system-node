@@ -153,7 +153,7 @@ export class ReportService {
 
       // Execute aggregation query
       const reportData = await InventoryLog.aggregate(pipeline);
- 
+
       // Format the retrieved data for response
       const formattedData = this.formatReportData(reportData, validatedFilters);
 
@@ -1433,66 +1433,69 @@ export class ReportService {
     }
 
     // Handle transactionType filter - Only apply if not 'all'
-    if (filters.transactionType && filters.transactionType !== "all") {
-      switch (filters.transactionType.toLowerCase()) {
-        case "sales":
-        case "sale":
-          matchConditions.metalTransactionId = { $exists: true, $ne: null };
-          break;
-        case "sales return":
-        case "sale return":
-        case "salereturn":
-          matchConditions.metalTransactionId = { $exists: true, $ne: null };
-          break;
-        case "net sales":
-          matchConditions.metalTransactionId = { $exists: true, $ne: null };
-          break;
-        case "purchase":
-          matchConditions.metalTransactionId = { $exists: true, $ne: null };
-          break;
-        case "purchase return":
-        case "purchasereturn":
-          matchConditions.metalTransactionId = { $exists: true, $ne: null };
-          break;
-        case "net purchases":
-          matchConditions.metalTransactionId = { $exists: true, $ne: null };
-          break;
-        case "receipts":
-        case "metal-receipt":
-          matchConditions.EntryTransactionId = { $exists: true, $ne: null };
-          break;
-        case "payment":
-        case "payments":
-        case "metal-payment":
-          matchConditions.EntryTransactionId = { $exists: true, $ne: null };
-          break;
-        case "manufacture":
-          matchConditions.description = {
-            $regex: /manufacture|production|make/i,
-          };
-          break;
-        case "transfer":
-        case "transfer/adjustments":
-          matchConditions.$or = [
-            { TransferTransactionId: { $exists: true, $ne: null } },
-            { description: { $regex: /transfer|adjustment|move/i } },
-          ];
-          break;
-      }
+    // if (filters.transactionType && filters.transactionType !== "all") {
+    //   switch (filters.transactionType.toLowerCase()) {
+    //     case "sales":
+    //     case "sale":
+    //       matchConditions.metalTransactionId = { $exists: true, $ne: null };
+    //       break;
+    //     case "sales return":
+    //     case "sale return":
+    //     case "salereturn":
+    //       matchConditions.metalTransactionId = { $exists: true, $ne: null };
+    //       break;
+    //     case "net sales":
+    //       matchConditions.metalTransactionId = { $exists: true, $ne: null };
+    //       break;
+    //     case "purchase":
+    //       matchConditions.metalTransactionId = { $exists: true, $ne: null };
+    //       break;
+    //     case "purchase return":
+    //     case "purchasereturn":
+    //       matchConditions.metalTransactionId = { $exists: true, $ne: null };
+    //       break;
+    //     case "net purchases":
+    //       matchConditions.metalTransactionId = { $exists: true, $ne: null };
+    //       break;
+    //     case "receipts":
+    //     case "metal-receipt":
+    //       matchConditions.EntryTransactionId = { $exists: true, $ne: null };
+    //       break;
+    //     case "payment":
+    //     case "payments":
+    //     case "metal-payment":
+    //       matchConditions.EntryTransactionId = { $exists: true, $ne: null };
+    //       break;
+    //     case "manufacture":
+    //       matchConditions.description = {
+    //         $regex: /manufacture|production|make/i,
+    //       };
+    //       break;
+    //     case "transfer":
+    //     case "transfer/adjustments":
+    //       matchConditions.$or = [
+    //         { TransferTransactionId: { $exists: true, $ne: null } },
+    //         { description: { $regex: /transfer|adjustment|move/i } },
+    //       ];
+    //       break;
+    //   }
+    // }
+
+    // Apply voucher prefix filtering safely
+    if (filters.voucher && filters.voucher.length > 0) {
+      const regexFilters = filters.voucher.map((prefix) => ({
+        reference: { $regex: `^${prefix}\\d+`, $options: "i" }
+      }));
+
+      matchConditions.$or = regexFilters;
     }
 
-    // Add voucher filter
-    if (filters.voucher && filters.voucher.length > 0) {
-      console.log("====================================");
-      console.log(filters.voucher);
-      console.log("====================================");
-      matchConditions.$or = filters.voucher.map((prefix) => ({
-        reference: { $regex: `^${prefix}`, $options: "i" },
-      }));
-    }
+
 
     // Initial filtering from Registry
     pipeline.push({ $match: matchConditions });
+
+
 
     // Join with metaltransactions collection
     pipeline.push({
@@ -1523,6 +1526,7 @@ export class ReportService {
         as: "transferInfo",
       },
     });
+
 
     // Unwind arrays
     pipeline.push({
@@ -1559,6 +1563,9 @@ export class ReportService {
     pipeline.push({
       $unwind: { path: "$entryPartyDetails", preserveNullAndEmptyArrays: true },
     });
+
+
+    // return pipeline
 
     // Apply specific transaction type filtering after joins
     if (filters.transactionType && filters.transactionType !== "all") {
@@ -1652,7 +1659,7 @@ export class ReportService {
     pipeline.push({
       $lookup: {
         from: "metalstocks",
-        localField: "entryInfo.stocks.stock",
+        localField: "entryInfo.stockItems.stock",
         foreignField: "_id",
         as: "entryStockDetails",
       },
@@ -1767,6 +1774,7 @@ export class ReportService {
       $unwind: { path: "$salesmanDetails", preserveNullAndEmptyArrays: true },
     });
 
+    // return pipeline
     // Project required fields for response
     pipeline.push({
       $project: {
@@ -1774,6 +1782,7 @@ export class ReportService {
         VocType: {
           $ifNull: [
             "$metalTxnInfo.voucherType",
+            "$entryInfo.type",
             "$entryInfo.voucherCode",
             "$voucherType",
             "N/A",

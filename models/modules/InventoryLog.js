@@ -8,8 +8,13 @@ const inventoryLogSchema = new mongoose.Schema({
     },
     transactionType: {
         type: String,
-        enum: ['sale', 'purchase', 'transfer', 'opening', 'adjustment','initial','saleReturn','purchaseReturn','metalReceipt','metalPayment'],
+        enum: ['sale', 'purchase', 'transfer', 'opening', 'adjustment', 'initial', 'saleReturn', 'purchaseReturn', 'metalReceipt', 'metalPayment'],
         required: true,
+    },
+    party: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Account",
+        default: null,
     },
     pcs: {
         type: Boolean,
@@ -36,7 +41,7 @@ const inventoryLogSchema = new mongoose.Schema({
     },
     action: {
         type: String,
-        enum: ['add', 'update', 'delete','remove'],
+        enum: ['add', 'update', 'delete', 'remove'],
         required: true,
     },
     createdBy: {
