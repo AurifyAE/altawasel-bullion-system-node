@@ -1,17 +1,15 @@
 import mongoose from "mongoose";
 import Registry from "../../models/modules/Registry.js";
+
 import moment from "moment";
 import { log } from "console";
 import Inventory from "../../models/modules/inventory.js";
 import Account from "../../models/modules/AccountType.js";
 import InventoryLog from "../../models/modules/InventoryLog.js";
-
+const { ObjectId } = mongoose.Types;
 // ReportService class to handle stock ledger and movement reports
 export class ReportService {
   async getReportsData(filters) {
-    console.log('====================================');
-    console.log(filters);
-    console.log('====================================');
     try {
       // Validate and format input filters
       const validatedFilters = this.validateFilters(filters);
@@ -155,10 +153,7 @@ export class ReportService {
 
       // Execute aggregation query
       const reportData = await InventoryLog.aggregate(pipeline);
-      console.log("====================================");
-      console.log(reportData);
-      console.log("====================================");
-
+ 
       // Format the retrieved data for response
       const formattedData = this.formatReportData(reportData, validatedFilters);
 
@@ -184,7 +179,7 @@ export class ReportService {
       const pipeline = this.buildStockPipeline(validatedFilters);
 
       // Execute aggregation query
-      const reportData = await Registry.aggregate(pipeline);
+      const reportData = await InventoryLog.aggregate(pipeline);
 
       // Format the retrieved data for response
       const formattedData = this.formatReportData(reportData, validatedFilters);
@@ -1883,9 +1878,7 @@ export class ReportService {
   }
 
   buildStockMovementPipeline(filters) {
-    console.log('====================================');
-    console.log(filters);
-    console.log('====================================');
+
     const pipeline = [];
 
     const matchConditions = {};
@@ -1907,7 +1900,7 @@ export class ReportService {
       const regexFilters = filters.voucher.map(v => new RegExp(`^${v.prefix}`, "i"));
       matchConditions.voucherCode = { $in: regexFilters };
     }
-    
+
     pipeline.push({ $match: matchConditions });
 
     // Lookup stock details from metalstocks collection
@@ -1944,7 +1937,7 @@ export class ReportService {
         preserveNullAndEmptyArrays: true
       }
     });
-    
+
 
     if (filters.division?.length) {
       pipeline.push({
@@ -1953,7 +1946,7 @@ export class ReportService {
         }
       });
     }
-    
+
     // Group by stockCode to calculate totals
     pipeline.push({
       $group: {
@@ -2100,191 +2093,65 @@ export class ReportService {
   }
 
   buildStockPipeline(filters) {
+
     const pipeline = [];
 
-    // Base filter for GOLD_STOCK registry entries
-    const matchConditions = {
-      isActive: true,
-      type: "GOLD_STOCK",
-    };
+    const matchConditions = {};
 
-    // Add date range filter if provided
-    if (filters.startDate && filters.endDate) {
-      matchConditions.transactionDate = {
-        $gte: new Date(filters.startDate),
-        $lte: new Date(filters.endDate),
-      };
-    } else if (filters.startDate) {
-      matchConditions.transactionDate = {
-        $gte: new Date(filters.fromDate),
-      };
-    } else if (filters.endDate) {
-      matchConditions.transactionDate = {
-        $lte: new Date(filters.endDate),
-      };
-    }
-
-    // Enhanced transaction type filtering
-    if (filters.transactionType && filters.transactionType !== "all") {
-      switch (filters.transactionType.toLowerCase()) {
-        case "sales":
-        case "sale":
-          matchConditions.metalTransactionId = { $exists: true, $ne: null };
-          matchConditions["metalTxnInfo.transactionType"] = "sale";
-          break;
-
-        case "sales return":
-        case "sale return":
-        case "salereturn":
-          matchConditions.metalTransactionId = { $exists: true, $ne: null };
-          matchConditions["metalTxnInfo.transactionType"] = "saleReturn";
-          break;
-
-        case "net sales":
-          matchConditions.metalTransactionId = { $exists: true, $ne: null };
-          matchConditions["metalTxnInfo.transactionType"] = {
-            $in: ["sale", "saleReturn"],
-          };
-          break;
-
-        case "purchase":
-          matchConditions.metalTransactionId = { $exists: true, $ne: null };
-          matchConditions["metalTxnInfo.transactionType"] = "purchase";
-          break;
-
-        case "purchase return":
-        case "purchasereturn":
-          matchConditions.metalTransactionId = { $exists: true, $ne: null };
-          matchConditions["metalTxnInfo.transactionType"] = "purchaseReturn";
-          break;
-
-        case "net purchases":
-          matchConditions.metalTransactionId = { $exists: true, $ne: null };
-          matchConditions["metalTxnInfo.transactionType"] = {
-            $in: ["purchase", "purchaseReturn"],
-          };
-          break;
-
-        case "receipts":
-        case "metal-receipt":
-          matchConditions.EntryTransactionId = { $exists: true, $ne: null };
-          matchConditions["entryInfo.type"] = "metal-receipt";
-          break;
-
-        case "payment":
-        case "payments":
-        case "metal-payment":
-          matchConditions.EntryTransactionId = { $exists: true, $ne: null };
-          matchConditions["entryInfo.type"] = "metal-payment";
-          break;
-
-        case "manufacture":
-          matchConditions.description = {
-            $regex: /manufacture|production|make/i,
-          };
-          break;
-
-        case "transfer":
-        case "transfer/adjustments":
-          matchConditions.$or = [
-            { TransferTransactionId: { $exists: true, $ne: null } },
-            {
-              description: {
-                $regex: /transfer|adjustment|move/i,
-              },
-            },
-          ];
-          break;
+    if (filters.startDate || filters.endDate) {
+      matchConditions.createdAt = {};
+      if (filters.startDate) {
+        matchConditions.createdAt.$gte = new Date(filters.startDate);
+      }
+      if (filters.endDate) {
+        matchConditions.createdAt.$lte = new Date(filters.endDate);
       }
     }
-    // If transactionType is 'all' or not specified, no additional filter is applied
-    // This will fetch all stock transactions regardless of type
 
-    // Add party filter if provided
-    if (filters.party && filters.party.length > 0) {
-      matchConditions.party = {
-        $in: filters.party.map((id) => new mongoose.Types.ObjectId(id)),
+    if (filters.transactionType && filters.transactionType !== 'All') {
+      matchConditions.transactionType = filters.transactionType;
+    }
+    if (filters.groupByRange?.stockCode?.length) {
+      matchConditions.stockCode = {
+        $in: filters.groupByRange.stockCode.map(id => new ObjectId(id))
       };
     }
-
-    // Add cost center filter if provided
-    // if (filters.costCenter) {
-    //   if (Array.isArray(filters.costCenter)) {
-    //     matchConditions.costCenter = { $in: filters.costCenter };
-    //   } else {
-    //     matchConditions.costCenter = filters.costCenter;
-    //   }
-    // }
+    if (filters.voucher?.length) {
+      const regexFilters = filters.voucher.map(v => new RegExp(`^${v.prefix}`, "i"));
+      matchConditions.voucherCode = { $in: regexFilters };
+    }
 
     pipeline.push({ $match: matchConditions });
 
-    // Join metalInfo (for inventory details)
+    // Lookup stock details from metalstocks collection
     pipeline.push({
       $lookup: {
         from: "metalstocks",
-        localField: "metalId",
+        localField: "stockCode",
         foreignField: "_id",
-        as: "metalInfo",
+        as: "stock",
       },
     });
 
-    // Join metalTxnInfo (for purchase/sale transactions)
-    pipeline.push({
-      $lookup: {
-        from: "metaltransactions",
-        localField: "metalTransactionId",
-        foreignField: "_id",
-        as: "metalTxnInfo",
-      },
-    });
-
-    // Join Entry info (for metal receipts/payments)
-    pipeline.push({
-      $lookup: {
-        from: "entries",
-        localField: "EntryTransactionId",
-        foreignField: "_id",
-        as: "entryInfo",
-      },
-    });
-
-    // Unwind arrays
-    pipeline.push({
-      $unwind: { path: "$metalInfo", preserveNullAndEmptyArrays: true },
-    });
-    pipeline.push({
-      $unwind: { path: "$metalTxnInfo", preserveNullAndEmptyArrays: true },
-    });
-    pipeline.push({
-      $unwind: { path: "$entryInfo", preserveNullAndEmptyArrays: true },
-    });
-
-    // Unwind stockItems from metal transactions
+    // Unwind the stock array
     pipeline.push({
       $unwind: {
-        path: "$metalTxnInfo.stockItems",
+        path: "$stock",
         preserveNullAndEmptyArrays: true,
       },
     });
 
-    // Unwind stocks from entries
-    pipeline.push({
-      $unwind: {
-        path: "$entryInfo.stocks",
-        preserveNullAndEmptyArrays: true,
-      },
-    });
-
-    // Join karat details for metalInfo
+    // Lookup karat purity from karatmasters
     pipeline.push({
       $lookup: {
         from: "karatmasters",
-        localField: "metalInfo.karat",
+        localField: "stock.karat", // Corrected from stockDetails.karat
         foreignField: "_id",
         as: "karatDetails",
       },
     });
 
+    // Unwind the karatDetails array
     pipeline.push({
       $unwind: {
         path: "$karatDetails",
@@ -2292,651 +2159,91 @@ export class ReportService {
       },
     });
 
-    // Join karat details for metaldetail
+    // Lookup metal type from metaltypes (assuming metalTypeInfo.description is needed)
     pipeline.push({
       $lookup: {
-        from: "karatmasters",
-        localField: "metaldetail.karat",
+        from: "metaltypes",
+        localField: "stock.metalType",
         foreignField: "_id",
-        as: "metaldetailKarat",
+        as: "metalTypeDetails",
       },
     });
 
+    // Unwind the metalTypeDetails array
     pipeline.push({
       $unwind: {
-        path: "$metaldetailKarat",
+        path: "$metalTypeDetails",
         preserveNullAndEmptyArrays: true,
       },
     });
 
-    // Join karat details for entryMetalDetail
-    pipeline.push({
-      $lookup: {
-        from: "karatmasters",
-        localField: "entryMetalDetail.karat",
-        foreignField: "_id",
-        as: "entryMetalKarat",
-      },
-    });
-
-    pipeline.push({
-      $unwind: {
-        path: "$entryMetalKarat",
-        preserveNullAndEmptyArrays: true,
-      },
-    });
-
-    // Join metal stock details from transaction stockItems
-    pipeline.push({
-      $lookup: {
-        from: "metalstocks",
-        localField: "metalTxnInfo.stockItems.stockCode",
-        foreignField: "_id",
-        as: "metaldetail",
-      },
-    });
-
-    pipeline.push({
-      $unwind: { path: "$metaldetail", preserveNullAndEmptyArrays: true },
-    });
-
-    // Join metal stock details from entry stocks
-    pipeline.push({
-      $lookup: {
-        from: "metalstocks",
-        localField: "entryInfo.stocks.stock",
-        foreignField: "_id",
-        as: "entryMetalDetail",
-      },
-    });
-
-    pipeline.push({
-      $unwind: { path: "$entryMetalDetail", preserveNullAndEmptyArrays: true },
-    });
-
-    // Apply dynamic filters based on groupByRange
-    const dynamicMatchConditions = {};
-    const orConditions = [];
-
-    if (filters.groupByRange) {
-      // Filter by stock codes
-      if (
-        filters.groupByRange.stockCode &&
-        Array.isArray(filters.groupByRange.stockCode) &&
-        filters.groupByRange.stockCode.length > 0
-      ) {
-        const stockCodes = filters.groupByRange.stockCode.map(
-          (id) => new mongoose.Types.ObjectId(id)
-        );
-        orConditions.push(
-          { "metalInfo._id": { $in: stockCodes } },
-          { "metaldetail._id": { $in: stockCodes } },
-          { "entryMetalDetail._id": { $in: stockCodes } }
-        );
-      }
-
-      // Filter by karat
-      if (
-        filters.groupByRange.karat &&
-        Array.isArray(filters.groupByRange.karat) &&
-        filters.groupByRange.karat.length > 0
-      ) {
-        const karatIds = filters.groupByRange.karat.map(
-          (id) => new mongoose.Types.ObjectId(id)
-        );
-        orConditions.push(
-          { "metalInfo.karat": { $in: karatIds } },
-          { "metaldetail.karat": { $in: karatIds } },
-          { "entryMetalDetail.karat": { $in: karatIds } }
-        );
-      }
-
-      // Filter by category
-      if (
-        filters.groupByRange.categoryCode &&
-        Array.isArray(filters.groupByRange.categoryCode) &&
-        filters.groupByRange.categoryCode.length > 0
-      ) {
-        orConditions.push(
-          { "metalInfo.category": { $in: filters.groupByRange.categoryCode } },
-          {
-            "metaldetail.category": { $in: filters.groupByRange.categoryCode },
-          },
-          {
-            "entryMetalDetail.category": {
-              $in: filters.groupByRange.categoryCode,
-            },
-          }
-        );
-      }
-
-      // Filter by type
-      if (
-        filters.groupByRange.type &&
-        Array.isArray(filters.groupByRange.type) &&
-        filters.groupByRange.type.length > 0
-      ) {
-        orConditions.push(
-          { "metalInfo.type": { $in: filters.groupByRange.type } },
-          { "metaldetail.type": { $in: filters.groupByRange.type } },
-          { "entryMetalDetail.type": { $in: filters.groupByRange.type } }
-        );
-      }
-
-      // Filter by size
-      if (
-        filters.groupByRange.size &&
-        Array.isArray(filters.groupByRange.size) &&
-        filters.groupByRange.size.length > 0
-      ) {
-        orConditions.push(
-          { "metalInfo.size": { $in: filters.groupByRange.size } },
-          { "metaldetail.size": { $in: filters.groupByRange.size } },
-          { "entryMetalDetail.size": { $in: filters.groupByRange.size } }
-        );
-      }
-
-      // Filter by color
-      if (
-        filters.groupByRange.color &&
-        Array.isArray(filters.groupByRange.color) &&
-        filters.groupByRange.color.length > 0
-      ) {
-        orConditions.push(
-          { "metalInfo.color": { $in: filters.groupByRange.color } },
-          { "metaldetail.color": { $in: filters.groupByRange.color } },
-          { "entryMetalDetail.color": { $in: filters.groupByRange.color } }
-        );
-      }
-
-      // Filter by brand
-      if (
-        filters.groupByRange.brand &&
-        Array.isArray(filters.groupByRange.brand) &&
-        filters.groupByRange.brand.length > 0
-      ) {
-        orConditions.push(
-          { "metalInfo.brand": { $in: filters.groupByRange.brand } },
-          { "metaldetail.brand": { $in: filters.groupByRange.brand } },
-          { "entryMetalDetail.brand": { $in: filters.groupByRange.brand } }
-        );
-      }
+    if (filters.division?.length) {
+      pipeline.push({
+        $match: {
+          "karatDetails.division": { $in: filters.division },
+        },
+      });
     }
 
-    // Filter by metal type/division
-    if (
-      filters.division &&
-      Array.isArray(filters.division) &&
-      filters.division.length > 0
-    ) {
-      const divisionIds = filters.division.map(
-        (id) => new mongoose.Types.ObjectId(id)
-      );
-      orConditions.push(
-        { "metalInfo.metalType": { $in: divisionIds } },
-        { "metaldetail.metalType": { $in: divisionIds } },
-        { "entryMetalDetail.metalType": { $in: divisionIds } }
-      );
-    }
-
-    // Apply dynamic filters if any exist
-    if (orConditions.length > 0) {
-      dynamicMatchConditions.$or = orConditions;
-      pipeline.push({ $match: dynamicMatchConditions });
-    }
-
-    // Add a stage to identify transaction type more precisely
-    pipeline.push({
-      $addFields: {
-        transactionTypeDetailed: {
-          $cond: [
-            { $ifNull: ["$metalTxnInfo.transactionType", false] },
-            "$metalTxnInfo.transactionType",
-            {
-              $cond: [
-                { $ifNull: ["$entryInfo.type", false] },
-                "$entryInfo.type",
-                "other",
-              ],
-            },
-          ],
-        },
-      },
-    });
-
-    // Apply specific transaction type filtering after joins if needed
-    if (filters.transactionType && filters.transactionType !== "all") {
-      const transactionTypeFilter = {};
-
-      switch (filters.transactionType.toLowerCase()) {
-        case "sales":
-        case "sale":
-          transactionTypeFilter.transactionTypeDetailed = "sale";
-          break;
-        case "sales return":
-        case "sale return":
-          transactionTypeFilter.transactionTypeDetailed = "saleReturn";
-          break;
-        case "net sales":
-          transactionTypeFilter.transactionTypeDetailed = {
-            $in: ["sale", "saleReturn"],
-          };
-          break;
-        case "purchase":
-          transactionTypeFilter.transactionTypeDetailed = "purchase";
-          break;
-        case "purchase return":
-          transactionTypeFilter.transactionTypeDetailed = "purchaseReturn";
-          break;
-        case "net purchases":
-          transactionTypeFilter.transactionTypeDetailed = {
-            $in: ["purchase", "purchaseReturn"],
-          };
-          break;
-        case "receipts":
-        case "metal-receipt":
-          transactionTypeFilter.transactionTypeDetailed = "metal-receipt";
-          break;
-        case "payment":
-        case "payments":
-        case "metal-payment":
-          transactionTypeFilter.transactionTypeDetailed = "metal-payment";
-          break;
-      }
-
-      if (Object.keys(transactionTypeFilter).length > 0) {
-        pipeline.push({ $match: transactionTypeFilter });
-      }
-    }
-    // Project merged structure with data from all sources
-    pipeline.push({
-      $project: {
-        _id: 1,
-        transactionId: 1,
-        transactionDate: 1,
-        type: 1,
-        description: 1,
-        transactionTypeDetailed: 1,
-        debit: 1,
-        credit: 1,
-        grossWeight: {
-          $ifNull: [
-            "$grossWeight",
-            "$metalTxnInfo.stockItems.grossWeight",
-            "$entryInfo.stocks.grossWeight",
-            0,
-          ],
-        },
-        pureWeight: {
-          $ifNull: [
-            "$pureWeight",
-            "$metalTxnInfo.stockItems.pureWeight",
-            "$entryInfo.stocks.netWeight",
-            0,
-          ],
-        },
-        // Enhanced PCS calculation logic
-        pcs: {
-          $cond: [
-            { $ifNull: ["$metalInfo.pcs", false] },
-            {
-              $ifNull: [
-                "$metalInfo.pcsCount",
-                "$metalTxnInfo.stockItems.pieces",
-                "$metaldetail.pcsCount",
-                "$entryMetalDetail.pcsCount",
-                0,
-              ],
-            },
-            {
-              $cond: [
-                { $ifNull: ["$metaldetail.pcs", false] },
-                {
-                  $ifNull: [
-                    "$metaldetail.pcsCount",
-                    "$metalTxnInfo.stockItems.pieces",
-                    0,
-                  ],
-                },
-                {
-                  $cond: [
-                    { $ifNull: ["$entryMetalDetail.pcs", false] },
-                    {
-                      $ifNull: ["$entryMetalDetail.pcsCount", 0],
-                    },
-                    0,
-                  ],
-                },
-              ],
-            },
-          ],
-        },
-        // Add calculated stock PCS based on your logic: totalGrossWeight / totalValue
-        calculatedStockPcs: {
-          $let: {
-            vars: {
-              isPcsStock: {
-                $or: [
-                  { $ifNull: ["$metalInfo.pcs", false] },
-                  { $ifNull: ["$metaldetail.pcs", false] },
-                  { $ifNull: ["$entryMetalDetail.pcs", false] },
-                ],
-              },
-              totalValue: {
-                $ifNull: [
-                  "$metalInfo.totalValue",
-                  "$metaldetail.totalValue",
-                  "$entryMetalDetail.totalValue",
-                  0,
-                ],
-              },
-              grossWeight: {
-                $ifNull: [
-                  "$grossWeight",
-                  "$metalTxnInfo.stockItems.grossWeight",
-                  "$entryInfo.stocks.grossWeight",
-                  0,
-                ],
-              },
-            },
-            in: {
-              $cond: [
-                { $and: ["$$isPcsStock", { $gt: ["$$totalValue", 0] }] },
-                { $divide: ["$$grossWeight", "$$totalValue"] },
-                0,
-              ],
-            },
-          },
-        },
-        // Include stock metadata for PCS calculation
-        isPcsStock: {
-          $or: [
-            { $ifNull: ["$metalInfo.pcs", false] },
-            { $ifNull: ["$metaldetail.pcs", false] },
-            { $ifNull: ["$entryMetalDetail.pcs", false] },
-          ],
-        },
-        stockTotalValue: {
-          $ifNull: [
-            "$metalInfo.totalValue",
-            "$metaldetail.totalValue",
-            "$entryMetalDetail.totalValue",
-            0,
-          ],
-        },
-        stockPcsCount: {
-          $ifNull: [
-            "$metalInfo.pcsCount",
-            "$metaldetail.pcsCount",
-            "$entryMetalDetail.pcsCount",
-            0,
-          ],
-        },
-        code: {
-          $ifNull: [
-            "$metalInfo.code",
-            "$metaldetail.code",
-            "$entryMetalDetail.code",
-            "N/A",
-          ],
-        },
-        stockDescription: {
-          $ifNull: [
-            "$metalInfo.description",
-            "$metaldetail.description",
-            "$entryMetalDetail.description",
-            "N/A",
-          ],
-        },
-        metalType: {
-          $ifNull: [
-            "$metalInfo.metalType",
-            "$metaldetail.metalType",
-            "$entryMetalDetail.metalType",
-            "N/A",
-          ],
-        },
-        karat: {
-          $ifNull: [
-            "$karatDetails.karat",
-            "$metaldetailKarat.karat",
-            "$entryMetalKarat.karat",
-            "N/A",
-          ],
-        },
-        purity: {
-          $ifNull: [
-            "$karatDetails.standardPurity",
-            "$metaldetailKarat.standardPurity",
-            "$entryMetalKarat.standardPurity",
-            "$purity",
-            "$metalTxnInfo.stockItems.purity",
-            "$entryInfo.stocks.purity",
-            "$metalInfo.purity",
-            0,
-          ],
-        },
-        // Transaction source identification
-        source: {
-          $cond: [
-            { $ifNull: ["$metalTransactionId", false] },
-            "metal_transaction",
-            {
-              $cond: [
-                { $ifNull: ["$EntryTransactionId", false] },
-                "entry",
-                {
-                  $cond: [
-                    { $ifNull: ["$TransferTransactionId", false] },
-                    "transfer",
-                    "direct",
-                  ],
-                },
-              ],
-            },
-          ],
-        },
-      },
-    });
-
-    // return pipeline
-
-    // Group by code and description to get totals
+    // Group by stockCode to calculate totals
     pipeline.push({
       $group: {
-        _id: {
-          code: "$code",
-          stockDescription: "$stockDescription",
-          metalType: "$metalType",
-          karat: "$karat",
-          purity: "$purity",
-          isPcsStock: "$isPcsStock",
-        },
-        totalCredit: { $sum: "$credit" },
-        totalDebit: { $sum: "$debit" },
-        totalPureWeight: { $sum: "$pureWeight" },
-        totalPcs: { $sum: "$pcs" },
-        totalCalculatedStockPcs: { $sum: "$calculatedStockPcs" },
-        stockTotalValue: { $first: "$stockTotalValue" },
-        stockPcsCount: { $first: "$stockPcsCount" },
-        transactions: { $push: "$$ROOT" },
-        transactionCount: { $sum: 1 },
-        transactionTypes: { $addToSet: "$transactionTypeDetailed" },
-      },
-    });
-
-    // Add this stage next:
-    pipeline.push({
-      $addFields: {
+        _id: "$stockCode",
         totalGrossWeight: {
-          $subtract: ["$totalDebit", "$totalCredit"],
+          $sum: {
+            $switch: {
+              branches: [
+                { case: { $eq: ["$transactionType", "sale"] }, then: { $multiply: ["$grossWeight", -1] } },
+                { case: { $eq: ["$transactionType", "metalPayment"] }, then: { $multiply: ["$grossWeight", -1] } },
+                { case: { $eq: ["$transactionType", "purchaseReturn"] }, then: { $multiply: ["$grossWeight", -1] } },
+                { case: { $eq: ["$transactionType", "saleReturn"] }, then: "$grossWeight" },
+                { case: { $eq: ["$transactionType", "purchase"] }, then: "$grossWeight" },
+                { case: { $eq: ["$transactionType", "metalReceipt"] }, then: "$grossWeight" },
+                { case: { $eq: ["$transactionType", "opening"] }, then: "$grossWeight" },
+              ],
+              default: 0,
+            },
+          },
         },
+        pcs: { $first: "$stock.pcs" }, // Use stock.pcs
+        code: { $first: "$code" },
+        description: { $first: "$stock.description" }, // Add description
+        purity: { $first: "$karatDetails.standardPurity" }, // Add purity from karatDetails
+        totalValue: { $first: "$stock.totalValue" }, // Include totalValue
+        metalId: { $first: "$stock._id" }, // Include metalId
+        stockName: { $first: "$stock.code" }, // Include stockName
+        metalType: { $first: "$metalTypeDetails.description" }, // Include metalType description
       },
     });
 
-    // Add conditional calculations for net values
-    pipeline.push({
-      $addFields: {
-        // Net calculations for sales
-        netSalesWeight: {
-          $cond: [
-            { $eq: [filters.transactionType, "net sales"] },
-            {
-              $subtract: [
-                {
-                  $sum: {
-                    $map: {
-                      input: {
-                        $filter: {
-                          input: "$transactions",
-                          cond: {
-                            $eq: ["$$this.transactionTypeDetailed", "sale"],
-                          },
-                        },
-                      },
-                      as: "txn",
-                      in: "$$txn.grossWeight",
-                    },
-                  },
-                },
-                {
-                  $sum: {
-                    $map: {
-                      input: {
-                        $filter: {
-                          input: "$transactions",
-                          cond: {
-                            $eq: [
-                              "$$this.transactionTypeDetailed",
-                              "saleReturn",
-                            ],
-                          },
-                        },
-                      },
-                      as: "txn",
-                      in: "$$txn.grossWeight",
-                    },
-                  },
-                },
-              ],
-            },
-            "$totalGrossWeight",
-          ],
-        },
-        // Net calculations for purchases
-        netPurchaseWeight: {
-          $cond: [
-            { $eq: [filters.transactionType, "net purchases"] },
-            {
-              $subtract: [
-                {
-                  $sum: {
-                    $map: {
-                      input: {
-                        $filter: {
-                          input: "$transactions",
-                          cond: {
-                            $eq: ["$$this.transactionTypeDetailed", "purchase"],
-                          },
-                        },
-                      },
-                      as: "txn",
-                      in: "$$txn.grossWeight",
-                    },
-                  },
-                },
-                {
-                  $sum: {
-                    $map: {
-                      input: {
-                        $filter: {
-                          input: "$transactions",
-                          cond: {
-                            $eq: [
-                              "$$this.transactionTypeDetailed",
-                              "purchaseReturn",
-                            ],
-                          },
-                        },
-                      },
-                      as: "txn",
-                      in: "$$txn.grossWeight",
-                    },
-                  },
-                },
-              ],
-            },
-            "$totalGrossWeight",
-          ],
-        },
-      },
-    });
-
-    // Final projection with renamed fields
+    // Calculate pureWeight based on totalGrossWeight and purity
     pipeline.push({
       $project: {
         _id: 0,
-        code: "$_id.code",
-        description: "$_id.stockDescription",
-        metalType: "$_id.metalType",
-        karat: "$_id.karat",
-        purity: { $round: ["$_id.purity", 3] },
-        isPcsStock: "$_id.isPcsStock",
-        stockPcsCount: "$stockPcsCount",
-        stockTotalValue: "$stockTotalValue",
-        test: "",
-        totalGrossWeight: {
-          $round: [
-            {
-              $cond: [
-                { $eq: [filters.transactionType, "net sales"] },
-                "$netSalesWeight",
-                {
-                  $cond: [
-                    { $eq: [filters.transactionType, "net purchases"] },
-                    "$netPurchaseWeight",
-                    "$totalGrossWeight",
-                  ],
-                },
-              ],
-            },
-            3,
-          ],
+        code: 1,
+        description: 1,
+        purity: 1,
+        pureWeight: {
+          $cond: {
+            if: { $and: [{ $ne: ["$purity", null] }, { $ne: ["$purity", 0] }] },
+            then: { $divide: [{ $multiply: ["$totalGrossWeight", "$purity"] }, 24] }, // Assuming karat-based purity (e.g., 24K = 100%)
+            else: "$totalGrossWeight", // Fallback to grossWeight if purity is null or 0
+          },
         },
-        totalPureWeight: { $round: ["$totalPureWeight", 3] },
-        totalGrsWt: { $round: ["$totalPureWeight", 3] },
-        totalPcs: "$totalPcs",
-        // Calculate final stock PCS: totalGrossWeight / stockTotalValue (for PCS stocks only)
-        totalStockPcs: {
-          $cond: [
-            { $and: ["$_id.isPcsStock", { $gt: ["$stockTotalValue", 0] }] },
-            {
-              $round: [
-                { $divide: ["$totalGrossWeight", "$stockTotalValue"] },
-                3,
-              ],
-            },
-            0,
-          ],
-        },
-        totalCalculatedStockPcs: { $round: ["$totalCalculatedStockPcs", 3] },
-        totalDebit: { $round: ["$totalDebit", 2] },
-        totalCredit: { $round: ["$totalCredit", 2] },
-        netBalance: {
-          $round: [{ $subtract: ["$totalCredit", "$totalDebit"] }, 2],
-        },
-        transactionCount: "$transactionCount",
-        transactionTypes: "$transactionTypes",
-        // Include transaction details if needed for debugging
-        ...(filters.includeTransactionDetails && {
-          transactions: "$transactions",
-        }),
+        pcs: 1,
+        gross: "$totalGrossWeight", // Rename totalGrossWeight to gross
+        totalValue: 1,
+        metalId: 1,
+        stockName: 1,
+        metalType: 1,
       },
     });
 
-    // Sort by code
+    // Optional: Filter out entries with zero gross weight (if needed)
     pipeline.push({
-      $sort: { code: 1, description: 1 },
+      $match: {
+        gross: { $ne: 0 },
+      },
     });
 
     return pipeline;

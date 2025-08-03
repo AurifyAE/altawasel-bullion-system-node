@@ -187,10 +187,7 @@ export const getStockMovement = async (req, res) => {
 export const getStockBalance = async (req, res) => {
   try {
     const filters = req.body;
-
-    console.log("on: stock Balance");
     // Call service to get report data
-
     const reportData = await reportService.getStockBalanceReport(filters);
     // Return success response (even if no data found)
     res.status(200).json({
@@ -198,7 +195,7 @@ export const getStockBalance = async (req, res) => {
       message: reportData.totalRecords > 0
         ? `Metal stock ledger report generated successfully with ${reportData.totalRecords} records`
         : "No transactions found for the specified criteria",
-      data: reportData.data,
+      data: reportData,
       totalRecords: reportData.totalRecords,
       filters: reportData.filters
     });
