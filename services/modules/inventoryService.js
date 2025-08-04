@@ -118,10 +118,10 @@ class InventoryService {
             stockCode: new mongoose.Types.ObjectId(inventoryId) // or just stockId if it's already ObjectId
           }
         },
-      
+
         // 📌 Step 2: Sort (optional but helpful)
         { $sort: { createdAt: -1 } },
-      
+
         // 📌 Step 3: Group by stockCode
         {
           $group: {
@@ -144,7 +144,7 @@ class InventoryService {
             code: { $first: "$code" }
           }
         },
-      
+
         // 📌 Step 4: Lookup metal stock
         {
           $lookup: {
@@ -155,7 +155,7 @@ class InventoryService {
           }
         },
         { $unwind: { path: "$stock", preserveNullAndEmptyArrays: true } },
-      
+
         // 📌 Step 5: Lookup Karat info
         {
           $lookup: {
@@ -166,7 +166,7 @@ class InventoryService {
           }
         },
         { $unwind: { path: "$karatInfo", preserveNullAndEmptyArrays: true } },
-      
+
         // 📌 Step 6: Lookup Metal Type
         {
           $lookup: {
@@ -177,7 +177,7 @@ class InventoryService {
           }
         },
         { $unwind: { path: "$metalTypeInfo", preserveNullAndEmptyArrays: true } },
-      
+
         // 📌 Step 7: Final Projection
         {
           $project: {
@@ -195,10 +195,10 @@ class InventoryService {
           }
         }
       ]);
-      
+
       return logs?.[0] || null;
-      
-      
+
+
     } catch (err) {
       throw createAppError(
         "Failed to fetch inventory",
@@ -344,13 +344,17 @@ class InventoryService {
       } else {
         pureWeight = value * savedInventory.purity;
       }
+      console.log('====================================');
+      console.log(voucher);
+      console.log('====================================');
 
-      await InventoryLog.create({
+      const invLog = await InventoryLog.create({
         code: metal.code,
         transactionType: "opening",
         pcs: type === "pcs",
         stockCode: metal._id,
         voucherCode: voucher?.voucherCode || "",
+        voucherType: voucher?.voucherType || "",
         voucherDate: voucher?.voucherDate || new Date(),
         grossWeight: value,
         action: isAddition ? "add" : "remove",
@@ -358,9 +362,11 @@ class InventoryService {
         note: `Inventory ${isAddition ? "added" : "removed"} by admin.`,
       });
 
+
       await this.createRegistryEntry({
         transactionId: await Registry.generateTransactionId(),
         metalId: metalId, // this is not Transaction id this is MetalID
+        InventoryLogID: invLog._id,
         type: "GOLD_STOCK",
         goldBidValue: goldBidPrice,
         description: `OPENING STOCK FOR ${metal.code}`,
@@ -429,7 +435,7 @@ class InventoryService {
           voucherDate: transaction.voucherDate || new Date(),
           grossWeight: item.grossWeight || 0,
           action: isSale ? "remove" : "add",
-          transactionType: transaction.transactionType || item.transactionType|| (isSale ? "sale" : "purchase"),
+          transactionType: transaction.transactionType || item.transactionType || (isSale ? "sale" : "purchase"),
           createdBy: transaction.createdBy || admin || null,
           pcs: !!item.pieces,  // whether it's piece-based
           note: isSale
@@ -453,6 +459,7 @@ class InventoryService {
   static async createRegistryEntry({
     transactionId,
     metalId,
+    InventoryLogID,
     type,
     goldBidValue,
     description,
@@ -472,6 +479,7 @@ class InventoryService {
       const registryEntry = new Registry({
         transactionId,
         metalId,
+        InventoryLogID,
         costCenter,
         type,
         goldBidValue,

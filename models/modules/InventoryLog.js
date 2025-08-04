@@ -30,6 +30,10 @@ const inventoryLogSchema = new mongoose.Schema({
         type: String,
         default: '',
     },
+    voucherType: {
+        type: String,
+        default: '',
+    },
     voucherDate: {
         type: Date,
         required: [true, 'Voucher date is required'],

@@ -1543,6 +1543,15 @@ export class ReportService {
       },
     });
 
+    pipeline.push({
+      $lookup: {
+        from: "inventorylogs",
+        localField: "InventoryLogID",
+        foreignField: "_id",
+        as: "inventoryLog",
+      },
+    });
+
 
     // Unwind arrays
     pipeline.push({
@@ -1553,6 +1562,9 @@ export class ReportService {
     });
     pipeline.push({
       $unwind: { path: "$transferInfo", preserveNullAndEmptyArrays: true },
+    });
+    pipeline.push({
+      $unwind: { path: "$inventoryLog", preserveNullAndEmptyArrays: true },
     });
 
     pipeline.push({
@@ -1675,6 +1687,17 @@ export class ReportService {
     pipeline.push({
       $lookup: {
         from: "metalstocks",
+        localField: "inventoryLog.stockCode",
+        foreignField: "_id",
+        as: "inventoryStock",
+      },
+    });
+
+ 
+
+    pipeline.push({
+      $lookup: {
+        from: "metalstocks",
         localField: "entryInfo.stockItems.stock",
         foreignField: "_id",
         as: "entryStockDetails",
@@ -1698,12 +1721,16 @@ export class ReportService {
       $unwind: { path: "$entryStockDetails", preserveNullAndEmptyArrays: true },
     });
     pipeline.push({
+      $unwind: { path: "$inventoryStock", preserveNullAndEmptyArrays: true },
+    });
+    pipeline.push({
       $unwind: {
         path: "$directStockDetails",
         preserveNullAndEmptyArrays: true,
       },
     });
 
+  
     // Filter by stock if provided - Fixed stock filtering
     if (filters.stock && filters.stock.length > 0) {
       const stockIds = filters.stock.map(
@@ -1713,6 +1740,7 @@ export class ReportService {
         $match: {
           $or: [
             { "stockDetails._id": { $in: stockIds } },
+            { "inventoryStock._id": { $in: stockIds } },
             { "entryStockDetails._id": { $in: stockIds } },
             { "directStockDetails._id": { $in: stockIds } },
             { metalId: { $in: stockIds } }, // Also check direct metalId
@@ -1800,6 +1828,7 @@ export class ReportService {
             "$metalTxnInfo.voucherType",
             "$entryInfo.type",
             "$entryInfo.voucherCode",
+            "$inventoryLog.voucherType",
             "$voucherType",
             "N/A",
           ],
