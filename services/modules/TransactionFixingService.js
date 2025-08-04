@@ -7,9 +7,7 @@ import mongoose from "mongoose";
 export const TransactionFixingService = {
   // Create Transaction with Registry Integration
   createTransaction: async (transactionData, adminId) => {
-    console.log('====================================');
-    console.log(transactionData);
-    console.log('====================================');
+  
     const session = await mongoose.startSession();
     session.startTransaction();
 
@@ -91,14 +89,7 @@ export const TransactionFixingService = {
       if (!account) {
         throw createAppError("Account not found", 404, "ACCOUNT_NOT_FOUND");
       }
-      console.log('====================================');
-      console.log("On hereee");
-      console.log('====================================');
 
-      console.log('====================================');
-      console.log(transactionData);
-      console.log('====================================');
-   
       // Create the main transaction
       const transaction = new TransactionFixing({
         transactionId: transactionId, // Use the generated ID

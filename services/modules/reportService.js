@@ -244,7 +244,7 @@ export class ReportService {
       // 5. Return structured response
       return {
         success: true,
-        data: finilized,
+        data: reportData,
       };
 
     } catch (error) {
@@ -2900,6 +2900,7 @@ export class ReportService {
         as: "metalstocks",
       },
     });
+    
 
     /* ------------------------------------------
        Step 6: Unwind joined data (safe unwind)
@@ -2934,6 +2935,7 @@ export class ReportService {
       },
     });
 
+    return pipeline
     /* ------------------------------------------
        Step 9: Second Group by prefix to sum across unique vouchers
     ------------------------------------------ */

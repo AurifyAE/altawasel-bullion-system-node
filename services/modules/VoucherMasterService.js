@@ -206,10 +206,6 @@ class VoucherMasterService {
     const voucher = await this.getVoucherConfig(module);
     // Get transaction count
     const transactionCount = await this.getTransactionCount(module, transactionType);
-    console.log('====================================');
-    console.log(transactionCount);
-    console.log('====================================');
-
     // Generate next voucher number
     const nextSequence = transactionCount + 1;
     const voucherNumber = `${voucher.prefix}${nextSequence.toString().padStart(voucher.numberLength, "0")}`;

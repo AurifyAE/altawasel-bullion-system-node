@@ -399,6 +399,7 @@ class MetalTransactionService {
 
     // Purchase-fixing entry
     if (totals.pureWeight > 0) {
+      
       entries.push(
         this.createRegistryEntry(
           baseTransactionId,
@@ -425,6 +426,7 @@ class MetalTransactionService {
     }
 
     if (totals.goldValue > 0) {
+   
       entries.push(
         this.createRegistryEntry(
           baseTransactionId,
@@ -450,6 +452,7 @@ class MetalTransactionService {
     }
 
     if (totals.makingCharges > 0) {
+  
       entries.push(
         this.createRegistryEntry(
           baseTransactionId,
@@ -1854,8 +1857,10 @@ class MetalTransactionService {
     reference,
     adminId
   ) {
+    
     if (value <= 0 && !["sales-fixing", "sale-return-fixing"].includes(type))
       return null;
+   
     return {
       transactionId: `${baseId}-${suffix}`,
       metalTransactionId,
@@ -1870,7 +1875,7 @@ class MetalTransactionService {
       cashCredit: parseFloat(cashCredit) || 0,
       goldDebit: parseFloat(goldDebit) || 0,
       debit: parseFloat(debit) || 0,
-      goldBidValue,
+      goldBidValue:goldBidValue,
       transactionDate: new Date() || voucherDate,
       reference,
       createdBy: adminId,
