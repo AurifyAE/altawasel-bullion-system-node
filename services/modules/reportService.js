@@ -3090,6 +3090,18 @@ export class ReportService {
       { type: { $in: ["purchase-fixing", "sales-fixing"] } },
       { costCenter: "INVENTORY" }
     ];
+
+    if (filters.voucher && filters.voucher.length > 0) {
+      const regexFilters = filters.voucher.map((prefix) => ({
+        reference: { $regex: `^${prefix}\\d+$`, $options: "i" }
+      }));
+
+      pipeline.push({
+        $match: {
+          $or: regexFilters
+        }
+      });
+    }
     
     // Step 2: Date filtering (optional, based on filters)
     if (filters.startDate || filters.endDate) {
