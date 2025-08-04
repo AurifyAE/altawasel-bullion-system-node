@@ -93,9 +93,7 @@ export const createKarat = async (req, res, next) => {
 
     // Common validation: minimum must be less than maximum
     if (!(minimum === 0 && maximum === 0) && minimum >= maximum) {
-      console.log('====================================');
-      console.log("here");
-      console.log('====================================');
+
       throw createAppError(
         "Minimum value must be less than maximum value",
         400,
@@ -178,7 +176,6 @@ export const updateKarat = async (req, res, next) => {
     // Get existing karat to check current isScrap status
     const existingKarat = await KaratMaster.findById(id);
 
-    console.log("9");
     if (!existingKarat) {
       throw createAppError("Karat not found", 404, "KARAT_NOT_FOUND");
     }
@@ -205,7 +202,6 @@ export const updateKarat = async (req, res, next) => {
       updateData.standardPurity = parseFloat(updateData.standardPurity);
     }
 
-    console.log("9");
     if (updateData.minimum !== undefined) {
       if (isNaN(updateData.minimum)) {
         throw createAppError(
@@ -287,9 +283,7 @@ export const updateKarat = async (req, res, next) => {
 export const deleteKarat = async (req, res, next) => {
   try {
     const { id } = req.params;
-    console.log('====================================');
-    console.log(id);
-    console.log('====================================');
+  
 
     if (!id) {
       throw createAppError("Karat ID is required", 400, "ID_REQUIRED");

@@ -139,7 +139,11 @@ class MetalStockService {
       return registryEntries;
     } catch (error) {
       console.error("Error creating registry entries:", error);
-      throw error;
+      throw createAppError(
+        "Error creating registry entries",
+        500,
+        "CREATE_REGISTRY_ERROR"
+      );
     }
   }
 

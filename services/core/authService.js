@@ -181,9 +181,6 @@ export const refreshAccessToken = async (refreshToken) => {
 
     // Verify refresh token
     const decoded = verifyToken(refreshToken);
-    console.log("====================================");
-    console.log(decoded);
-    console.log("====================================");
 
     if (decoded.type !== "refresh") {
       throw createAppError("Invalid token type", 401, "INVALID_TOKEN_TYPE");

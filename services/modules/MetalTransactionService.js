@@ -130,10 +130,7 @@ class MetalTransactionService {
 
         await inventory.save();
         updated.push(inventory);
-        console.log('====================================');
-        console.log(metal);
-        console.log("Onnnnn heereeeeeeeeee", transaction);
-        console.log('====================================');
+       
         // Inventory Log
         await InventoryLog.create({
           code: metal.code,

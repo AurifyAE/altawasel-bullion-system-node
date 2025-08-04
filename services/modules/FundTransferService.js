@@ -75,9 +75,7 @@ class FundTransferService {
     assetType,
     voucher
   ) {
-    console.log("====================================");
-    console.log(receiverId, value, adminId, assetType, voucher);
-    console.log("====================================");
+
     try {
       const receiverAccount = await AccountType.findById(receiverId);
       if (!receiverAccount) {
