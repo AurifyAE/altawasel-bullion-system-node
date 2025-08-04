@@ -3086,8 +3086,11 @@ export class ReportService {
     const matchConditions = {};
 
     // Step 1: Filter for specific transaction types
-    matchConditions.type = { $in: ["purchase-fixing", "sales-fixing"] };
-
+    matchConditions.$or = [
+      { type: { $in: ["purchase-fixing", "sales-fixing"] } },
+      { costCenter: "INVENTORY" }
+    ];
+    
     // Step 2: Date filtering (optional, based on filters)
     if (filters.startDate || filters.endDate) {
       matchConditions.transactionDate = {};

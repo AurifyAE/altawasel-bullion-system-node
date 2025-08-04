@@ -344,9 +344,7 @@ class InventoryService {
       } else {
         pureWeight = value * savedInventory.purity;
       }
-      console.log('====================================');
-      console.log(voucher);
-      console.log('====================================');
+      
 
       const invLog = await InventoryLog.create({
         code: metal.code,
@@ -484,6 +482,7 @@ class InventoryService {
         type,
         goldBidValue,
         description,
+        goldDebit:value,
         value,
         debit: value,
         credit: 0,
