@@ -10,7 +10,7 @@ class InventoryService {
     try {
       const logs = await InventoryLog.aggregate([
         // Sort to ensure latest values
-        { $sort: { createdAt: -1 } },
+        { $sort: { updatedAt: -1 } },
 
         // Group by stockCode
         {
