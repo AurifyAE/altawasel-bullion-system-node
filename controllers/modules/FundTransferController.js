@@ -41,6 +41,7 @@ export const accountToAccountTransfer = async (req, res, next) => {
 };
 
 export const openingBalanceTransfer = async (req, res, next) => {
+
   try {
     const { receiverId, value, assetType, voucher } = req.body;
     const adminId = req.admin.id;

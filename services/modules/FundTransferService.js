@@ -68,55 +68,100 @@ class FundTransferService {
     }
   }
 
-  static async openingBalanceTransfer(
-    receiverId,
-    value,
-    adminId,
-    assetType,
-    voucher
-  ) {
-
+  static async openingBalanceTransfer(receiverId, value, adminId, assetType, voucher) {
+    
     try {
+      // ✅ Move these up top to avoid ReferenceError
+      const isCredit = value > 0;
+      const isDebit = value < 0;
+      const absoluteValue = Math.abs(value);
+
       const receiverAccount = await AccountType.findById(receiverId);
       if (!receiverAccount) {
-        throw createAppError(
-          "Receiver account not found",
-          404,
-          "ACCOUNT_NOT_FOUND"
-        );
+        throw createAppError("Receiver account not found", 404, "ACCOUNT_NOT_FOUND");
       }
-      // Check if opening balance already exists for the party and asset type
+
+      // Check if opening balance already exists
       const existingOpening = await Registry.findOne({
         party: receiverId,
         type: assetType === "CASH" ? "OPENING_CASH_BALANCE" : "OPENING_GOLD_BALANCE",
       });
 
-      if (existingOpening && !voucher?.isConfirmed) {
-        // Custom error if opening already exists and not confirmed
-        const error = new Error("Opening balance already exists for this party.");
-        error.code = "OPENING_EXISTS";
-        error.status = 200; // Custom status to indicate not a server error
-        error.data = { alreadyExists: true };
-        throw error;
+      if (existingOpening) {
+        if (!voucher?.isConfirmed) {
+          const error = new Error("Opening balance already exists for this party.");
+          error.code = "OPENING_EXISTS";
+          error.status = 200;
+          error.data = { alreadyExists: true };
+          throw error;
+        }
+
+        // 🟡 Step 2: Revert previous value
+        const revertValue = existingOpening.credit || -existingOpening.debit;
+
+        if (assetType === "CASH") {
+          receiverAccount.balances.cashBalance.amount -= revertValue;
+          receiverAccount.balances.cashBalance.amount += value;
+        } else {
+          receiverAccount.balances.goldBalance.totalGrams -= revertValue;
+          receiverAccount.balances.goldBalance.totalGrams += value;
+        }
+
+        const updatedRunningBalance =
+          assetType === "CASH"
+            ? receiverAccount.balances.cashBalance.amount
+            : receiverAccount.balances.goldBalance.totalGrams;
+
+        const previousBalance = updatedRunningBalance - value;
+        // 🟡 Step 3: Update Registry
+        const a = await Registry.updateMany(
+          {
+            party: receiverId,
+          },
+          {
+            $set: {
+              value: absoluteValue,
+              credit: isCredit ? absoluteValue : 0,
+              debit: isDebit ? absoluteValue : 0,
+              runningBalance: updatedRunningBalance,
+              previousBalance: previousBalance,
+              updatedAt: new Date(),
+            },
+          }
+        );
+       
+
+        // 🟡 Step 4: Update FundTransfer
+        await FundTransfer.updateMany(
+          {
+            'receivingParty.party': receiverId, 
+          },
+          {
+            $set: {
+              value: absoluteValue,
+              receivingParty: {
+                party: receiverId,
+                credit: isCredit ? absoluteValue : 0,
+              },
+              sendingParty: {
+                party: null,
+                debit: isDebit ? absoluteValue : 0,
+              },
+              updatedAt: new Date(),
+            },
+          }
+        );
+
+        await receiverAccount.save();
+        return;
       }
 
-
-      // Determine if it's credit or debit
-      const isCredit = value > 0;
-      const isDebit = value < 0;
-      const absoluteValue = Math.abs(value);
-
+      // ➕ Handle new opening balance
       if (assetType === "CASH") {
-        // Store previous balance for tracking
         const previousBalance = receiverAccount.balances.cashBalance.amount;
-
-        // Update account balance (add positive, subtract negative)
         receiverAccount.balances.cashBalance.amount += value;
-
-        // Calculate running balance
         const runningBalance = receiverAccount.balances.cashBalance.amount;
 
-        // Create fund transfer first to get its ID
         const fundTransfer = new FundTransfer({
           transactionId: await FundTransfer.generateTransactionId(),
           description: `OPENING CASH BALANCE FOR ${receiverAccount.customerName}`,
@@ -127,7 +172,7 @@ class FundTransferService {
             credit: isCredit ? absoluteValue : 0,
           },
           sendingParty: {
-            party: null, // No sender for opening balance
+            party: null,
             debit: isDebit ? absoluteValue : 0,
           },
           voucherNumber: voucher.voucherCode,
@@ -149,7 +194,7 @@ class FundTransferService {
           reference: voucher.voucherCode,
           createdBy: adminId,
           party: receiverAccount._id,
-          TransferTransactionId: fundTransfer._id, // Reference to FundTransfer
+          TransferTransactionId: fundTransfer._id,
         });
 
         const transactionForParty = new Registry({
@@ -164,24 +209,19 @@ class FundTransferService {
           reference: voucher.voucherCode,
           createdBy: adminId,
           party: receiverAccount._id,
-          TransferTransactionId: fundTransfer._id, // Reference to FundTransfer
+          TransferTransactionId: fundTransfer._id,
         });
 
         await receiverAccount.save();
         await fundTransfer.save();
         await transactionForParty.save();
         await transaction.save();
+
       } else if (assetType === "GOLD") {
-        // Store previous balance for tracking
         const previousBalance = receiverAccount.balances.goldBalance.totalGrams;
-
-        // Update account balance (add positive, subtract negative)
         receiverAccount.balances.goldBalance.totalGrams += value;
-
-        // Calculate running balance
         const runningBalance = receiverAccount.balances.goldBalance.totalGrams;
 
-        // Create fund transfer first to get its ID
         const fundTransfer = new FundTransfer({
           transactionId: await FundTransfer.generateTransactionId(),
           description: `OPENING GOLD BALANCE FOR ${receiverAccount.customerName}`,
@@ -192,7 +232,7 @@ class FundTransferService {
             credit: isCredit ? absoluteValue : 0,
           },
           sendingParty: {
-            party: null, // No sender for opening balance
+            party: null,
             debit: isDebit ? absoluteValue : 0,
           },
           voucherNumber: voucher.voucherCode,
@@ -214,7 +254,7 @@ class FundTransferService {
           reference: voucher.voucherCode,
           createdBy: adminId,
           party: receiverAccount._id,
-          TransferTransactionId: fundTransfer._id, // Reference to FundTransfer
+          TransferTransactionId: fundTransfer._id,
         });
 
         const transactionForParty = new Registry({
@@ -229,7 +269,7 @@ class FundTransferService {
           reference: voucher.voucherCode,
           createdBy: adminId,
           party: receiverAccount._id,
-          TransferTransactionId: fundTransfer._id, // Reference to FundTransfer
+          TransferTransactionId: fundTransfer._id,
         });
 
         await receiverAccount.save();
@@ -237,6 +277,7 @@ class FundTransferService {
         await transactionForParty.save();
         await transaction.save();
       }
+
     } catch (error) {
       if (error.name === "ValidationError") {
         const messages = Object.values(error.errors).map((err) => err.message);
@@ -245,6 +286,7 @@ class FundTransferService {
       throw error;
     }
   }
+
 
   static async getFundTransfers() {
     try {
