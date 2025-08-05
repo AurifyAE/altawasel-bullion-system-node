@@ -1337,13 +1337,13 @@ export class ReportService {
       isActive: true,
     };
 
-    // Add date range filter - Fixed date filtering
+    // Add date range filter
     if (filters.startDate && filters.endDate) {
       matchConditions.transactionDate = {
         $gte: new Date(filters.startDate),
         $lte: new Date(filters.endDate),
       };
-    } else if (filters.fromDate) {
+    } else if (filters.startDate) {
       matchConditions.transactionDate = {
         $gte: new Date(filters.startDate),
       };
@@ -1353,70 +1353,16 @@ export class ReportService {
       };
     }
 
-    // Handle transactionType filter - Only apply if not 'all'
-    // if (filters.transactionType && filters.transactionType !== "all") {
-    //   switch (filters.transactionType.toLowerCase()) {
-    //     case "sales":
-    //     case "sale":
-    //       matchConditions.metalTransactionId = { $exists: true, $ne: null };
-    //       break;
-    //     case "sales return":
-    //     case "sale return":
-    //     case "salereturn":
-    //       matchConditions.metalTransactionId = { $exists: true, $ne: null };
-    //       break;
-    //     case "net sales":
-    //       matchConditions.metalTransactionId = { $exists: true, $ne: null };
-    //       break;
-    //     case "purchase":
-    //       matchConditions.metalTransactionId = { $exists: true, $ne: null };
-    //       break;
-    //     case "purchase return":
-    //     case "purchasereturn":
-    //       matchConditions.metalTransactionId = { $exists: true, $ne: null };
-    //       break;
-    //     case "net purchases":
-    //       matchConditions.metalTransactionId = { $exists: true, $ne: null };
-    //       break;
-    //     case "receipts":
-    //     case "metal-receipt":
-    //       matchConditions.EntryTransactionId = { $exists: true, $ne: null };
-    //       break;
-    //     case "payment":
-    //     case "payments":
-    //     case "metal-payment":
-    //       matchConditions.EntryTransactionId = { $exists: true, $ne: null };
-    //       break;
-    //     case "manufacture":
-    //       matchConditions.description = {
-    //         $regex: /manufacture|production|make/i,
-    //       };
-    //       break;
-    //     case "transfer":
-    //     case "transfer/adjustments":
-    //       matchConditions.$or = [
-    //         { TransferTransactionId: { $exists: true, $ne: null } },
-    //         { description: { $regex: /transfer|adjustment|move/i } },
-    //       ];
-    //       break;
-    //   }
-    // }
-
-    // Apply voucher prefix filtering safely
+    // Apply voucher prefix filtering
     if (filters.voucher && filters.voucher.length > 0) {
       const regexFilters = filters.voucher.map((prefix) => ({
         reference: { $regex: `^${prefix}\\d+`, $options: "i" }
       }));
-
       matchConditions.$or = regexFilters;
     }
 
-
-
     // Initial filtering from Registry
     pipeline.push({ $match: matchConditions });
-
-
 
     // Join with metaltransactions collection
     pipeline.push({
@@ -1448,6 +1394,7 @@ export class ReportService {
       },
     });
 
+    // Join with inventorylogs collection
     pipeline.push({
       $lookup: {
         from: "inventorylogs",
@@ -1456,7 +1403,6 @@ export class ReportService {
         as: "inventoryLog",
       },
     });
-
 
     // Unwind arrays
     pipeline.push({
@@ -1472,6 +1418,7 @@ export class ReportService {
       $unwind: { path: "$inventoryLog", preserveNullAndEmptyArrays: true },
     });
 
+    // Join with accounts for metal transactions
     pipeline.push({
       $lookup: {
         from: "accounts",
@@ -1480,30 +1427,26 @@ export class ReportService {
         as: "metalPartyDetails",
       },
     });
-
     pipeline.push({
       $unwind: { path: "$metalPartyDetails", preserveNullAndEmptyArrays: true },
     });
 
+    // Join with accounts for entries
     pipeline.push({
       $lookup: {
         from: "accounts",
         localField: "entryInfo.party",
         foreignField: "_id",
-        as: "entryPartyDetails", // ✅ different alias
+        as: "entryPartyDetails",
       },
     });
     pipeline.push({
       $unwind: { path: "$entryPartyDetails", preserveNullAndEmptyArrays: true },
     });
 
-
-    // return pipeline
-
-    // Apply specific transaction type filtering after joins
+    // Apply transaction type filtering
     if (filters.transactionType && filters.transactionType !== "all") {
       const transactionTypeMatch = {};
-
       switch (filters.transactionType.toLowerCase()) {
         case "sales":
         case "sale":
@@ -1524,8 +1467,7 @@ export class ReportService {
           break;
         case "purchase return":
         case "purchasereturn":
-          transactionTypeMatch["metalTxnInfo.transactionType"] =
-            "purchaseReturn";
+          transactionTypeMatch["metalTxnInfo.transactionType"] = "purchaseReturn";
           break;
         case "net purchases":
           transactionTypeMatch["metalTxnInfo.transactionType"] = {
@@ -1542,7 +1484,6 @@ export class ReportService {
           transactionTypeMatch["entryInfo.type"] = "metal-payment";
           break;
       }
-
       if (Object.keys(transactionTypeMatch).length > 0) {
         pipeline.push({ $match: transactionTypeMatch });
       }
@@ -1598,8 +1539,6 @@ export class ReportService {
       },
     });
 
-
-
     pipeline.push({
       $lookup: {
         from: "metalstocks",
@@ -1635,8 +1574,7 @@ export class ReportService {
       },
     });
 
-
-    // Filter by stock if provided - Fixed stock filtering
+    // Filter by stock if provided
     if (filters.stock && filters.stock.length > 0) {
       const stockIds = filters.stock.map(
         (id) => new mongoose.Types.ObjectId(id)
@@ -1648,7 +1586,7 @@ export class ReportService {
             { "inventoryStock._id": { $in: stockIds } },
             { "entryStockDetails._id": { $in: stockIds } },
             { "directStockDetails._id": { $in: stockIds } },
-            { metalId: { $in: stockIds } }, // Also check direct metalId
+            { metalId: { $in: stockIds } },
           ],
         },
       });
@@ -1718,13 +1656,12 @@ export class ReportService {
       },
     });
 
-    // Unwind remaining lookup arrays
+    // Unwind salesmanDetails
     pipeline.push({
       $unwind: { path: "$salesmanDetails", preserveNullAndEmptyArrays: true },
     });
 
-    // return pipeline
-    // Project required fields for response
+    // Project required fields
     pipeline.push({
       $project: {
         VocDate: "$transactionDate",
@@ -1745,11 +1682,12 @@ export class ReportService {
           $ifNull: [
             "$stockDetails.code",
             "$entryStockDetails.code",
+            "$inventoryStock.code",
             "$directStockDetails.code",
             "N/A",
           ],
         },
-        Salesman: { $ifNull: ["$salesmanDetails.name", "N/A"] },
+        Users: { $ifNull: ["$salesmanDetails.name", "N/A"] },
         Account: {
           $ifNull: [
             "$metalPartyDetails.customerName",
@@ -1775,7 +1713,7 @@ export class ReportService {
         Rate: {
           $ifNull: ["$metalTxnInfo.stockItems.metalRateRequirements.rate", 0],
         },
-        Discount: {
+        "Premium/Discount": {
           $ifNull: ["$metalTxnInfo.stockItems.premium.amount", 0],
         },
         NetAmount: {
@@ -1788,47 +1726,39 @@ export class ReportService {
       },
     });
 
-    // Group by relevant fields to avoid duplicates
+    // Group by StockCode to structure the output
     pipeline.push({
       $group: {
-        _id: {
-          VocDate: "$VocDate",
-          VocType: "$VocType",
-          VocNo: "$VocNo",
-          StockCode: "$StockCode",
-          Salesman: "$Salesman",
-          Account: "$Account",
+        _id: "$StockCode",
+        transactions: {
+          $push: {
+            VocDate: "$VocDate",
+            VocType: "$VocType",
+            VocNo: "$VocNo",
+            Users: "$Users",
+            Account: "$Account",
+            Pcs: "$Pcs",
+            Weight: "$Weight",
+            Rate: "$Rate",
+            "Premium/Discount": "$Premium/Discount",
+            NetAmount: "$NetAmount",
+          },
         },
-        Pcs: { $sum: "$Pcs" },
-        Weight: { $sum: "$Weight" },
-        Rate: { $first: "$Rate" },
-        Discount: { $sum: "$Discount" },
-        NetAmount: { $sum: "$NetAmount" },
       },
     });
 
-    // Final projection
+    // Project to reshape the output
     pipeline.push({
       $project: {
         _id: 0,
-        VocDate: "$_id.VocDate",
-        VocType: "$_id.VocType",
-        VocNo: "$_id.VocNo",
-        StockCode: "$_id.StockCode",
-        Salesman: "$_id.Salesman",
-        Account: "$_id.Account",
-        Pcs: "$Pcs",
-        Weight: "$Weight",
-        Rate: "$Rate",
-        Discount: "$Discount",
-        NetAmount: "$NetAmount",
+        StockCode: "$_id",
+        Transactions: "$transactions",
       },
     });
 
-    // Sort by VocDate and StockCode
+    // Sort by StockCode
     pipeline.push({
       $sort: {
-        VocDate: -1,
         StockCode: 1,
       },
     });
