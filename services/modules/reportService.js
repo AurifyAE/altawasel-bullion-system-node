@@ -75,7 +75,7 @@ export class ReportService {
       // Execute aggregation query
       const salesReport = await Registry.aggregate(salesPipeline).exec();
       const purchaseReport = await Registry.aggregate(purchasePipeline).exec();
-      
+
 
       // Calculate sales analysis
       const reportData = this.calculateSalesAnalysis(salesReport, purchaseReport);
@@ -244,7 +244,7 @@ export class ReportService {
       // 5. Return structured response
       return {
         success: true,
-        data: reportData,
+        data: finilized,
       };
 
     } catch (error) {
@@ -440,29 +440,19 @@ export class ReportService {
 
     const pipeline = [];
 
+    // Step 1: Match base records
     const matchConditions = {
       isActive: true,
       $or: [
         { metalTransactionId: { $exists: true, $ne: null } },
         { EntryTransactionId: { $exists: true, $ne: null } },
+        { InventoryLogID: { $exists: true, $ne: null } },
       ],
     };
 
     // Type filter
     if (filters.type) {
       matchConditions.type = filters.type;
-    }
-
-    if (filters.voucher && filters.voucher.length > 0) {
-      const regexFilters = filters.voucher.map((prefix) => ({
-        reference: { $regex: `^${prefix}\\d+$`, $options: "i" }
-      }));
-
-      pipeline.push({
-        $match: {
-          $or: regexFilters
-        }
-      });
     }
 
     // Date filter
@@ -476,132 +466,181 @@ export class ReportService {
       }
     }
 
-    // Stage 1: Match base records
     pipeline.push({ $match: matchConditions });
 
-    // Stage 2: Lookup metalTransaction
-    pipeline.push({
-      $lookup: {
-        from: "metaltransactions",
-        localField: "metalTransactionId",
-        foreignField: "_id",
-        as: "metalTransaction",
-      },
-    });
+    // Voucher prefix filter
+    if (filters.voucher?.length > 0) {
+      const regexFilters = filters.voucher.map((prefix) => ({
+        reference: { $regex: `^${prefix}\\d+$`, $options: "i" },
+      }));
+      pipeline.push({ $match: { $or: regexFilters } });
+    }
 
-    // Stage 3: Lookup entryInfo
-    pipeline.push({
-      $lookup: {
-        from: "entries",
-        localField: "EntryTransactionId",
-        foreignField: "_id",
-        as: "entryInfo",
-      },
-    });
-
-    // Stage 4: Unwind
+    // Step 2: Lookup related documents
     pipeline.push(
-      { $unwind: { path: "$metalTransaction", preserveNullAndEmptyArrays: true } },
-      { $unwind: { path: "$entryInfo", preserveNullAndEmptyArrays: true } }
+      {
+        $lookup: {
+          from: "metaltransactions",
+          localField: "metalTransactionId",
+          foreignField: "_id",
+          as: "metalTransaction",
+        },
+      },
+      {
+        $lookup: {
+          from: "entries",
+          localField: "EntryTransactionId",
+          foreignField: "_id",
+          as: "entryInfo",
+        },
+      },
+      {
+        $lookup: {
+          from: "inventorylogs",
+          localField: "InventoryLogID",
+          foreignField: "_id",
+          as: "inventory",
+        },
+      }
     );
 
-    // Stage 5: Normalize data into transactionData, partyCode, etc.
+    // Step 3: Unwind (preserveNull for optional lookups)
+    pipeline.push(
+      { $unwind: { path: "$metalTransaction", preserveNullAndEmptyArrays: true } },
+      { $unwind: { path: "$entryInfo", preserveNullAndEmptyArrays: true } },
+      { $unwind: { path: "$inventory", preserveNullAndEmptyArrays: true } }
+    );
+
+    // Step 4: Normalize transactionData, partyCode, and voucher
     pipeline.push({
       $addFields: {
         transactionData: {
-          $cond: [{ $ifNull: ["$metalTransaction", false] }, "$metalTransaction", "$entryInfo"]
-        },
-        partyCode: {
-          $ifNull: ["$metalTransaction.partyCode", "$entryInfo.party"]
-        },
-        voucher: {
           $cond: [
             { $ifNull: ["$metalTransaction", false] },
+            "$metalTransaction",
+            {
+              $cond: [
+                { $ifNull: ["$entryInfo", false] },
+                "$entryInfo",
+                "$inventory",
+              ],
+            },
+          ],
+        },
+        partyCode: {
+          $ifNull: ["$metalTransaction.partyCode", "$entryInfo.party"],
+        },
+        voucher: {
+          $ifNull: [
             "$metalTransaction.voucherNumber",
-            "$entryInfo.voucherCode"
-          ]
-        }
-      }
+            { $ifNull: ["$entryInfo.voucherCode", "$inventory.voucherCode"] },
+          ],
+        },
+      },
     });
 
-    // Stage 6: Fallback stockItems (from entry `stocks`)
+    // Step 5: Normalize stockItems for all sources
     pipeline.push({
       $addFields: {
         "transactionData.stockItems": {
           $cond: [
-            { $gt: [{ $size: { $ifNull: ["$transactionData.stockItems", []] } }, 0] },
+            {
+              $gt: [
+                { $size: { $ifNull: ["$transactionData.stockItems", []] } },
+                0,
+              ],
+            },
             "$transactionData.stockItems",
-            "$transactionData.stocks"
-          ]
-        }
-      }
+            {
+              $cond: [
+                { $gt: [{ $size: { $ifNull: ["$transactionData.stocks", []] } }, 0] },
+                "$transactionData.stocks",
+                [
+                  {
+                    stockCode: "$inventory.stockCode",
+                    grossWeight: "$inventory.grossWeight",
+                    alternateAmount: 0,
+                  },
+                ],
+              ],
+            },
+          ],
+        },
+      },
     });
 
-    // Stage 7: Lookup account info
+    // Step 6: Lookup party account
     pipeline.push({
       $lookup: {
         from: "accounts",
         localField: "partyCode",
         foreignField: "_id",
-        as: "partyAccount"
-      }
+        as: "partyAccount",
+      },
     });
 
-    // Stage 8: Set partyName from account, fallback to "N/A"
+    // Step 7: Add partyName
     pipeline.push({
       $addFields: {
         partyName: {
-          $ifNull: [{ $arrayElemAt: ["$partyAccount.customerName", 0] }, "N/A"]
-        }
-      }
+          $ifNull: [{ $arrayElemAt: ["$partyAccount.customerName", 0] }, "N/A"],
+        },
+      },
     });
 
-    // Stage 9: Unwind stockItems
+    // Step 8: Unwind stockItems
     pipeline.push({
       $unwind: {
         path: "$transactionData.stockItems",
-        preserveNullAndEmptyArrays: false
-      }
+        preserveNullAndEmptyArrays: false,
+      },
     });
 
-    // Stage 10: Lookup stockDetails for both `stockItems.stockCode` and `stocks.stock`
+    // Step 9: Normalize stockCode for lookup
     pipeline.push({
       $addFields: {
         stockCodeToLookup: {
           $ifNull: [
             "$transactionData.stockItems.stockCode",
-            "$transactionData.stockItems.stock"
-          ]
-        }
-      }
+            {
+              $ifNull: [
+                "$transactionData.stockItems.stock",
+                "$inventory.stockCode",
+              ],
+            },
+          ],
+        },
+      },
     });
 
-    pipeline.push({
-      $lookup: {
-        from: "metalstocks",
-        localField: "stockCodeToLookup",
-        foreignField: "_id",
-        as: "stockDetails"
+    // Step 10: Lookup stock details
+    pipeline.push(
+      {
+        $lookup: {
+          from: "metalstocks",
+          localField: "stockCodeToLookup",
+          foreignField: "_id",
+          as: "stockDetails",
+        },
+      },
+      {
+        $unwind: {
+          path: "$stockDetails",
+          preserveNullAndEmptyArrays: false,
+        },
       }
-    });
+    );
 
-    pipeline.push({
-      $unwind: {
-        path: "$stockDetails",
-        preserveNullAndEmptyArrays: false
-      }
-    });
-
-
-    if (filters.accountType.length > 0) {
+    // Step 11: Filters
+    if (filters.accountType?.length > 0) {
       pipeline.push({
         $match: {
           "metalTransaction.partyCode": { $in: filters.accountType },
         },
       });
     }
-    // Stage 9: Filter by stock if provided
-    if (filters.stock.length > 0) {
+
+    if (filters.stock?.length > 0) {
       pipeline.push({
         $match: {
           "stockDetails._id": { $in: filters.stock },
@@ -609,8 +648,7 @@ export class ReportService {
       });
     }
 
-    // Stage 10: Filter by karat if provided
-    if (filters.karat.length > 0) {
+    if (filters.karat?.length > 0) {
       pipeline.push({
         $match: {
           "stockDetails.karat": { $in: filters.karat },
@@ -618,8 +656,7 @@ export class ReportService {
       });
     }
 
-    // Stage 11: Filter by division if provided
-    if (filters.division.length > 0) {
+    if (filters.division?.length > 0) {
       pipeline.push({
         $match: {
           "stockDetails.metalType": { $in: filters.division },
@@ -627,13 +664,16 @@ export class ReportService {
       });
     }
 
-
-    // Stage 6: Project only required fields
+    // Step 12: Final projection
     pipeline.push({
       $project: {
+        _id: 0,
         voucher: 1,
         transactionDate: 1,
         partyName: 1,
+        stockCode: {
+          $ifNull: ["$stockDetails.code", "$stockDetails.altCode"],
+        },
         stockIn: "$debit",
         stockOut: "$credit",
         grossWeight: "$grossWeight",
@@ -645,10 +685,10 @@ export class ReportService {
             {
               $ifNull: [
                 "$transactionData.stockItems.alternateAmount",
-                0
-              ]
-            }
-          ]
+                0,
+              ],
+            },
+          ],
         },
         pcs: {
           $cond: {
@@ -660,13 +700,13 @@ export class ReportService {
                     {
                       $ifNull: [
                         "$transactionData.stockItems.alternateAmount",
-                        0
-                      ]
-                    }
-                  ]
+                        0,
+                      ],
+                    },
+                  ],
                 },
-                0
-              ]
+                0,
+              ],
             },
             then: {
               $divide: [
@@ -677,174 +717,51 @@ export class ReportService {
                     {
                       $ifNull: [
                         "$transactionData.stockItems.alternateAmount",
-                        1 // fallback to 1 to avoid division by zero
-                      ]
-                    }
-                  ]
-                }
-              ]
+                        1,
+                      ],
+                    },
+                  ],
+                },
+              ],
             },
-            else: 0
-          }
-        },
-        _id: 0,
-        stockCode: {
-          $ifNull: [
-            "$stockDetails.code",
-            {
-              $ifNull: ["$stockDetails.altCode", "N/A"]
-            }
-          ]
-        }
-      }
-    });
-
-
-
-
-    // Stage 7: Sort by transactionDate for consistent ordering
-    pipeline.push({
-      $sort: {
-        transactionDate: 1,
-      },
-    });
-    return pipeline
-
-    // Stage 5: Filter by account type if provided
-
-    // Conditionally filter based on transactionType
-    //  if (filters.transactionType) {
-    //   pipeline.push({
-    //     $match: {
-    //       "metalTransaction.transactionType": filters.transactionType,
-    //     },
-    //   });
-    // }
-
-    return pipeline
-
-    // Stage 4: Filter by voucher if provided
-    // if (filters.voucher.length > 0) {
-    //   pipeline.push({
-    //     $match: {
-    //       $or: [
-    //         { "metalTransaction.voucherType": { $in: filters.voucher } },
-    //         { reference: { $in: filters.voucher.map((id) => id.toString()) } },
-    //       ],
-    //     },
-    //   });
-    // }
-
-
-
-
-
-
-    // Stage 11.1: Apply groupByRange filters if present
-    if (filters.groupByRange && typeof filters.groupByRange === "object") {
-      const groupByMap = {
-        stockCode: "stockDetails._id",
-        categoryCode: "stockDetails.categoryCode",
-        karat: "stockDetails.karat",
-        type: "stockDetails.type",
-        supplierRef: "stockDetails.supplierRef",
-        countryDetails: "stockDetails.countryDetails",
-        supplier: "stockDetails.supplier",
-        purchaseRef: "stockDetails.purchaseRef",
-      };
-
-      for (const [key, path] of Object.entries(groupByMap)) {
-        const values = filters.groupByRange[key];
-        if (Array.isArray(values) && values.length > 0) {
-          pipeline.push({
-            $match: {
-              [path]: { $in: values },
-            },
-          });
-        }
-      }
-    }
-
-    // Stage 12: Join with additional details for display
-    pipeline.push({
-      $lookup: {
-        from: "karatmasters",
-        localField: "stockDetails.karat",
-        foreignField: "_id",
-        as: "karatDetails",
-      },
-    });
-
-    pipeline.push({
-      $lookup: {
-        from: "divisionmasters",
-        localField: "stockDetails.metalType",
-        foreignField: "_id",
-        as: "divisionDetails",
-      },
-    });
-
-    pipeline.push({
-      $lookup: {
-        from: "accounts",
-        localField: "metalTransaction.partyCode",
-        foreignField: "_id",
-        as: "partyDetails",
-      },
-    });
-
-    // Stage 13: Project required fields
-    pipeline.push({
-      $project: {
-        date: "$transactionDate",
-        voucherNumber: "$metalTransaction.voucherNumber",
-        partyName: { $arrayElemAt: ["$partyDetails.customerName", 0] },
-        stockCode: "$stockDetails.code",
-        grossWeight: {
-          $cond: {
-            if: filters.grossWeight,
-            then: "$metalTransaction.stockItems.grossWeight",
-            else: null,
+            else: 0,
           },
         },
-        pureWeight: {
-          $cond: {
-            if: filters.pureWeight,
-            then: "$metalTransaction.stockItems.pureWeight",
-            else: null,
-          },
-        },
-        pcs: {
-          $cond: {
-            if: filters.showPcs,
-            then: "$metalTransaction.stockItems.pieces",
-            else: null,
-          },
-        },
-        debit: "$debit",
-        credit: "$credit",
-        value: "$metalTransaction.stockItems.itemTotal.itemTotalAmount",
       },
     });
 
-    // Stage 14: Sort by date (descending)
+    // Step 13: Final sort
     pipeline.push({
-      $sort: {
-        date: -1,
-        createdAt: -1,
-      },
+      $sort: { transactionDate: 1 },
     });
 
     return pipeline;
+
   }
 
   buildSalesAnalysis(filters) {
     const pipeline = [];
+    const referenceRegex = [];
 
     // Step 1: Base match condition
+    // const matchConditions = {
+    //   isActive: true,
+    // };
+
+    if (filters.voucher && Array.isArray(filters.voucher) && filters.voucher.length > 0) {
+      filters.voucher.forEach(({ prefix }) => {
+        const pattern = /^[A-Z]+$/.test(prefix) ? `^${prefix}` : `^${prefix}\\d+`;
+        referenceRegex.push({ reference: { $regex: pattern, $options: "i" } });
+      });
+    }
     const matchConditions = {
       isActive: true,
+      $or: [
+        ...referenceRegex,
+        { reference: { $exists: false } },
+      ],
     };
+
 
     // Step 2: Add date filters (optional startDate and endDate)
     if (filters.startDate || filters.endDate) {
@@ -857,11 +774,6 @@ export class ReportService {
       }
     }
 
-    // Step 3: Filter by reference starting with "SAL"
-    matchConditions.reference = {
-      $regex: '^SAL', // Matches references starting with "SAL"
-      $options: 'i', // Case-insensitive
-    };
 
     // Step 4: Include documents where metalTransactionId exists
     matchConditions.metalTransactionId = { $exists: true, $ne: null };
@@ -1196,13 +1108,6 @@ export class ReportService {
     };
 
 
-
-    // Step 3: Filter by reference starting with "SAL"
-    matchConditions.reference = {
-      $regex: '^PRM', // Matches references starting with "SAL"
-      $options: 'i', // Case-insensitive
-    };
-
     // Step 4: Include documents where metalTransactionId exists
     matchConditions.metalTransactionId = { $exists: true, $ne: null };
 
@@ -1250,7 +1155,7 @@ export class ReportService {
       },
     });
 
-    // Step 10: Filter for sales transactions only
+    // Step 10: Filter for purchase transactions only
     pipeline.push({
       $match: {
         "metaltransactions.transactionType": "purchase",
@@ -1693,7 +1598,7 @@ export class ReportService {
       },
     });
 
- 
+
 
     pipeline.push({
       $lookup: {
@@ -1730,7 +1635,7 @@ export class ReportService {
       },
     });
 
-  
+
     // Filter by stock if provided - Fixed stock filtering
     if (filters.stock && filters.stock.length > 0) {
       const stockIds = filters.stock.map(
@@ -2311,7 +2216,6 @@ export class ReportService {
       isActive: true,
     };
 
-    // Step 2: Add date filters if present
     if (filters.startDate || filters.endDate) {
       matchConditions.transactionDate = {};
       if (filters.startDate) {
@@ -2321,6 +2225,7 @@ export class ReportService {
         matchConditions.transactionDate.$lte = new Date(filters.endDate);
       }
     }
+
     if (filters.voucher && filters.voucher.length > 0) {
       matchConditions.reference = {
         $regex: `^(${filters.voucher.join("|")})`, // Starts with any value in the array
@@ -2832,25 +2737,26 @@ export class ReportService {
 
 
   OwnStockPipeLine(filters) {
+
     const pipeline = [];
 
-    // Step 1: Define match conditions for specific reference prefixes
-    const referenceRegex = [
-      { reference: { $regex: "^PR\\d+", $options: "i" } }, // Purchase Return
-      { reference: { $regex: "^PF", $options: "i" } }, // Purchase Fixing
-      { reference: { $regex: "^SR", $options: "i" } }, // Sales Return
-      { reference: { $regex: "^SF", $options: "i" } }, // Sales Fixing
-      { reference: { $regex: "^OSB", $options: "i" } }, // Opening Balance
-      { reference: { $regex: "^PRM\\d+", $options: "i" } }, // Purchase Metal (fixing only)
-      { reference: { $regex: "^SAL\\d+", $options: "i" } }, // Sale Metal (fixing only)
-    ];
+    const referenceRegex = [];
 
-    // Step 2: Build match conditions with fallback for missing reference
+    if (filters.voucher && Array.isArray(filters.voucher) && filters.voucher.length > 0) {
+      filters.voucher.forEach(({ prefix }) => {
+        const pattern = /^[A-Z]+$/.test(prefix) ? `^${prefix}` : `^${prefix}\\d+`;
+        referenceRegex.push({ reference: { $regex: pattern, $options: "i" } });
+      });
+    }
+
+    /* ------------------------------------------
+       Step 2: Build match conditions
+    ------------------------------------------ */
     const matchConditions = {
       isActive: true,
       $or: [
         ...referenceRegex,
-        { reference: { $exists: false } }, // Include documents with no reference (optional)
+        { reference: { $exists: false } },
       ],
     };
 
@@ -2900,7 +2806,7 @@ export class ReportService {
         as: "metalstocks",
       },
     });
-    
+
 
     /* ------------------------------------------
        Step 6: Unwind joined data (safe unwind)
@@ -2935,10 +2841,19 @@ export class ReportService {
       },
     });
 
-    return pipeline
     /* ------------------------------------------
        Step 9: Second Group by prefix to sum across unique vouchers
     ------------------------------------------ */
+    const dynamicSwitchBranches = (filters.voucher || []).map(({ prefix }) => ({
+      case: {
+        $regexMatch: {
+          input: { $ifNull: ["$_id", ""] },
+          regex: new RegExp(`^${prefix}`, "i"),
+        },
+      },
+      then: prefix,
+    }));
+
     pipeline.push({
       $group: {
         _id: {
@@ -2946,71 +2861,7 @@ export class ReportService {
             vars: {
               prefix: {
                 $switch: {
-                  branches: [
-                    {
-                      case: {
-                        $regexMatch: {
-                          input: { $ifNull: ["$_id", ""] },
-                          regex: /^PR\d+/i,
-                        },
-                      },
-                      then: "PR",
-                    },
-                    {
-                      case: {
-                        $regexMatch: {
-                          input: { $ifNull: ["$_id", ""] },
-                          regex: /^PF/i,
-                        },
-                      },
-                      then: "PF",
-                    },
-                    {
-                      case: {
-                        $regexMatch: {
-                          input: { $ifNull: ["$_id", ""] },
-                          regex: /^SR/i,
-                        },
-                      },
-                      then: "SR",
-                    },
-                    {
-                      case: {
-                        $regexMatch: {
-                          input: { $ifNull: ["$_id", ""] },
-                          regex: /^SF/i,
-                        },
-                      },
-                      then: "SF",
-                    },
-                    {
-                      case: {
-                        $regexMatch: {
-                          input: { $ifNull: ["$_id", ""] },
-                          regex: /^OSB/i,
-                        },
-                      },
-                      then: "OSB",
-                    },
-                    {
-                      case: {
-                        $regexMatch: {
-                          input: { $ifNull: ["$_id", ""] },
-                          regex: /^PRM\d+/i,
-                        },
-                      },
-                      then: "PRM",
-                    },
-                    {
-                      case: {
-                        $regexMatch: {
-                          input: { $ifNull: ["$_id", ""] },
-                          regex: /^SAL\d+/i,
-                        },
-                      },
-                      then: "SAL",
-                    },
-                  ],
+                  branches: dynamicSwitchBranches,
                   default: "UNKNOWN",
                 },
               },
@@ -3018,35 +2869,33 @@ export class ReportService {
             in: "$$prefix",
           },
         },
-        totalValue: { $sum: "$totalValue" }, // Sum the first values across unique vouchers
-        totalGrossWeight: { $sum: "$totalGrossWeight" }, // Sum the first gross weights
-        totalbidvalue: { $sum: "$totalbidvalue" }, // Sum the first gross weights
-        totalDebit: { $sum: "$totalDebit" }, // Sum the first debits
-        totalCredit: { $sum: "$totalCredit" }, // Sum the first credits
-        transactionCount: { $sum: 1 }, // Count unique vouchers (e.g., OSB001, OSB002, OSB003)
-        latestTransactionDate: { $max: "$latestTransactionDate" }, // Latest date across vouchers
+        totalValue: { $sum: "$totalValue" },
+        totalGrossWeight: { $sum: "$totalGrossWeight" },
+        totalbidvalue: { $sum: "$totalbidvalue" },
+        totalDebit: { $sum: "$totalDebit" },
+        totalCredit: { $sum: "$totalCredit" },
+        transactionCount: { $sum: 1 },
+        latestTransactionDate: { $max: "$latestTransactionDate" },
       },
     });
 
     /* ------------------------------------------
        Step 10: Project to format the output with average
     ------------------------------------------ */
+
+    const descriptionSwitchBranches = (filters.voucher || []).map(({ prefix, type }) => ({
+      case: { $eq: ["$_id", prefix] },
+      then: type.replace(/[-_]/g, " ").toLowerCase().replace(/\b\w/g, (l) => l.toUpperCase()),
+    }));
+
+
     pipeline.push({
       $project: {
         _id: 0,
         category: "$_id",
         description: {
           $switch: {
-            branches: [
-              { case: { $eq: ["$_id", "OSB"] }, then: "Opening Balance" },
-              { case: { $eq: ["$_id", "PF"] }, then: "Purchase Fixing" },
-              { case: { $eq: ["$_id", "SF"] }, then: "Sales Fixing" },
-              { case: { $eq: ["$_id", "PR"] }, then: "Purchase Return" },
-              { case: { $eq: ["$_id", "SR"] }, then: "Sales Return" },
-              { case: { $eq: ["$_id", "PRM"] }, then: "Purchase" },
-              { case: { $eq: ["$_id", "SAL"] }, then: "Sales" },
-              { case: { $eq: ["$_id", "UNKNOWN"] }, then: "Unknown Category" },
-            ],
+            branches: descriptionSwitchBranches,
             default: "Unknown Category",
           },
         },
@@ -3104,7 +2953,7 @@ export class ReportService {
         }
       });
     }
-    
+
     // Step 2: Date filtering (optional, based on filters)
     if (filters.startDate || filters.endDate) {
       matchConditions.transactionDate = {};
