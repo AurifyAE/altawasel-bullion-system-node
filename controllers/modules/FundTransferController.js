@@ -4,9 +4,9 @@ export const accountToAccountTransfer = async (req, res, next) => {
   try {
     const { senderId, receiverId, value, assetType, voucher } = req.body;
     const adminId = req.admin.id;
-    
+
     console.log("Transfer request:", { senderId, receiverId, value, assetType });
-    
+
     if (!senderId || !receiverId || value === undefined || value === null || !assetType) {
       return res.status(400).json({ message: "Missing required fields" });
     }
@@ -21,16 +21,16 @@ export const accountToAccountTransfer = async (req, res, next) => {
     }
 
     await FundTransferService.accountToAccountTransfer(
-      senderId, 
-      receiverId, 
-      value, 
-      assetType, 
-      adminId, 
+      senderId,
+      receiverId,
+      value,
+      assetType,
+      adminId,
       voucher
     );
 
     const transferType = value < 0 ? "Reverse transfer" : "Transfer";
-    res.status(200).json({ 
+    res.status(200).json({
       message: `${transferType} successful`,
       transferAmount: Math.abs(value),
       direction: value < 0 ? "reversed" : "normal"
@@ -53,6 +53,13 @@ export const openingBalanceTransfer = async (req, res, next) => {
 
     res.status(200).json({ message: "Opening balance transfer successful" });
   } catch (error) {
+    if (error.code === "OPENING_EXISTS") {
+      return res.status(200).json({
+        success: false,
+        message: error.message,
+        alreadyExists: true,
+      });
+    }
     next(error);
   }
 };

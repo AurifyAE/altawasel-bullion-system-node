@@ -37,9 +37,9 @@ class FundTransferService {
       // Check if accounts have sufficient balance for the transfer
       const transferAmount = Math.abs(value);
       const isNegativeTransfer = value < 0;
-       console.log(isNegativeTransfer)
+      console.log(isNegativeTransfer)
       if (assetType === "CASH") {
-       
+
         await handleCashTransfer(
           senderAccount,
           receiverAccount,
@@ -50,7 +50,7 @@ class FundTransferService {
       }
 
       if (assetType === "GOLD") {
-      
+
         await handleGoldTransfer(
           senderAccount,
           receiverAccount,
@@ -85,6 +85,21 @@ class FundTransferService {
           "ACCOUNT_NOT_FOUND"
         );
       }
+      // Check if opening balance already exists for the party and asset type
+      const existingOpening = await Registry.findOne({
+        party: receiverId,
+        type: assetType === "CASH" ? "OPENING_CASH_BALANCE" : "OPENING_GOLD_BALANCE",
+      });
+
+      if (existingOpening && !voucher?.isConfirmed) {
+        // Custom error if opening already exists and not confirmed
+        const error = new Error("Opening balance already exists for this party.");
+        error.code = "OPENING_EXISTS";
+        error.status = 200; // Custom status to indicate not a server error
+        error.data = { alreadyExists: true };
+        throw error;
+      }
+
 
       // Determine if it's credit or debit
       const isCredit = value > 0;
