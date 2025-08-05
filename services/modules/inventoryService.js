@@ -98,7 +98,7 @@ class InventoryService {
 
   static async fetchInvLogs() {
     try {
-      const logs = await InventoryLog.find()
+      const logs = await InventoryLog.find().sort({ createdAt: -1 });
       return logs
     } catch (error) {
       throw createAppError(
