@@ -734,14 +734,14 @@ export class ReportService {
     pipeline.push({
       $sort: { transactionDate: -1 }
     });
-    
+
 
     return pipeline;
 
   }
 
   buildSalesAnalysis(filters) {
-    
+
     const pipeline = [];
     const referenceRegex = [];
 
@@ -1845,7 +1845,7 @@ export class ReportService {
         }
       });
     }
-    
+
     if (filters.division?.length) {
       pipeline.push({
         $match: {
@@ -2904,6 +2904,10 @@ export class ReportService {
 
     // Step 2: Date filtering (optional, based on filters)
     if (filters.startDate || filters.endDate) {
+      console.log('====================================');
+      console.log(filters.startDate);
+      console.log(filters.endDate);
+      console.log('====================================');
       matchConditions.transactionDate = {};
       if (filters.startDate) {
         matchConditions.transactionDate.$gte = new Date(filters.startDate);
@@ -3023,7 +3027,7 @@ export class ReportService {
     // Format individual transactions
     const transactions = reportData.map((item) => {
       const transaction = {
-        date: moment(item.date).format("DD/MM/YYYY"),
+        date: item.date ? moment(item.date, "DD/MM/YYYY").format("DD/MM/YYYY") : "N/A",
         voucherNumber: item.voucherNumber,
         partyName: item.partyName,
         debit: item.debit || 0,
