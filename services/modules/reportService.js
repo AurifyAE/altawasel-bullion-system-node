@@ -732,8 +732,9 @@ export class ReportService {
 
     // Step 13: Final sort
     pipeline.push({
-      $sort: { transactionDate: 1 },
+      $sort: { transactionDate: -1 }
     });
+    
 
     return pipeline;
 
