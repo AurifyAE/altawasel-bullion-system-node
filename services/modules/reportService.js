@@ -1838,7 +1838,14 @@ export class ReportService {
       }
     });
 
-
+    if (filters.groupByRange?.karat?.length) {
+      pipeline.push({
+        $match: {
+          "stockDetails.karat": { $in: filters.groupByRange.karat }
+        }
+      });
+    }
+    
     if (filters.division?.length) {
       pipeline.push({
         $match: {
