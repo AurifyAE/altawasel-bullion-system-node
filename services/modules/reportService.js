@@ -740,6 +740,7 @@ export class ReportService {
   }
 
   buildSalesAnalysis(filters) {
+    
     const pipeline = [];
     const referenceRegex = [];
 
@@ -846,6 +847,15 @@ export class ReportService {
         as: "metaldetail",
       },
     });
+    if (filters.groupByRange?.stockCode?.length > 0) {
+      pipeline.push({
+        $match: {
+          "metaldetail._id": {
+            $in: filters.groupByRange.stockCode.map(id => new ObjectId(id)),
+          },
+        },
+      });
+    }
 
     // Step 13: Unwind metaldetail
     pipeline.push({
