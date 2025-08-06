@@ -958,7 +958,7 @@ class MetalTransactionService {
   ) {
     const entries = [];
     const partyName = party.customerName || party.accountCode;
-
+console.log("first")
     if (totals.pureWeight > 0) {
       entries.push(
         this.createRegistryEntry(
@@ -1094,6 +1094,7 @@ class MetalTransactionService {
         )
       );
     }
+console.log("+++++++++++70270267209")
 
     return entries;
   }
