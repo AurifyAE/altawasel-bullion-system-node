@@ -244,7 +244,7 @@ export class ReportService {
       // 5. Return structured response
       return {
         success: true,
-        data: reportData,
+        data: finilized,
       };
 
     } catch (error) {
