@@ -244,7 +244,7 @@ export class ReportService {
       // 5. Return structured response
       return {
         success: true,
-        data: finilized,
+        data: reportData,
       };
 
     } catch (error) {
@@ -2685,9 +2685,7 @@ export class ReportService {
 
 
   OwnStockPipeLine(filters) {
-
     const pipeline = [];
-
     const referenceRegex = [];
 
     if (filters.voucher && Array.isArray(filters.voucher) && filters.voucher.length > 0) {
@@ -2725,7 +2723,6 @@ export class ReportService {
     /* ------------------------------------------
        Step 5: Lookup related collections
     ------------------------------------------ */
-    // metaltransactions
     pipeline.push({
       $lookup: {
         from: "metaltransactions",
@@ -2735,7 +2732,6 @@ export class ReportService {
       },
     });
 
-    // entries
     pipeline.push({
       $lookup: {
         from: "entries",
@@ -2745,7 +2741,6 @@ export class ReportService {
       },
     });
 
-    // metalstocks
     pipeline.push({
       $lookup: {
         from: "metalstocks",
@@ -2754,7 +2749,6 @@ export class ReportService {
         as: "metalstocks",
       },
     });
-
 
     /* ------------------------------------------
        Step 6: Unwind joined data (safe unwind)
@@ -2772,20 +2766,20 @@ export class ReportService {
     /* ------------------------------------------
        Step 7: Sort by transactionDate to ensure consistent $first selection
     ------------------------------------------ */
-    pipeline.push({ $sort: { transactionDate: 1 } }); // Sort ascending to get the earliest entry
+    pipeline.push({ $sort: { transactionDate: 1 } });
 
     /* ------------------------------------------
        Step 8: First Group by full reference to take first value per unique voucher
     ------------------------------------------ */
     pipeline.push({
       $group: {
-        _id: "$reference", // Group by full reference (e.g., PF0006, PR0001) to consolidate voucher entries
-        totalValue: { $first: { $ifNull: ["$value", 0] } }, // Take the first value for this voucher
-        totalGrossWeight: { $first: { $ifNull: ["$grossWeight", 0] } }, // Take the first gross weight
-        totalbidvalue: { $first: { $ifNull: ["$goldBidValue", 0] } }, // Take the first gross weight
-        totalDebit: { $first: { $ifNull: ["$debit", 0] } }, // Take the first debit
-        totalCredit: { $first: { $ifNull: ["$credit", 0] } }, // Take the first credit
-        latestTransactionDate: { $max: "$transactionDate" }, // Latest date for this voucher
+        _id: "$reference",
+        totalValue: { $first: { $ifNull: ["$value", 0] } },
+        totalGrossWeight: { $first: { $ifNull: ["$grossWeight", 0] } },
+        totalbidvalue: { $first: { $ifNull: ["$goldBidValue", 0] } },
+        totalDebit: { $first: { $ifNull: ["$debit", 0] } },
+        totalCredit: { $first: { $ifNull: ["$credit", 0] } },
+        latestTransactionDate: { $max: "$transactionDate" },
       },
     });
 
@@ -2796,7 +2790,7 @@ export class ReportService {
       case: {
         $regexMatch: {
           input: { $ifNull: ["$_id", ""] },
-          regex: new RegExp(`^${prefix}`, "i"),
+          regex: new RegExp(`^${prefix}\\d+`, "i"),
         },
       },
       then: prefix,
@@ -2830,12 +2824,10 @@ export class ReportService {
     /* ------------------------------------------
        Step 10: Project to format the output with average
     ------------------------------------------ */
-
     const descriptionSwitchBranches = (filters.voucher || []).map(({ prefix, type }) => ({
       case: { $eq: ["$_id", prefix] },
       then: type.replace(/[-_]/g, " ").toLowerCase().replace(/\b\w/g, (l) => l.toUpperCase()),
     }));
-
 
     pipeline.push({
       $project: {
@@ -2873,7 +2865,7 @@ export class ReportService {
        Step 11: Sort by category
     ------------------------------------------ */
     pipeline.push({
-      $sort: { category: 1 }, // Sort alphabetically by category
+      $sort: { category: 1 },
     });
 
     return pipeline;
