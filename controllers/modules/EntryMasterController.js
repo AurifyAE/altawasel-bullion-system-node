@@ -434,7 +434,9 @@ const getEntryById = async (req, res) => {
       .populate("voucherId")
       .populate("party")
       .populate("enteredBy")
-      .populate("stockItems.stock");
+      .populate("stockItems.stock")
+      .populate("cash.cashType")
+      .populate("cash.currency")
     if (!entry) {
       return res
         .status(404)

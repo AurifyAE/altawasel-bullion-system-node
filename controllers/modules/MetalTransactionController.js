@@ -4,6 +4,7 @@ import { createAppError } from "../../utils/errorHandler.js";
 
 export const createMetalTransaction = async (req, res, next) => {
   try {
+
     const {
       transactionType,
       voucherType,
@@ -78,6 +79,16 @@ export const createMetalTransaction = async (req, res, next) => {
           amount: Number(item.makingCharges?.amount || 0),
           rate: Number(item.makingCharges?.rate || 0),
         },
+        otherCharges: {
+          amount: Number(item.otherCharges?.amount || 0),
+          description: Number(item.otherCharges?.description || 0),
+          rate: Number(item.otherCharges?.rate || 0),
+        },
+        vat: {
+          amount: Number(item.otherCharges?.amount || 0),
+          description: Number(item.otherCharges?.description || 0),
+          rate: Number(item.otherCharges?.rate || 0),
+        },
         premium: {
           amount: Number(item.premium?.amount || 0),
           rate: Number(item.premium?.rate || 0),
@@ -105,9 +116,6 @@ export const createMetalTransaction = async (req, res, next) => {
       voucherNumber: voucherNumber
 
     };
-
-    console.log("Creating Metal Transaction with data:", transactionData);
-    
     const metalTransaction = await MetalTransactionService.createMetalTransaction(
       transactionData,
       req.admin.id
@@ -118,12 +126,12 @@ export const createMetalTransaction = async (req, res, next) => {
       case "saleReturn":
         await InventoryService.updateInventory(metalTransaction, false);
         break;
-    
+
       case "sale":
       case "purchaseReturn":
         await InventoryService.updateInventory(metalTransaction, true);
         break;
-    
+
       default:
         throw new Error("Invalid transaction type");
     }

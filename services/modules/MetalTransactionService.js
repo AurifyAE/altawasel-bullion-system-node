@@ -21,10 +21,13 @@ class MetalTransactionService {
           this.validateParty(transactionData.partyCode, session),
           this.createTransaction(transactionData, adminId),
         ]);
+  
 
         await metalTransaction.save({ session });
         createdTransaction = metalTransaction;
-
+        console.log('====================================');
+        console.log(metalTransaction);
+        console.log('====================================');
         await Promise.all([
           this.createRegistryEntries(metalTransaction, party, adminId, session),
           this.updateAccountBalances(party, metalTransaction, session),
@@ -54,6 +57,9 @@ class MetalTransactionService {
   }
 
   static createTransaction(transactionData, adminId) {
+    console.log('====================================');
+    console.log(transactionData);
+    console.log('====================================');
     const transaction = new MetalTransaction({
       ...transactionData,
       createdBy: adminId,
@@ -130,7 +136,7 @@ class MetalTransactionService {
 
         await inventory.save();
         updated.push(inventory);
-       
+
         // Inventory Log
         await InventoryLog.create({
           code: metal.code,
@@ -396,10 +402,12 @@ class MetalTransactionService {
   ) {
     const entries = [];
     const partyName = party.customerName || party.accountCode;
-
+    console.log('====================================');
+    console.log(totals);
+    console.log('====================================');
     // Purchase-fixing entry
     if (totals.pureWeight > 0) {
-      
+
       entries.push(
         this.createRegistryEntry(
           baseTransactionId,
@@ -426,7 +434,7 @@ class MetalTransactionService {
     }
 
     if (totals.goldValue > 0) {
-   
+
       entries.push(
         this.createRegistryEntry(
           baseTransactionId,
@@ -452,7 +460,7 @@ class MetalTransactionService {
     }
 
     if (totals.makingCharges > 0) {
-  
+
       entries.push(
         this.createRegistryEntry(
           baseTransactionId,
@@ -958,7 +966,7 @@ class MetalTransactionService {
   ) {
     const entries = [];
     const partyName = party.customerName || party.accountCode;
-console.log("first")
+    console.log("first")
     if (totals.pureWeight > 0) {
       entries.push(
         this.createRegistryEntry(
@@ -1094,7 +1102,7 @@ console.log("first")
         )
       );
     }
-console.log("+++++++++++70270267209")
+    console.log("+++++++++++70270267209")
 
     return entries;
   }
@@ -1858,10 +1866,10 @@ console.log("+++++++++++70270267209")
     reference,
     adminId
   ) {
-    
+
     if (value <= 0 && !["sales-fixing", "sale-return-fixing"].includes(type))
       return null;
-   
+
     return {
       transactionId: `${baseId}-${suffix}`,
       metalTransactionId,
@@ -1876,7 +1884,7 @@ console.log("+++++++++++70270267209")
       cashCredit: parseFloat(cashCredit) || 0,
       goldDebit: parseFloat(goldDebit) || 0,
       debit: parseFloat(debit) || 0,
-      goldBidValue:goldBidValue,
+      goldBidValue: goldBidValue,
       transactionDate: new Date() || voucherDate,
       reference,
       createdBy: adminId,
@@ -2715,18 +2723,18 @@ console.log("+++++++++++70270267209")
           case "saleReturn":
             await InventoryService.updateInventory(transaction, false);
             break;
-        
+
           case "sale":
           case "purchaseReturn":
             await InventoryService.updateInventory(transaction, true);
             break;
-        
+
           default:
             throw new Error("Invalid transaction type");
         }
 
         // await this.updateInventory(transaction, false)
-        
+
         // Reverse old balances
         const oldTransaction = {
           ...transaction.toObject(),

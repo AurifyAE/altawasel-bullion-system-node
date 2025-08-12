@@ -2,6 +2,7 @@ const Entry = require("../../models/modules/EntryModel");
 const Registry = require("../../models/modules/Registry.js");
 const AccountType = require("../../models/modules/AccountType.js");
 const AccountMaster = require("../../models/modules/accountMaster.js");
+const { default: AccountLog } = require("../../models/modules/AccountLog.js");
 
 exports.createEntry = async (data) => {
   try {
@@ -111,8 +112,14 @@ const handleCashReceipt = async (entry) => {
   if (!accountType) {
     throw new Error("Account not found");
   }
+  console.log('====================================');
+    console.log("hyyyy");
+    console.log('====================================');
 
   for (const cashItem of entry.cash) {
+    console.log('====================================');
+    console.log("hyyyy");
+    console.log('====================================');
     const transactionId = await Registry.generateTransactionId();
 
     // Find and validate cash type account
@@ -136,12 +143,6 @@ const handleCashReceipt = async (entry) => {
 
     if (!currencyBalance) {
       throw new Error(`User doesn't have the selected currency`);
-      res
-        .status(400)
-        .json({
-          success: false,
-          error: `User doesn't have the selected currency`,
-        });
     }
 
     const requestedAmount = cashItem.amount || 0;
@@ -150,9 +151,24 @@ const handleCashReceipt = async (entry) => {
     currencyBalance.amount += requestedAmount;
     currencyBalance.lastUpdated = new Date();
 
+    console.log('====================================');
+    console.log("hyyyy");
+    console.log('====================================');
     // Add amount to cash type opening balance
     cashType.openingBalance = (cashType.openingBalance || 0) + requestedAmount;
     await cashType.save();
+    await AccountLog.create([{
+      accountId: cashType._id,
+      transactionType: "deposit", // cash receipt adds to cashType
+      amount: requestedAmount,
+      balanceAfter: cashType.openingBalance,
+      note: cashItem.remarks || entry.remarks || "Cash receipt",
+      action: "add",
+      createdBy: createdById,
+    }], { session });
+    console.log('====================================');
+    console.log("hyyyy");
+    console.log('====================================');
 
     // Registry entry for "cash balance"
     await Registry.create({
