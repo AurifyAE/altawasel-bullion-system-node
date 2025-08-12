@@ -120,7 +120,7 @@ const entrySchema = new mongoose.Schema(
         },
         currency: {
           type: mongoose.Schema.Types.ObjectId,
-          ref: "Currency",
+          ref: "CurrencyMaster",
           required: [true, "Currency is required for cash entries"],
         },
         amount: {
