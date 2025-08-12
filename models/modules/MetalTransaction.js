@@ -93,6 +93,32 @@ const StockItemSchema = new mongoose.Schema(
         default: 0,
       },
     },
+    vat: {
+      percentage: {
+        type: Number,
+        default: 0,
+        min: [0, "Amount cannot be negative"],
+      },
+      amount: {
+        type: Number,
+        default: 0,
+      },
+    },
+    otherCharges: {
+      amount: {
+        type: Number,
+        default: 0,
+        min: [0, "Amount cannot be negative"],
+      },
+      percentage: {
+        type: Number,
+        default: 0,
+      },
+      description: {
+        type: String,
+        default: null,
+      },
+    },
     // Premium for this specific item
     premium: {
       amount: {

@@ -4,7 +4,6 @@ import { createAppError } from "../../utils/errorHandler.js";
 
 export const createMetalTransaction = async (req, res, next) => {
   try {
-
     const {
       transactionType,
       voucherType,
@@ -22,6 +21,9 @@ export const createMetalTransaction = async (req, res, next) => {
       notes,
       voucher
     } = req.body;
+    console.log('====================================');
+    console.log(JSON.stringify(stockItems));
+    console.log('====================================');
     // Validation (already handled by middleware, but ensuring critical fields)
     if (
       !transactionType ||
@@ -49,7 +51,7 @@ export const createMetalTransaction = async (req, res, next) => {
     // Boolean logic for fix and unfix flags - ensure mutual exclusivity
     const isFixTransaction = fix === true || fix === "true";
     const isUnfixTransaction = unfix === true || unfix === "true";
-
+   
     const transactionData = {
       transactionType,
       fixed: isFixTransaction ? true : false,
@@ -80,14 +82,13 @@ export const createMetalTransaction = async (req, res, next) => {
           rate: Number(item.makingCharges?.rate || 0),
         },
         otherCharges: {
-          amount: Number(item.otherCharges?.amount || 0),
-          description: Number(item.otherCharges?.description || 0),
-          rate: Number(item.otherCharges?.rate || 0),
+          amount: Number(item.otherCharges?.Amount || 0),
+          description: Number(item.otherCharges?.description || ""),
+          percentage: Number(item.otherCharges?.percentage || 0),
         },
         vat: {
-          amount: Number(item.otherCharges?.amount || 0),
-          description: Number(item.otherCharges?.description || 0),
-          rate: Number(item.otherCharges?.rate || 0),
+          percentage: Number(item.VAT?.percentage || 0),
+          amount: Number(item.VAT?.amount || 0),
         },
         premium: {
           amount: Number(item.premium?.amount || 0),
@@ -98,7 +99,7 @@ export const createMetalTransaction = async (req, res, next) => {
           makingChargesTotal: Number(item.itemTotal?.makingChargesTotal || 0),
           premiumTotal: Number(item.itemTotal?.premiumTotal || 0),
           subTotal: Number(item.itemTotal?.subTotal || 0),
-          vatAmount: Number(item.itemTotal?.vatAmount || 0),
+          vatAmount: Number(item.itemTotal?.vatAmount || 0), 
           itemTotalAmount: Number(item.itemTotal?.itemTotalAmount || 0),
         },
         itemNotes: item.itemNotes?.trim(),
@@ -116,6 +117,7 @@ export const createMetalTransaction = async (req, res, next) => {
       voucherNumber: voucherNumber
 
     };
+    console.log(JSON.stringify(transactionData, null, 2));
     const metalTransaction = await MetalTransactionService.createMetalTransaction(
       transactionData,
       req.admin.id

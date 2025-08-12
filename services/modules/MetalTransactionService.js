@@ -25,9 +25,6 @@ class MetalTransactionService {
 
         await metalTransaction.save({ session });
         createdTransaction = metalTransaction;
-        console.log('====================================');
-        console.log(metalTransaction);
-        console.log('====================================');
         await Promise.all([
           this.createRegistryEntries(metalTransaction, party, adminId, session),
           this.updateAccountBalances(party, metalTransaction, session),
