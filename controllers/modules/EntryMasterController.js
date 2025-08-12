@@ -167,7 +167,7 @@ const handleMetalReceipt = async (entry) => {
             grossWeight: stockItem.grossWeight,
             purity: stockItem.purity,
             voucherNumber: entry.voucherCode,
-            transactionType:"metalReceipt"
+            transactionType: "metalReceipt"
           },
         ],
       },
@@ -351,7 +351,7 @@ const handleMetalPayment = async (entry) => {
             grossWeight: stockItem.grossWeight,
             purity: stockItem.purity,
             voucherNumber: entry.voucherCode,
-            transactionType:"metalPayment"
+            transactionType: "metalPayment"
           },
         ],
       },
@@ -367,6 +367,8 @@ const getEntriesByType = async (type) => {
     .populate("party")
     .populate("enteredBy")
     .populate("stockItems.stock")
+    .populate("cash.cashType")
+    .populate("cash.currency")
     .sort({ createdAt: -1 });
 };
 
