@@ -184,6 +184,16 @@ class RegistryService {
     }
   }
 
+  // delelte Registry by voucher
+  static async deleteRegistryByVoucher(voucherCode) {
+    try {
+      const result = await Registry.deleteMany({ reference: voucherCode });
+      return result;
+    } catch (error) {
+      throw error;
+    }
+  }
+
   // Get registries by type with debit/credit summary
   static async getRegistriesByType(page, limit, filters, sort) {
     try {

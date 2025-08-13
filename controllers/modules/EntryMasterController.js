@@ -3,11 +3,12 @@ import Registry from "../../models/modules/Registry.js";
 import AccountType from "../../models/modules/AccountType.js";
 import AccountMaster from "../../models/modules/accountMaster.js";
 import InventoryService from "../../services/modules/inventoryService.js";
+import RegistryService from "../../services/modules/RegistryService.js";
 
 const createEntry = async (req, res) => {
   try {
     const { type, stocks, cash } = req.body;
-    console.log(req.body)
+
     const stockItems = stocks;
     console.log(stockItems);
 
@@ -114,6 +115,126 @@ const createEntry = async (req, res) => {
     });
   }
 };
+
+const editEntry = async (req, res) => {
+  try {
+    const { type, stocks, cash, voucherCode } = req.body;
+    console.log(req.body);
+
+    const stockItems = stocks;
+    console.log(stockItems);
+
+    // Validate entry type
+    const validTypes = [
+      "metal-receipt",
+      "metal-payment",
+      "cash receipt",
+      "cash payment",
+      "currency-receipt",
+    ];
+    if (!validTypes.includes(type)) {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid entry type. Must be one of: ${validTypes.join(", ")}`,
+      });
+    }
+
+    // Validate required fields based on type
+    if (["metal-receipt", "metal-payment"].includes(type)) {
+      if (!stockItems || !Array.isArray(stockItems) || stockItems.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "stockItems array is required and must not be empty for metal entries",
+        });
+      }
+      if (cash && Array.isArray(cash) && cash.length > 0) {
+        return res.status(400).json({
+          success: false,
+          message: "Cash array should not be provided for metal entries",
+        });
+      }
+      for (const item of stockItems) {
+        if (!item.stock) {
+          return res.status(400).json({
+            success: false,
+            message: "Each stockItem must include a valid stock field",
+          });
+        }
+      }
+    } else if (["cash receipt", "cash payment"].includes(type)) {
+      if (!cash || !Array.isArray(cash) || cash.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Cash array is required and must not be empty for cash entries",
+        });
+      }
+      if (stockItems && Array.isArray(stockItems) && stockItems.length > 0) {
+        return res.status(400).json({
+          success: false,
+          message: "stockItems array should not be provided for cash entries",
+        });
+      }
+    }
+    
+    // First, delete related registry records
+    await RegistryService.deleteRegistryByVoucher(voucherCode);
+
+    // Find the existing entry
+    const entry = await Entry.findOne({ voucherCode });
+    if (!entry) {
+      return res.status(404).json({
+        success: false,
+        message: "Entry not found for the given voucherCode",
+      });
+    }
+
+    // Update fields
+    entry.type = type;
+    entry.voucherDate = req.body.voucherDate;
+    entry.party = req.body.party;
+    entry.enteredBy = req.admin.id;
+    entry.remarks = req.body.remarks;
+
+    if (type.includes("metal")) {
+      entry.stockItems = stockItems;
+      entry.cash = [];
+    } else if (type.includes("cash")) {
+      entry.cash = cash;
+      entry.stockItems = [];
+    }
+
+    // Handle specific entry types
+    const handlers = {
+      "metal-receipt": handleMetalReceipt,
+      "metal-payment": handleMetalPayment,
+      "cash receipt": handleCashReceipt,
+      "cash payment": handleCashPayment,
+    };
+
+    if (handlers[type]) {
+      await handlers[type](entry);
+    }
+
+    // Save updated entry
+    await entry.save();
+
+    return res.status(200).json({
+      success: true,
+      data: entry,
+      message: `${type} entry edit successfully completed`,
+    });
+  } catch (err) {
+    console.error("Error editing entry:", err);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: err.message,
+    });
+  }
+};
+
 
 const handleMetalReceipt = async (entry) => {
   console.log(entry);
@@ -456,6 +577,7 @@ const getEntryById = async (req, res) => {
 };
 
 export default {
+  editEntry,
   createEntry,
   getCashPayments,
   getCashReceipts,

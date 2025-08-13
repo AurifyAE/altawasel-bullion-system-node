@@ -5,6 +5,7 @@ import entryMasterController from "../../controllers/modules/EntryMasterControll
 const router = express.Router();
 
 router.post('/', authenticateToken, entryMasterController.createEntry);
+router.put('/:id', authenticateToken, entryMasterController.editEntry);
 router.get('/cash-receipts', authenticateToken, entryMasterController.getCashReceipts);
 router.get('/cash-payments', authenticateToken, entryMasterController.getCashPayments);
 router.get('/metal-receipts', authenticateToken, entryMasterController.getMetalReceipts);

@@ -21,7 +21,6 @@ class MetalTransactionService {
           this.validateParty(transactionData.partyCode, session),
           this.createTransaction(transactionData, adminId),
         ]);
-  
 
         await metalTransaction.save({ session });
         createdTransaction = metalTransaction;
@@ -54,9 +53,6 @@ class MetalTransactionService {
   }
 
   static createTransaction(transactionData, adminId) {
-    console.log('====================================');
-    console.log(transactionData);
-    console.log('====================================');
     const transaction = new MetalTransaction({
       ...transactionData,
       createdBy: adminId,
@@ -399,12 +395,11 @@ class MetalTransactionService {
   ) {
     const entries = [];
     const partyName = party.customerName || party.accountCode;
-    console.log('====================================');
+
     console.log(totals);
-    console.log('====================================');
+
     // Purchase-fixing entry
     if (totals.pureWeight > 0) {
-
       entries.push(
         this.createRegistryEntry(
           baseTransactionId,
@@ -431,7 +426,6 @@ class MetalTransactionService {
     }
 
     if (totals.goldValue > 0) {
-
       entries.push(
         this.createRegistryEntry(
           baseTransactionId,
@@ -457,7 +451,6 @@ class MetalTransactionService {
     }
 
     if (totals.makingCharges > 0) {
-
       entries.push(
         this.createRegistryEntry(
           baseTransactionId,
@@ -469,6 +462,56 @@ class MetalTransactionService {
           false,
           totals.makingCharges,
           totals.makingCharges,
+          {
+            goldDebit: totals.grossWeight,
+            cashDebit: totals.goldValue,
+            grossWeight: totals.grossWeight,
+            goldBidValue: totals.goldBidValue
+          },
+          voucherDate,
+          voucherNumber,
+          adminId
+        )
+      );
+    }
+
+    if (totals.otherChargesAmount > 0) {
+      entries.push(
+        this.createRegistryEntry(
+          baseTransactionId,
+          metalTransactionId,
+          "008",
+          "OTHER_CHARGES",
+          `Party other charges - Purchase from ${partyName}`,
+          party._id,
+          false,
+          totals.otherChargesAmount,
+          totals.otherChargesAmount,
+          {
+            goldDebit: totals.grossWeight,
+            cashDebit: totals.goldValue,
+            grossWeight: totals.grossWeight,
+            goldBidValue: totals.goldBidValue
+          },
+          voucherDate,
+          voucherNumber,
+          adminId
+        )
+      );
+    }
+
+    if (totals.vatAmount > 0) {
+      entries.push(
+        this.createRegistryEntry(
+          baseTransactionId,
+          metalTransactionId,
+          "009",
+          "VAT_AMOUNT",
+          `Party Vat amount - Purchase from ${partyName}`,
+          party._id,
+          false,
+          totals.vatAmount,
+          totals.vatAmount,
           {
             goldDebit: totals.grossWeight,
             cashDebit: totals.goldValue,
@@ -640,6 +683,56 @@ class MetalTransactionService {
           totals.makingCharges,
           totals.makingCharges,
           { debit: 0, grossWeight: totals.grossWeight, goldBidValue: totals.goldBidValue },
+          voucherDate,
+          voucherNumber,
+          adminId
+        )
+      );
+    }
+
+    if (totals.otherChargesAmount > 0) {
+      entries.push(
+        this.createRegistryEntry(
+          baseTransactionId,
+          metalTransactionId,
+          "008",
+          "OTHER_CHARGES",
+          `Party other charges - Purchase from ${partyName}`,
+          party._id,
+          false,
+          totals.otherChargesAmount,
+          totals.otherChargesAmount,
+          {
+            goldDebit: totals.grossWeight,
+            cashDebit: totals.goldValue,
+            grossWeight: totals.grossWeight,
+            goldBidValue: totals.goldBidValue
+          },
+          voucherDate,
+          voucherNumber,
+          adminId
+        )
+      );
+    }
+
+    if (totals.vatAmount > 0) {
+      entries.push(
+        this.createRegistryEntry(
+          baseTransactionId,
+          metalTransactionId,
+          "009",
+          "VAT_AMOUNT",
+          `Party Vat amount - Purchase from ${partyName}`,
+          party._id,
+          false,
+          totals.vatAmount,
+          totals.vatAmount,
+          {
+            goldDebit: totals.grossWeight,
+            cashDebit: totals.goldValue,
+            grossWeight: totals.grossWeight,
+            goldBidValue: totals.goldBidValue
+          },
           voucherDate,
           voucherNumber,
           adminId
@@ -839,6 +932,57 @@ class MetalTransactionService {
       );
     }
 
+    if (totals.otherChargesAmount > 0) {
+      entries.push(
+        this.createRegistryEntry(
+          baseTransactionId,
+          metalTransactionId,
+          "008",
+          "OTHER_CHARGES",
+          `Party other charges - Purchase from ${partyName}`,
+          party._id,
+          false,
+          totals.otherChargesAmount,
+          totals.otherChargesAmount,
+          {
+            goldDebit: totals.grossWeight,
+            cashDebit: totals.goldValue,
+            grossWeight: totals.grossWeight,
+            goldBidValue: totals.goldBidValue
+          },
+          voucherDate,
+          voucherNumber,
+          adminId
+        )
+      );
+    }
+
+    if (totals.vatAmount > 0) {
+      entries.push(
+        this.createRegistryEntry(
+          baseTransactionId,
+          metalTransactionId,
+          "009",
+          "VAT_AMOUNT",
+          `Party Vat amount - Purchase from ${partyName}`,
+          party._id,
+          false,
+          totals.vatAmount,
+          0,
+          {
+            debit:totals.vatAmount,
+            goldDebit: totals.grossWeight,
+            cashDebit: totals.goldValue,
+            grossWeight: totals.grossWeight,
+            goldBidValue: totals.goldBidValue
+          },
+          voucherDate,
+          voucherNumber,
+          adminId
+        )
+      );
+    }
+
     if (totals.premium > 0) {
       entries.push(
         this.createRegistryEntry(
@@ -1006,6 +1150,56 @@ class MetalTransactionService {
             grossWeight: totals.grossWeight,
             pureWeight: totals.pureWeight,
             purity: totals.purity,
+            goldBidValue: totals.goldBidValue
+          },
+          voucherDate,
+          voucherNumber,
+          adminId
+        )
+      );
+    }
+
+    if (totals.otherChargesAmount > 0) {
+      entries.push(
+        this.createRegistryEntry(
+          baseTransactionId,
+          metalTransactionId,
+          "008",
+          "OTHER_CHARGES",
+          `Party other charges - Purchase from ${partyName}`,
+          party._id,
+          false,
+          totals.otherChargesAmount,
+          0,
+          {
+            goldDebit: totals.grossWeight,
+            cashDebit: totals.goldValue,
+            grossWeight: totals.grossWeight,
+            goldBidValue: totals.goldBidValue
+          },
+          voucherDate,
+          voucherNumber,
+          adminId
+        )
+      );
+    }
+
+    if (totals.vatAmount > 0) {
+      entries.push(
+        this.createRegistryEntry(
+          baseTransactionId,
+          metalTransactionId,
+          "009",
+          "VAT_AMOUNT",
+          `Party Vat amount - Purchase from ${partyName}`,
+          party._id,
+          false,
+          totals.vatAmount,
+          totals.vatAmount,
+          {
+            goldDebit: totals.grossWeight,
+            cashDebit: totals.goldValue,
+            grossWeight: totals.grossWeight,
             goldBidValue: totals.goldBidValue
           },
           voucherDate,
@@ -1195,6 +1389,57 @@ class MetalTransactionService {
       );
     }
 
+    if (totals.otherChargesAmount > 0) {
+      entries.push(
+        this.createRegistryEntry(
+          baseTransactionId,
+          metalTransactionId,
+          "008",
+          "OTHER_CHARGES",
+          `Party other charges - Purchase from ${partyName}`,
+          party._id,
+          false,
+          totals.otherChargesAmount,
+          totals.otherChargesAmount,
+          {
+            goldDebit: totals.grossWeight,
+            cashDebit: totals.goldValue,
+            grossWeight: totals.grossWeight,
+            goldBidValue: totals.goldBidValue
+          },
+          voucherDate,
+          voucherNumber,
+          adminId
+        )
+      );
+    }
+
+    if (totals.vatAmount > 0) {
+      entries.push(
+        this.createRegistryEntry(
+          baseTransactionId,
+          metalTransactionId,
+          "009",
+          "VAT_AMOUNT",
+          `Party Vat amount - Purchase from ${partyName}`,
+          party._id,
+          false,
+          totals.vatAmount,
+          0,
+          {
+            debit:totals.vatAmount,
+            goldDebit: totals.grossWeight,
+            cashDebit: totals.goldValue,
+            grossWeight: totals.grossWeight,
+            goldBidValue: totals.goldBidValue
+          },
+          voucherDate,
+          voucherNumber,
+          adminId
+        )
+      );
+    }
+
     if (totals.premium > 0) {
       entries.push(
         this.createRegistryEntry(
@@ -1360,6 +1605,57 @@ class MetalTransactionService {
       );
     }
 
+    if (totals.otherChargesAmount > 0) {
+      entries.push(
+        this.createRegistryEntry(
+          baseTransactionId,
+          metalTransactionId,
+          "008",
+          "OTHER_CHARGES",
+          `Party other charges - Purchase from ${partyName}`,
+          party._id,
+          false,
+          totals.otherChargesAmount,
+          totals.otherChargesAmount,
+          {
+            goldDebit: totals.grossWeight,
+            cashDebit: totals.goldValue,
+            grossWeight: totals.grossWeight,
+            goldBidValue: totals.goldBidValue
+          },
+          voucherDate,
+          voucherNumber,
+          adminId
+        )
+      );
+    }
+
+    if (totals.vatAmount > 0) {
+      entries.push(
+        this.createRegistryEntry(
+          baseTransactionId,
+          metalTransactionId,
+          "009",
+          "VAT_AMOUNT",
+          `Party Vat amount - Purchase from ${partyName}`,
+          party._id,
+          false,
+          totals.vatAmount,
+          0,
+          {
+            debit:totals.vatAmount,
+            goldDebit: totals.grossWeight,
+            cashDebit: totals.goldValue,
+            grossWeight: totals.grossWeight,
+            goldBidValue: totals.goldBidValue
+          },
+          voucherDate,
+          voucherNumber,
+          adminId
+        )
+      );
+    }
+
     if (totals.premium > 0) {
       entries.push(
         this.createRegistryEntry(
@@ -1509,6 +1805,56 @@ class MetalTransactionService {
       );
     }
 
+    if (totals.otherChargesAmount > 0) {
+      entries.push(
+        this.createRegistryEntry(
+          baseTransactionId,
+          metalTransactionId,
+          "008",
+          "OTHER_CHARGES",
+          `Party other charges - Purchase from ${partyName}`,
+          party._id,
+          false,
+          totals.otherChargesAmount,
+          totals.otherChargesAmount,
+          {
+            goldDebit: totals.grossWeight,
+            cashDebit: totals.goldValue,
+            grossWeight: totals.grossWeight,
+            goldBidValue: totals.goldBidValue
+          },
+          voucherDate,
+          voucherNumber,
+          adminId
+        )
+      );
+    }
+
+    if (totals.vatAmount > 0) {
+      entries.push(
+        this.createRegistryEntry(
+          baseTransactionId,
+          metalTransactionId,
+          "009",
+          "VAT_AMOUNT",
+          `Party Vat amount - Purchase from ${partyName}`,
+          party._id,
+          false,
+          totals.vatAmount,
+          totals.vatAmount,
+          {
+            goldDebit: totals.grossWeight,
+            cashDebit: totals.goldValue,
+            grossWeight: totals.grossWeight,
+            goldBidValue: totals.goldBidValue
+          },
+          voucherDate,
+          voucherNumber,
+          adminId
+        )
+      );
+    }
+    
     if (totals.premium > 0) {
       entries.push(
         this.createRegistryEntry(
@@ -1686,6 +2032,55 @@ class MetalTransactionService {
         )
       );
     }
+    if (totals.otherChargesAmount > 0) {
+      entries.push(
+        this.createRegistryEntry(
+          baseTransactionId,
+          metalTransactionId,
+          "008",
+          "OTHER_CHARGES",
+          `Party other charges - Purchase from ${partyName}`,
+          party._id,
+          false,
+          totals.otherChargesAmount,
+          totals.otherChargesAmount,
+          {
+            goldDebit: totals.grossWeight,
+            cashDebit: totals.goldValue,
+            grossWeight: totals.grossWeight,
+            goldBidValue: totals.goldBidValue
+          },
+          voucherDate,
+          voucherNumber,
+          adminId
+        )
+      );
+    }
+
+    if (totals.vatAmount > 0) {
+      entries.push(
+        this.createRegistryEntry(
+          baseTransactionId,
+          metalTransactionId,
+          "009",
+          "VAT_AMOUNT",
+          `Party Vat amount - Purchase from ${partyName}`,
+          party._id,
+          false,
+          totals.vatAmount,
+          totals.vatAmount,
+          {
+            goldDebit: totals.grossWeight,
+            cashDebit: totals.goldValue,
+            grossWeight: totals.grossWeight,
+            goldBidValue: totals.goldBidValue
+          },
+          voucherDate,
+          voucherNumber,
+          adminId
+        )
+      );
+    }
 
     if (totals.premium > 0) {
       entries.push(
@@ -1797,12 +2192,15 @@ class MetalTransactionService {
   }
 
   static calculateTotals(stockItems, totalAmountSession) {
+
     const totals = stockItems.reduce(
       (acc, item) => {
         const makingChargesAmount =
           item.itemTotal?.makingChargesTotal || item.makingCharges?.amount || 0;
         const premiumDiscountAmount =
           item.itemTotal?.premiumTotal || item.premium?.amount || 0;
+        const vatAmount = item.vat?.amount;
+        const otherChargesAmount = item.otherCharges?.amount;
         const goldValue = item.itemTotal?.baseAmount || 0;
         const pureWeight = item.pureWeight || 0;
         const purity = item.purity || 0;
@@ -1813,6 +2211,9 @@ class MetalTransactionService {
 
         return {
           makingCharges: acc.makingCharges + makingChargesAmount,
+          premium: acc.premium + premium,
+          vatAmount: acc.vatAmount + vatAmount,
+          otherChargesAmount: acc.otherChargesAmount + otherChargesAmount,
           premium: acc.premium + premium,
           discount: acc.discount + discount,
           goldValue: acc.goldValue + goldValue,
@@ -1830,6 +2231,8 @@ class MetalTransactionService {
         pureWeight: 0,
         grossWeight: 0,
         purity: 0,
+        vatAmount: 0,
+        otherChargesAmount: 0,
         goldBidValue: 0,
       }
     );
@@ -3362,10 +3765,13 @@ class MetalTransactionService {
 
     // Making Charges Entry
     if (totalMakingCharges > 0) {
+      console.log('====================================');
+      console.log(voucherNumber);
+      console.log('====================================');
       registryEntries.push(
         new Registry({
           transactionId: transactionId,
-          type: "making_charges",
+          type: "MAKING_CHARGES",
           description: `${transaction.transactionType === "purchaseReturn"
             ? "Purchase Return"
             : transaction.transactionType === "saleReturn"
@@ -3376,12 +3782,12 @@ class MetalTransactionService {
           value: totalMakingCharges,
           debit:
             transaction.transactionType === "sale" ||
-              transaction.transactionType === "purchaseReturn"
+            transaction.transactionType === "purchaseReturn"
               ? totalMakingCharges
               : 0,
           credit:
             transaction.transactionType === "purchase" ||
-              transaction.transactionType === "saleReturn"
+            transaction.transactionType === "saleReturn"
               ? totalMakingCharges
               : 0,
           transactionDate: new Date(),
@@ -3390,6 +3796,67 @@ class MetalTransactionService {
         })
       );
     }
+    
+    if (totalOtherCharges > 0) {
+      registryEntries.push(
+        new Registry({
+          transactionId: transactionId,
+          type: "OTHER_CHARGES",
+          description: `${transaction.transactionType === "purchaseReturn"
+            ? "Purchase Return"
+            : transaction.transactionType === "saleReturn"
+              ? "Sale Return"
+              : transaction.transactionType
+            } - Other Charges`,
+          paryty: transaction.partyCode,
+          value: totalOtherCharges,
+          debit:
+            transaction.transactionType === "sale" ||
+            transaction.transactionType === "purchaseReturn"
+              ? totalOtherCharges
+              : 0,
+          credit:
+            transaction.transactionType === "purchase" ||
+            transaction.transactionType === "saleReturn"
+              ? totalOtherCharges
+              : 0,
+          transactionDate: new Date(),
+          reference: `OtherCharges-${transaction._id}`,
+          createdBy: adminId,
+        })
+      );
+    }
+    
+    if (totalVatAmount > 0) {
+      registryEntries.push(
+        new Registry({
+          transactionId: transactionId,
+          type: "VAT_AMOUNT",
+          description: `${transaction.transactionType === "purchaseReturn"
+            ? "Purchase Return"
+            : transaction.transactionType === "saleReturn"
+              ? "Sale Return"
+              : transaction.transactionType
+            } - VAT Amount`,
+          paryty: transaction.partyCode,
+          value: totalVatAmount,
+          debit:
+            transaction.transactionType === "sale" ||
+            transaction.transactionType === "purchaseReturn"
+              ? totalVatAmount
+              : 0,
+          credit:
+            transaction.transactionType === "purchase" ||
+            transaction.transactionType === "saleReturn"
+              ? totalVatAmount
+              : 0,
+          transactionDate: new Date(),
+          reference: `VatAmount-${transaction._id}`,
+          createdBy: adminId,
+        })
+      );
+    }
+    
 
     // Premium Entry
     if (totalPremiumAmount > 0) {

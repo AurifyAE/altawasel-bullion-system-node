@@ -130,6 +130,8 @@ export const deleteRegistry = async (req, res, next) => {
   }
 };
 
+
+
 // Permanent delete registry
 export const permanentDeleteRegistry = async (req, res, next) => {
   try {

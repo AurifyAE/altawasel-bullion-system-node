@@ -21,9 +21,7 @@ export const createMetalTransaction = async (req, res, next) => {
       notes,
       voucher
     } = req.body;
-    console.log('====================================');
-    console.log(JSON.stringify(stockItems));
-    console.log('====================================');
+
     // Validation (already handled by middleware, but ensuring critical fields)
     if (
       !transactionType ||
@@ -51,7 +49,7 @@ export const createMetalTransaction = async (req, res, next) => {
     // Boolean logic for fix and unfix flags - ensure mutual exclusivity
     const isFixTransaction = fix === true || fix === "true";
     const isUnfixTransaction = unfix === true || unfix === "true";
-   
+
     const transactionData = {
       transactionType,
       fixed: isFixTransaction ? true : false,
@@ -99,7 +97,7 @@ export const createMetalTransaction = async (req, res, next) => {
           makingChargesTotal: Number(item.itemTotal?.makingChargesTotal || 0),
           premiumTotal: Number(item.itemTotal?.premiumTotal || 0),
           subTotal: Number(item.itemTotal?.subTotal || 0),
-          vatAmount: Number(item.itemTotal?.vatAmount || 0), 
+          vatAmount: Number(item.itemTotal?.vatAmount || 0),
           itemTotalAmount: Number(item.itemTotal?.itemTotalAmount || 0),
         },
         itemNotes: item.itemNotes?.trim(),
