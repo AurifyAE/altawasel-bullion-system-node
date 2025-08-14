@@ -4,22 +4,16 @@ import { createAppError } from "../../utils/errorHandler.js";
 // Create Transaction
 export const createTransaction = async (req, res, next) => {
   try {
-    const { partyId, price, quantityGm, type, metalType, notes, voucherCode, voucherType, prefix, goldBidValue } = req.body;
+    console.log(req.body);
+
+    const { partyId, salesman, paymentTerms, type, orders, voucherCode, voucherType, prefix, goldBidValue } = req.body;
 
     // Validation
-    if (!partyId || !quantityGm || !type || !metalType) {
+    if (!partyId) {
       throw createAppError(
-        "All required fields must be provided: partyId, value, quantityGm, type, metalType",
+        "All required fields must be provided: partyId",
         400,
         "REQUIRED_FIELDS_MISSING"
-      );
-    }
-
-    if (isNaN(quantityGm) || quantityGm <= 0) {
-      throw createAppError(
-        "Quantity must be a positive number",
-        400,
-        "INVALID_QUANTITY"
       );
     }
 
@@ -34,17 +28,24 @@ export const createTransaction = async (req, res, next) => {
 
     const transactionData = {
       partyId: partyId.trim(),
-      quantityGm: parseFloat(quantityGm),
-      type: type.toLowerCase(),
-      metalType: metalType.trim(),
-      price: parseFloat(price),
-      voucherNumber: voucherCode,
-      voucherType,
-      goldBidValue
+      type: type.toUpperCase(), // PURCHASE or SELL
+      voucherNumber: voucherCode || null, // backend will generate if null
+      voucherType, // e.g. "PURCHASE-FIXING"
+      prefix: prefix || "PF", // default prefix if not provided
+      salesman: salesman || "N/A",
+      paymentTerms: paymentTerms || "Cash",
+      orders: orders.map(order => ({
+        quantityGm: parseFloat(order.quantityGm),
+        notes: order.notes?.trim() || "",
+        price: parseFloat(order.price),
+        goldBidValue: parseFloat(order.goldBidValue),
+        metalType: order.metalType.trim(),
+        paymentTerms: order.paymentTerms || "Cash"
+      }))
     };
 
     // Add optional fields if provided
-    if (notes) transactionData.notes = notes.trim();
+    // if (notes) transactionData.notes = notes.trim();
 
     const transaction = await TransactionFixingService.createTransaction(
       transactionData,

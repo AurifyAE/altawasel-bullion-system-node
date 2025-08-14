@@ -1,5 +1,43 @@
 import mongoose from "mongoose";
 
+const OrderSchema = new mongoose.Schema(
+  {
+    quantityGm: {
+      type: Number,
+      required: [true, "Quantity in grams is required"],
+      min: [0, "Quantity cannot be negative"],
+    },
+    price: {
+      type: Number,
+      required: [true, "Price is required"],
+      min: [0, "Price cannot be negative"],
+    },
+    goldBidValue: {
+      type: Number,
+      required: [true, "Gold bid value is required"],
+      min: [0, "Gold bid value cannot be negative"],
+    },
+    metalType: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "MetalRateMaster",
+      required: [true, "Metal type is required"],
+    },
+    paymentTerms: {
+      type: String,
+      trim: true,
+      enum: ["Cash", "Credit", "Other"],
+      default: "Cash",
+    },
+    notes: {
+      type: String,
+      trim: true,
+      maxlength: [500, "Notes cannot exceed 500 characters"],
+      default: "",
+    },
+  },
+  { _id: false }
+);
+
 const TransactionFixingSchema = new mongoose.Schema(
   {
     transactionId: {
@@ -7,6 +45,7 @@ const TransactionFixingSchema = new mongoose.Schema(
       required: true,
       trim: true,
       uppercase: true,
+      unique: true,
     },
     voucherType: {
       type: String,
@@ -24,48 +63,30 @@ const TransactionFixingSchema = new mongoose.Schema(
       trim: true,
       maxlength: [50, "Voucher number cannot exceed 50 characters"],
       index: true,
-      // Allow null values but enforce uniqueness when present
-    },
-    goldBidValue: {
-      type: Number,
-      default: null,
-      // min: [0, "Gold bid value cannot be negative"],
     },
     partyId: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "Account", // Assuming you have a PartyMaster model
+      ref: "Account",
       required: [true, "Party ID is required"],
-    },
-    quantityGm: {
-      type: Number,
-      required: [true, "Quantity in grams is required"],
-      min: [0, "Quantity cannot be negative"],
-    },
-    price: {
-      type: Number,
-      required: [true, "price is required"],
-      min: [0, "price cannot be negative"],
     },
     type: {
       type: String,
       required: [true, "Transaction type is required"],
-      enum: {
-        values: ["purchase", "sell"],
-        message: "Type must be either 'purchase' or 'sell'",
-      },
+      enum: ["purchase", "sell"],
       lowercase: true,
     },
-    metalType: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "MetalRateMaster", // Assuming you have a PartyMaster model
-      required: [true, "MetalRateMaster ID is required"],
+    orders: {
+      type: [OrderSchema],
+      validate: {
+        validator: (v) => v.length > 0,
+        message: "At least one order is required",
+      },
     },
     transactionDate: {
       type: Date,
       required: [true, "Transaction date is required"],
       default: () => new Date(),
     },
-
     referenceNumber: {
       type: String,
       trim: true,
@@ -106,25 +127,21 @@ const TransactionFixingSchema = new mongoose.Schema(
   }
 );
 
-// Indexes for better performance
-TransactionFixingSchema.index({ transactionId: 1 }, { unique: true });
-TransactionFixingSchema.index({ partyId: 1 });
-TransactionFixingSchema.index({ type: 1 });
-TransactionFixingSchema.index({ metalType: 1 });
-TransactionFixingSchema.index({ transactionDate: -1 });
-TransactionFixingSchema.index({ status: 1 });
-TransactionFixingSchema.index({ isActive: 1 });
-TransactionFixingSchema.index({ createdAt: -1 });
+/* ===== Indexes ===== */
 TransactionFixingSchema.index({ partyId: 1, transactionDate: -1 });
-TransactionFixingSchema.index({ metalType: 1, transactionDate: -1 });
+TransactionFixingSchema.index({ type: 1, transactionDate: -1 });
+TransactionFixingSchema.index({ "orders.metalType": 1 });
+TransactionFixingSchema.index({ "orders.metalType": 1, transactionDate: -1 });
+TransactionFixingSchema.index({ status: 1, isActive: 1 });
 
-// Pre-save middleware
-TransactionFixingSchema.pre("save", async function (next) {
-  // Generate transaction ID if not provided
+/* ===== Transaction ID Generator ===== */
+TransactionFixingSchema.pre("validate", function (next) {
   if (!this.transactionId) {
-    this.transactionId = await generateTransactionId(this.type);
+    const prefix = this.type === "purchase" ? "PUR" : "SELL";
+    const randomPart = Math.floor(10000 + Math.random() * 90000); // 5-digit
+    const timePart = Date.now().toString().slice(-6); // last 6 digits of timestamp
+    this.transactionId = `${prefix}${timePart}${randomPart}`;
   }
-
 
   if (this.referenceNumber) {
     this.referenceNumber = this.referenceNumber.toUpperCase();
@@ -133,34 +150,10 @@ TransactionFixingSchema.pre("save", async function (next) {
   next();
 });
 
-// Function to generate transaction ID with random 5-digit number
-async function generateTransactionId(type) {
-  const prefix = type === "purchase" ? "PUR" : "SELL";
-  let isUnique = false;
-  let transactionId;
-
-  // Keep generating until we get a unique ID
-  while (!isUnique) {
-    const randomNum = Math.floor(Math.random() * 90000) + 10000; // 5-digit random number
-    transactionId = `${prefix}${randomNum}`;
-
-    // Check if this ID already exists
-    const existingTransaction = await mongoose
-      .model("TransactionFixing")
-      .findOne({ transactionId });
-    if (!existingTransaction) {
-      isUnique = true;
-    }
-  }
-
-  return transactionId;
-}
-
-// Static method to get transactions by party
 TransactionFixingSchema.statics.getTransactionsByParty = async function (
   partyId,
-  startDate = null,
-  endDate = null
+  startDate,
+  endDate
 ) {
   const query = { partyId, status: "active" };
 
@@ -170,14 +163,7 @@ TransactionFixingSchema.statics.getTransactionsByParty = async function (
     if (endDate) query.transactionDate.$lte = new Date(endDate);
   }
 
-  return await this.find(query).sort({ transactionDate: -1 });
+  return this.find(query).sort({ transactionDate: -1 });
 };
 
-
-
-
-const TransactionFixing = mongoose.model(
-  "TransactionFixing",
-  TransactionFixingSchema
-);
-export default TransactionFixing;
+export default mongoose.model("TransactionFixing", TransactionFixingSchema);
