@@ -216,11 +216,7 @@ export const generateVoucherNumber = async (req, res, next) => {
     if (module.toLowerCase().includes('entry') && entryType) {
       actualTransactionType = entryType;
     }
-
     const result = await VoucherMasterService.generateVoucherNumber(module, actualTransactionType);
-    console.log(result);
-
-
     res.status(200).json({
       success: true,
       message: "Voucher number generated successfully",

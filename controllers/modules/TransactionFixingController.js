@@ -5,10 +5,7 @@ import { createAppError } from "../../utils/errorHandler.js";
 export const createTransaction = async (req, res, next) => {
   try {
     const { partyId, price, quantityGm, type, metalType, notes, voucherCode, voucherType, prefix, goldBidValue } = req.body;
-    console.log('====================================');
-    console.log(req.body);
-    return
-    console.log('====================================');
+
     // Validation
     if (!partyId || !quantityGm || !type || !metalType) {
       throw createAppError(

@@ -177,6 +177,10 @@ const editEntry = async (req, res) => {
         });
       }
     }
+
+    console.log('====================================');
+    console.log("On hre");
+    console.log('====================================');
     
     // First, delete related registry records
     await RegistryService.deleteRegistryByVoucher(voucherCode);
