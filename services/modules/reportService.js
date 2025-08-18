@@ -10,6 +10,7 @@ const { ObjectId } = mongoose.Types;
 // ReportService class to handle stock ledger and movement reports
 export class ReportService {
   async getReportsData(filters) {
+
     try {
       // Validate and format input filters
       const validatedFilters = this.validateFilters(filters);
@@ -38,6 +39,7 @@ export class ReportService {
 
   async getAccountStatementReports(filters) {
     try {
+
       // Validate and format input filters
       const validatedFilters = this.validateFilters(filters);
 
@@ -768,6 +770,7 @@ export class ReportService {
   }
 
   buildAccountStatementPipeline(filters) {
+    
     const goldTypes = ["PARTY_GOLD_BALANCE"];
     const cashTypes = ["PARTY_CASH_BALANCE", "MAKING_CHARGES", "PREMIUM", "DISCOUNT"];
     const pipeline = [];
@@ -809,7 +812,21 @@ export class ReportService {
         preserveNullAndEmptyArrays: true
       }
     });
+    // Voucher prefix filter
+    if (filters.voucher?.length > 0) {
+      const regexFilters = filters.voucher.map((prefix) => ({
+        reference: { $regex: `^${prefix}\\d+$`, $options: "i" },
+      }));
+      pipeline.push({ $match: { $or: regexFilters } });
+    }
 
+    if (filters.accountType?.length > 0) {
+      pipeline.push({
+        $match: {
+          "party": { $in: filters.accountType },
+        },
+      });
+    }
     // Add party name and ID to the document
     pipeline.push({
       $addFields: {
@@ -2861,7 +2878,7 @@ export class ReportService {
     ------------------------------------------ */
     const matchConditions = {
       isActive: true,
-      type: { $in: ["purchase-fixing"] },
+      type: { $in: ["purchase-fixing", "sale-fixing", "sales-fixing"] },
       $or: [
         ...referenceRegex,
         { reference: { $exists: false } },
@@ -2900,7 +2917,7 @@ export class ReportService {
         preserveNullAndEmptyArrays: true,
       },
     });
-    
+
     // pipeline.push({
     //   $unwind: {
     //     path: "$metaltransactions.stockItems",
