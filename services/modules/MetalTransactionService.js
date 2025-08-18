@@ -2296,15 +2296,22 @@ class MetalTransactionService {
   }
 
   static async updateAccountBalances(party, metalTransaction, session) {
-    const { transactionType, fixed, unfix, stockItems, totalAmountSession } =
-      metalTransaction;
+    const { transactionType, fixed, unfix, stockItems, totalAmountSession } = metalTransaction;
     const totals = this.calculateTotals(stockItems, totalAmountSession);
+    console.log(totals);
+
     const mode = this.getTransactionMode(fixed, unfix);
+    console.log(mode);
     const balanceChanges = this.calculateBalanceChanges(
       transactionType,
       mode,
       totals
     );
+
+    console.log('====================================');
+    console.log("balacne changes", balanceChanges);
+    console.log('====================================');
+
 
     const updateOps = this.buildUpdateOperations(balanceChanges);
 
@@ -2317,6 +2324,9 @@ class MetalTransactionService {
   }
 
   static buildUpdateOperations(balanceChanges) {
+    console.log('====================================');
+    console.log(balanceChanges);
+    console.log('====================================');
     const incObj = {};
     const setObj = {};
 
@@ -2329,6 +2339,7 @@ class MetalTransactionService {
     const netCashChange =
       balanceChanges.cashBalance +
       balanceChanges.premiumBalance +
+      balanceChanges.otherCharges +
       balanceChanges.discountBalance;
 
     if (netCashChange !== 0) {
@@ -2356,6 +2367,7 @@ class MetalTransactionService {
           cashBalance: totals.makingCharges,
           premiumBalance: totals.premium,
           discountBalance: -totals.discount,
+          otherCharges: totals.otherChargesAmount,
         },
         fix: {
           goldBalance: 0,
@@ -2370,6 +2382,7 @@ class MetalTransactionService {
           goldBalance: -totals.pureWeight,
           goldValue: -totals.goldValue,
           cashBalance: -totals.makingCharges,
+          otherCharges: -totals.otherChargesAmount,
           premiumBalance: -totals.premium,
           discountBalance: totals.discount,
         },
@@ -2386,6 +2399,7 @@ class MetalTransactionService {
           goldBalance: -totals.pureWeight,
           goldValue: -totals.goldValue,
           cashBalance: -totals.makingCharges,
+          otherCharges: -totals.otherChargesAmount,
           premiumBalance: -totals.premium,
           discountBalance: totals.discount,
         },
@@ -2402,6 +2416,7 @@ class MetalTransactionService {
           goldBalance: totals.pureWeight,
           goldValue: totals.goldValue,
           cashBalance: totals.makingCharges,
+          otherCharges: totals.otherChargesAmount,
           premiumBalance: totals.premium,
           discountBalance: -totals.discount,
         },
@@ -2420,6 +2435,7 @@ class MetalTransactionService {
         goldBalance: 0,
         goldValue: 0,
         cashBalance: 0,
+        otherCharges: 0,
         premiumBalance: 0,
         discountBalance: 0,
       }
