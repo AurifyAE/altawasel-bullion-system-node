@@ -49,7 +49,9 @@ export const createMetalTransaction = async (req, res, next) => {
     // Boolean logic for fix and unfix flags - ensure mutual exclusivity
     const isFixTransaction = fix === true || fix === "true";
     const isUnfixTransaction = unfix === true || unfix === "true";
-
+    console.log('====================================');
+    console.log(stockItems);
+    console.log('====================================');
     const transactionData = {
       transactionType,
       fixed: isFixTransaction ? true : false,

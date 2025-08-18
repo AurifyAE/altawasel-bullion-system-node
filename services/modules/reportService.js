@@ -264,8 +264,8 @@ export class ReportService {
 
       // 3. Run both aggregations in parallel
 
-      const receivablesAndPayables = await Account.aggregate(receivablesPayablesPipeline)
       const reportData = await Registry.aggregate(stockPipeline)
+      const receivablesAndPayables = await Account.aggregate(receivablesPayablesPipeline)
 
       const finilized = this.formatedOwnStock(reportData, receivablesAndPayables)
 
@@ -2861,6 +2861,7 @@ export class ReportService {
     ------------------------------------------ */
     const matchConditions = {
       isActive: true,
+      type: { $in: ["purchase-fixing"] },
       $or: [
         ...referenceRegex,
         { reference: { $exists: false } },
@@ -2881,6 +2882,7 @@ export class ReportService {
     // Step 4: Push $match to pipeline
     pipeline.push({ $match: matchConditions });
 
+
     /* ------------------------------------------
        Step 5: Lookup related collections
     ------------------------------------------ */
@@ -2892,6 +2894,20 @@ export class ReportService {
         as: "metaltransactions",
       },
     });
+    pipeline.push({
+      $unwind: {
+        path: "$metaltransactions",
+        preserveNullAndEmptyArrays: true,
+      },
+    });
+    
+    // pipeline.push({
+    //   $unwind: {
+    //     path: "$metaltransactions.stockItems",
+    //     preserveNullAndEmptyArrays: true,
+    //   },
+    // });
+
     pipeline.push({
       $lookup: {
         from: "transactionfixings",
@@ -2922,9 +2938,7 @@ export class ReportService {
     /* ------------------------------------------
        Step 6: Unwind joined data (safe unwind)
     ------------------------------------------ */
-    pipeline.push({
-      $unwind: { path: "$metaltransactions", preserveNullAndEmptyArrays: true },
-    });
+
     pipeline.push({
       $unwind: { path: "$transactionfixings", preserveNullAndEmptyArrays: true },
     });
@@ -2941,18 +2955,20 @@ export class ReportService {
     ------------------------------------------ */
     pipeline.push({ $sort: { transactionDate: 1 } });
 
-    pipeline.push({
-      $unwind: {
-        path: "$metaltransactions.stockItems",
-        preserveNullAndEmptyArrays: true
-      }
-    });
-    pipeline.push({
-      $unwind: {
-        path: "$transactionfixings.orders",
-        preserveNullAndEmptyArrays: true
-      }
-    });
+    // pipeline.push({
+    //   $unwind: {
+    //     path: "$metaltransactions.stockItems",
+    //     preserveNullAndEmptyArrays: true
+    //   }
+    // });
+    // pipeline.push({
+    //   $unwind: {
+    //     path: "$transactionfixings.orders",
+    //     preserveNullAndEmptyArrays: true
+    //   }
+    // });
+
+    // return pipeline
 
 
     /* ------------------------------------------
@@ -2962,7 +2978,7 @@ export class ReportService {
       $group: {
         _id: "$reference",
         totalValue: { $first: { $ifNull: ["$value", 0] } },
-        totalGrossWeight: { $first: { $ifNull: ["$grossWeight", 0] } },
+        totalGrossWeight: { $sum: { $ifNull: ["$grossWeight", 0] } },
         totalbidvalue: { $first: { $ifNull: ["$goldBidValue", 0] } },
         totalDebit: { $first: { $ifNull: ["$debit", 0] } },
         totalCredit: { $first: { $ifNull: ["$credit", 0] } },
