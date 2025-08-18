@@ -38,7 +38,7 @@ const accountLogSchema = new mongoose.Schema({
     },
     action: {
         type: String,
-        enum: ["add", "update", "delete"],
+        enum: ["add", "update", "delete" , "subtract"],
         required: true,
     },
     createdBy: {

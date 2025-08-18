@@ -77,7 +77,7 @@ app.use("/api/v1/currency-master", currencyMasterRoutes);
 app.use("/api/v1/account-type", accountTypeRoutes);
 app.use("/api/v1/metal-stocks", metalStockRoutes);
 app.use("/api/v1/cost-centers", costCenterMasterRoutes);
-app.use("/api/v1/metal-transaction", metalTransaction); 
+app.use("/api/v1/metal-transaction", metalTransaction);
 app.use("/api/v1/metal-transaction-fix", transactionFixingRoutes);
 app.use("/api/v1/registry", RegistryRouter);
 app.use("/api/v1/voucher", VoucherRoute);

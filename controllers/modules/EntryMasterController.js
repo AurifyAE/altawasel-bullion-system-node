@@ -4,6 +4,7 @@ import AccountType from "../../models/modules/AccountType.js";
 import AccountMaster from "../../models/modules/accountMaster.js";
 import InventoryService from "../../services/modules/inventoryService.js";
 import RegistryService from "../../services/modules/RegistryService.js";
+import AccountLog from "../../models/modules/AccountLog.js";
 
 const createEntry = async (req, res) => {
   try {
@@ -181,7 +182,7 @@ const editEntry = async (req, res) => {
     console.log('====================================');
     console.log("On hre");
     console.log('====================================');
-    
+
     // First, delete related registry records
     await RegistryService.deleteRegistryByVoucher(voucherCode);
 
@@ -303,127 +304,216 @@ const handleMetalReceipt = async (entry) => {
 };
 
 const handleCashReceipt = async (entry) => {
-  const accountType = await AccountType.findOne({ _id: entry.party });
-  if (!accountType) {
-    throw new Error("Account not found");
+  // Validate entry object
+  if (!entry?.party || !entry?.cash || !Array.isArray(entry.cash)) {
+    throw createAppError("Invalid entry data", 400, "INVALID_ENTRY");
   }
 
+  // Fetch account
+  const account = await AccountType.findOne({ _id: entry.party });
+  if (!account) {
+    throw createAppError("Account not found", 404, "ACCOUNT_NOT_FOUND");
+  }
+
+  // Process each cash item
   for (const cashItem of entry.cash) {
+    // Validate cash item
+    if (!cashItem?.cashType || !cashItem?.amount || !cashItem?.currency) {
+      throw createAppError("Invalid cash item data", 400, "INVALID_CASH_ITEM");
+    }
+
     const transactionId = await Registry.generateTransactionId();
-    const cashType = await AccountMaster.findOne({ _id: cashItem.cashType });
-    if (!cashType) {
-      throw new Error(
-        `Cash type account not found for ID: ${cashItem.cashType}`
+    const cashAccount = await AccountMaster.findOne({ _id: cashItem.cashType });
+    if (!cashAccount) {
+      throw createAppError(
+        `Cash type account not found for ID: ${cashItem.cashType}`,
+        404,
+        "CASH_TYPE_NOT_FOUND"
       );
     }
 
-    // Initialize balances if needed
-    accountType.balances = accountType.balances || {};
-    accountType.balances.cashBalance = accountType.balances.cashBalance || {
+    // Initialize account balances
+    account.balances = account.balances || {};
+    account.balances.cashBalance = account.balances.cashBalance || {
       currency: cashItem.currency,
       amount: 0,
       lastUpdated: new Date(),
     };
 
-    // Update balances
+    // Calculate new balances
     const amount = Number(cashItem.amount) || 0;
-    accountType.balances.cashBalance.amount += amount;
-    accountType.balances.cashBalance.lastUpdated = new Date();
-    cashType.openingBalance = (cashType.openingBalance || 0) + amount;
+    if (amount <= 0) {
+      throw createAppError("Amount must be positive", 400, "INVALID_AMOUNT");
+    }
+    const previousBalance = account.balances.cashBalance.amount || 0;
+    const balanceAfter = previousBalance + amount;
 
-    // Save updates
-    await Promise.all([accountType.save(), cashType.save()]);
+    // Update balances
+    account.balances.cashBalance.amount = balanceAfter;
+    account.balances.cashBalance.lastUpdated = new Date();
+    cashAccount.openingBalance = (cashAccount.openingBalance || 0) + amount;
 
     // Create registry entries
-    await Promise.all([
-      Registry.create({
+    const description = cashItem.remarks?.trim() || entry.remarks?.trim() || "Cash receipt";
+    const registryEntries = [
+      {
         transactionId,
         type: "PARTY_CASH_BALANCE",
-        description:
-          cashItem.remarks?.trim() || entry.remarks?.trim() || "Cash receipt",
+        description,
         value: amount,
         credit: amount,
         reference: entry.voucherCode || "",
         createdBy: entry.enteredBy,
         party: entry.party?.toString(),
         isBullion: false,
-      }),
-      Registry.create({
+      },
+      {
         transactionId: await Registry.generateTransactionId(),
         type: "CASH",
-        description:
-          cashItem.remarks?.trim() || entry.remarks?.trim() || "Cash receipt",
+        description,
         value: amount,
         debit: amount,
         reference: entry.voucherCode || "",
         createdBy: entry.enteredBy,
         party: null,
         isBullion: true,
-      }),
+      },
+    ];
+
+    // Create account log entry
+    const accountLogEntry = {
+      accountId: cashItem.cashType,
+      transactionType: "deposit",
+      amount,
+      balanceAfter: cashAccount.openingBalance,
+      note: `Cash receipt of ${amount} ${cashItem.currency} for account ${account._id}`,
+      action: "add",
+      transactionId,
+      createdBy: entry.enteredBy,
+      createdAt: new Date(),
+    };
+
+    // Save all changes in a single transaction
+    await Promise.all([
+      account.save(),
+      cashAccount.save(),
+      AccountLog.create(accountLogEntry),
+      Registry.create(registryEntries),
     ]);
   }
+
+  return account;
 };
 
 const handleCashPayment = async (entry) => {
-  const accountType = await AccountType.findOne({ _id: entry.party });
-  if (!accountType) {
-    throw new Error("Account not found");
+  // Validate entry object
+  if (!entry?.party || !entry?.cash || !Array.isArray(entry.cash)) {
+    throw createAppError("Invalid entry data", 400, "INVALID_ENTRY");
   }
 
+  // Fetch account
+  const account = await AccountType.findOne({ _id: entry.party });
+  if (!account) {
+    throw createAppError("Account not found", 404, "ACCOUNT_NOT_FOUND");
+  }
+
+  // Process each cash item
   for (const cashItem of entry.cash) {
+    // Validate cash item
+    if (!cashItem?.cashType || !cashItem?.amount || !cashItem?.currency) {
+      throw createAppError("Invalid cash item data", 400, "INVALID_CASH_ITEM");
+    }
+
     const transactionId = await Registry.generateTransactionId();
-    const cashType = await AccountMaster.findOne({ _id: cashItem.cashType });
-    if (!cashType) {
-      throw new Error(
-        `Cash type account not found for ID: ${cashItem.cashType}`
+    const cashAccount = await AccountMaster.findOne({ _id: cashItem.cashType });
+    if (!cashAccount) {
+      throw createAppError(
+        `Cash type account not found for ID: ${cashItem.cashType}`,
+        404,
+        "CASH_TYPE_NOT_FOUND"
       );
     }
 
-    // Initialize balances if needed
-    accountType.balances = accountType.balances || {};
-    accountType.balances.cashBalance = accountType.balances.cashBalance || {
+    // Initialize account balances
+    account.balances = account.balances || {};
+    account.balances.cashBalance = account.balances.cashBalance || {
       currency: cashItem.currency,
       amount: 0,
       lastUpdated: new Date(),
     };
 
-    // Update balances
+    // Calculate new balances
     const amount = Number(cashItem.amount) || 0;
-    accountType.balances.cashBalance.amount -= amount;
-    accountType.balances.cashBalance.lastUpdated = new Date();
-    cashType.openingBalance = (cashType.openingBalance || 0) - amount;
+    if (amount <= 0) {
+      throw createAppError("Amount must be positive", 400, "INVALID_AMOUNT");
+    }
+    const previousBalance = account.balances.cashBalance.amount || 0;
+    const balanceAfter = previousBalance - amount;
 
-    // Save updates
-    await Promise.all([accountType.save(), cashType.save()]);
+    // Check for sufficient balance
+    // if (balanceAfter < 0) {
+    //   throw createAppError(
+    //     `Insufficient balance for payment of ${amount} ${cashItem.currency}`,
+    //     400,
+    //     "INSUFFICIENT_BALANCE"
+    //   );
+    // }
+
+    // Update balances
+    account.balances.cashBalance.amount = balanceAfter;
+    account.balances.cashBalance.lastUpdated = new Date();
+    cashAccount.openingBalance = (cashAccount.openingBalance || 0) - amount;
 
     // Create registry entries
-    await Promise.all([
-      Registry.create({
+    const description = cashItem.remarks?.trim() || entry.remarks?.trim() || "Cash payment";
+    const registryEntries = [
+      {
         transactionId,
         type: "PARTY_CASH_BALANCE",
-        description:
-          cashItem.remarks?.trim() || entry.remarks?.trim() || "Cash payment",
+        description,
         value: amount,
         debit: amount,
         reference: entry.voucherCode || "",
         createdBy: entry.enteredBy,
         party: entry.party?.toString(),
         isBullion: false,
-      }),
-      Registry.create({
+      },
+      {
         transactionId: await Registry.generateTransactionId(),
         type: "CASH",
-        description:
-          cashItem.remarks?.trim() || entry.remarks?.trim() || "Cash payment",
+        description,
         value: amount,
         credit: amount,
         reference: entry.voucherCode || "",
         createdBy: entry.enteredBy,
         party: null,
         isBullion: true,
-      }),
+      },
+    ];
+
+    // Create account log entry
+    const accountLogEntry = {
+      accountId: cashItem.cashType,
+      transactionType: "withdrawal",
+      amount,
+      balanceAfter: cashAccount.openingBalance,
+      note: `Cash payment of ${amount} ${cashItem.currency} for account ${account._id}`,
+      action: "subtract",
+      transactionId,
+      createdBy: entry.enteredBy,
+      createdAt: new Date(),
+    };
+
+    // Save all changes in a single transaction
+    await Promise.all([
+      account.save(),
+      cashAccount.save(),
+      AccountLog.create(accountLogEntry),
+      Registry.create(registryEntries),
     ]);
   }
+
+  return account;
 };
 
 const handleMetalPayment = async (entry) => {

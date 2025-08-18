@@ -112,14 +112,9 @@ const handleCashReceipt = async (entry) => {
   if (!accountType) {
     throw new Error("Account not found");
   }
-  console.log('====================================');
-    console.log("hyyyy");
-    console.log('====================================');
 
   for (const cashItem of entry.cash) {
-    console.log('====================================');
-    console.log("hyyyy");
-    console.log('====================================');
+   
     const transactionId = await Registry.generateTransactionId();
 
     // Find and validate cash type account
@@ -151,9 +146,7 @@ const handleCashReceipt = async (entry) => {
     currencyBalance.amount += requestedAmount;
     currencyBalance.lastUpdated = new Date();
 
-    console.log('====================================');
-    console.log("hyyyy");
-    console.log('====================================');
+  
     // Add amount to cash type opening balance
     cashType.openingBalance = (cashType.openingBalance || 0) + requestedAmount;
     await cashType.save();
@@ -166,9 +159,6 @@ const handleCashReceipt = async (entry) => {
       action: "add",
       createdBy: createdById,
     }], { session });
-    console.log('====================================');
-    console.log("hyyyy");
-    console.log('====================================');
 
     // Registry entry for "cash balance"
     await Registry.create({

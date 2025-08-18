@@ -970,7 +970,7 @@ class MetalTransactionService {
           totals.vatAmount,
           0,
           {
-            debit:totals.vatAmount,
+            debit: totals.vatAmount,
             goldDebit: totals.grossWeight,
             cashDebit: totals.goldValue,
             grossWeight: totals.grossWeight,
@@ -1427,7 +1427,7 @@ class MetalTransactionService {
           totals.vatAmount,
           0,
           {
-            debit:totals.vatAmount,
+            debit: totals.vatAmount,
             goldDebit: totals.grossWeight,
             cashDebit: totals.goldValue,
             grossWeight: totals.grossWeight,
@@ -1643,7 +1643,7 @@ class MetalTransactionService {
           totals.vatAmount,
           0,
           {
-            debit:totals.vatAmount,
+            debit: totals.vatAmount,
             goldDebit: totals.grossWeight,
             cashDebit: totals.goldValue,
             grossWeight: totals.grossWeight,
@@ -1854,7 +1854,7 @@ class MetalTransactionService {
         )
       );
     }
-    
+
     if (totals.premium > 0) {
       entries.push(
         this.createRegistryEntry(
@@ -3782,12 +3782,12 @@ class MetalTransactionService {
           value: totalMakingCharges,
           debit:
             transaction.transactionType === "sale" ||
-            transaction.transactionType === "purchaseReturn"
+              transaction.transactionType === "purchaseReturn"
               ? totalMakingCharges
               : 0,
           credit:
             transaction.transactionType === "purchase" ||
-            transaction.transactionType === "saleReturn"
+              transaction.transactionType === "saleReturn"
               ? totalMakingCharges
               : 0,
           transactionDate: new Date(),
@@ -3796,7 +3796,7 @@ class MetalTransactionService {
         })
       );
     }
-    
+
     if (totalOtherCharges > 0) {
       registryEntries.push(
         new Registry({
@@ -3812,12 +3812,12 @@ class MetalTransactionService {
           value: totalOtherCharges,
           debit:
             transaction.transactionType === "sale" ||
-            transaction.transactionType === "purchaseReturn"
+              transaction.transactionType === "purchaseReturn"
               ? totalOtherCharges
               : 0,
           credit:
             transaction.transactionType === "purchase" ||
-            transaction.transactionType === "saleReturn"
+              transaction.transactionType === "saleReturn"
               ? totalOtherCharges
               : 0,
           transactionDate: new Date(),
@@ -3826,7 +3826,7 @@ class MetalTransactionService {
         })
       );
     }
-    
+
     if (totalVatAmount > 0) {
       registryEntries.push(
         new Registry({
@@ -3842,12 +3842,12 @@ class MetalTransactionService {
           value: totalVatAmount,
           debit:
             transaction.transactionType === "sale" ||
-            transaction.transactionType === "purchaseReturn"
+              transaction.transactionType === "purchaseReturn"
               ? totalVatAmount
               : 0,
           credit:
             transaction.transactionType === "purchase" ||
-            transaction.transactionType === "saleReturn"
+              transaction.transactionType === "saleReturn"
               ? totalVatAmount
               : 0,
           transactionDate: new Date(),
@@ -3856,7 +3856,7 @@ class MetalTransactionService {
         })
       );
     }
-    
+
 
     // Premium Entry
     if (totalPremiumAmount > 0) {

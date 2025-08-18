@@ -36,6 +36,34 @@ export class ReportService {
     }
   }
 
+  async getAccountStatementReports(filters) {
+    try {
+      // Validate and format input filters
+      const validatedFilters = this.validateFilters(filters);
+
+      // Construct MongoDB aggregation pipeline
+      const pipeline = this.buildAccountStatementPipeline(validatedFilters);
+
+      // Execute aggregation query
+      const reportData = await Registry.aggregate(pipeline);
+
+      // Format the retrieved data for response
+      const formattedData = this.formatReportData(reportData, validatedFilters);
+
+      return {
+        success: true,
+        data: reportData,
+        filters: validatedFilters,
+        totalRecords: reportData.length,
+      };
+    } catch (error) {
+      throw new Error(
+        `Failed to generate metal stock ledger report: ${error.message}`
+      );
+    }
+  }
+
+
   async getStockAnalysis(filters) {
     try {
       // Validate and format input filters
@@ -244,7 +272,7 @@ export class ReportService {
       // 5. Return structured response
       return {
         success: true,
-        data: finilized,
+        data: reportData,
       };
 
     } catch (error) {
@@ -437,7 +465,6 @@ export class ReportService {
   }
 
   buildStockLedgerPipeline(filters) {
-
     const pipeline = [];
 
     // Step 1: Match base records
@@ -739,6 +766,140 @@ export class ReportService {
     return pipeline;
 
   }
+
+  buildAccountStatementPipeline(filters) {
+    const goldTypes = ["PARTY_GOLD_BALANCE"];
+    const cashTypes = ["PARTY_CASH_BALANCE", "MAKING_CHARGES", "PREMIUM", "DISCOUNT"];
+    const pipeline = [];
+
+    // --- Step 1: Initial Filtering ---
+    const matchConditions = {
+      isActive: true,
+      $or: [
+        { type: { $in: goldTypes } },
+        { type: { $in: cashTypes } }
+      ]
+    };
+
+    // Date filter
+    if (filters.startDate || filters.endDate) {
+      matchConditions.transactionDate = {};
+      if (filters.startDate) {
+        matchConditions.transactionDate.$gte = new Date(filters.startDate);
+      }
+      if (filters.endDate) {
+        matchConditions.transactionDate.$lte = new Date(filters.endDate);
+      }
+    }
+
+    // Lookup to get party names from accounts collection
+    pipeline.push({
+      $lookup: {
+        from: "accounts",
+        localField: "party",
+        foreignField: "_id",
+        as: "partyDetails"
+      }
+    });
+
+    // Unwind the partyDetails array to de-normalize
+    pipeline.push({
+      $unwind: {
+        path: "$partyDetails",
+        preserveNullAndEmptyArrays: true
+      }
+    });
+
+    // Add party name and ID to the document
+    pipeline.push({
+      $addFields: {
+        partyName: "$partyDetails.name",
+        partyId: "$party",
+        docDate: { $dateToString: { format: "%d/%m/%Y", date: "$transactionDate" } },
+        docRef: "$reference",
+        branch: "HO"
+      }
+    });
+
+    // Party-wise filter (optional)
+    if (filters.party) {
+      matchConditions.party = filters.party;
+    }
+
+    pipeline.push({ $match: matchConditions });
+
+    // Group by party to list transactions
+    pipeline.push({
+      $group: {
+        _id: {
+          partyId: "$partyId",
+          partyName: "$partyName"
+        },
+        transactions: {
+          $push: {
+            docDate: "$docDate",
+            docRef: "$docRef",
+            branch: "$branch",
+            particulars: "$description",
+            cash: {
+              debit: { $cond: [{ $in: ["$type", cashTypes] }, { $ifNull: ["$debit", 0] }, 0] },
+              credit: { $cond: [{ $in: ["$type", cashTypes] }, { $ifNull: ["$credit", 0] }, 0] },
+              balance: "$runningBalance"
+            },
+            goldInGMS: {
+              debit: { $cond: [{ $in: ["$type", goldTypes] }, { $ifNull: ["$debit", 0] }, 0] },
+              credit: { $cond: [{ $in: ["$type", goldTypes] }, { $ifNull: ["$credit", 0] }, 0] },
+              balance: "$runningBalance"
+            }
+          }
+        }
+      }
+    });
+
+    // Project to format the output and add balance type
+    pipeline.push({
+      $project: {
+        _id: 0,
+        partyId: "$_id.partyId",
+        partyName: "$_id.partyName",
+        transactions: {
+          $map: {
+            input: "$transactions",
+            as: "trans",
+            in: {
+              docDate: "$$trans.docDate",
+              docRef: "$$trans.docRef",
+              branch: "$$trans.branch",
+              particulars: "$$trans.particulars",
+              cash: {
+                debit: "$$trans.cash.debit",
+                credit: "$$trans.cash.credit",
+                balance: {
+                  $concat: [
+                    { $toString: { $ifNull: ["$$trans.cash.balance", 0] } },
+                    { $cond: [{ $gt: ["$$trans.cash.balance", 0] }, " CR", " DR"] }
+                  ]
+                }
+              },
+              goldInGMS: {
+                debit: "$$trans.goldInGMS.debit",
+                credit: "$$trans.goldInGMS.credit",
+                balance: {
+                  $concat: [
+                    { $toString: { $ifNull: ["$$trans.goldInGMS.balance", 0] } },
+                    { $cond: [{ $gt: ["$$trans.goldInGMS.balance", 0] }, " CR", " DR"] }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    });
+
+    return pipeline;
+  }
+
 
   buildSalesAnalysis(filters) {
 
@@ -2731,6 +2892,14 @@ export class ReportService {
         as: "metaltransactions",
       },
     });
+    pipeline.push({
+      $lookup: {
+        from: "transactionfixings",
+        localField: "fixingTransactionId",
+        foreignField: "_id",
+        as: "transactionfixings",
+      },
+    });
 
     pipeline.push({
       $lookup: {
@@ -2757,29 +2926,52 @@ export class ReportService {
       $unwind: { path: "$metaltransactions", preserveNullAndEmptyArrays: true },
     });
     pipeline.push({
+      $unwind: { path: "$transactionfixings", preserveNullAndEmptyArrays: true },
+    });
+    pipeline.push({
       $unwind: { path: "$entries", preserveNullAndEmptyArrays: true },
     });
     pipeline.push({
       $unwind: { path: "$metalstocks", preserveNullAndEmptyArrays: true },
     });
 
+
     /* ------------------------------------------
        Step 7: Sort by transactionDate to ensure consistent $first selection
     ------------------------------------------ */
     pipeline.push({ $sort: { transactionDate: 1 } });
+
+    pipeline.push({
+      $unwind: {
+        path: "$metaltransactions.stockItems",
+        preserveNullAndEmptyArrays: true
+      }
+    });
+    pipeline.push({
+      $unwind: {
+        path: "$transactionfixings.orders",
+        preserveNullAndEmptyArrays: true
+      }
+    });
+
+
+
 
     /* ------------------------------------------
        Step 8: First Group by full reference to take first value per unique voucher
     ------------------------------------------ */
     pipeline.push({
       $group: {
-        _id: "$reference",
+        _id: {
+          reference: "$reference",
+          metalTransactionId: "$metalTransactionId"
+        },
         totalValue: { $first: { $ifNull: ["$value", 0] } },
-        totalGrossWeight: { $first: { $ifNull: ["$grossWeight", 0] } },
+        totalGrossWeight: { $sum: { $ifNull: ["$metaltransactions.stockItems.grossWeight", "$grossWeight"] } },
         totalbidvalue: { $first: { $ifNull: ["$goldBidValue", 0] } },
         totalDebit: { $first: { $ifNull: ["$debit", 0] } },
         totalCredit: { $first: { $ifNull: ["$credit", 0] } },
-        latestTransactionDate: { $max: "$transactionDate" },
+        latestTransactionDate: { $max: "$transactionDate" }
       },
     });
 
