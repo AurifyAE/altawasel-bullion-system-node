@@ -321,7 +321,6 @@ export const getTransactionSummary = async (req, res) => {
 
 export const getOwnStock = async (req, res) => {
   try {
-
     const filters = req.body;
     // Call service to get report data
     const reportData = await reportService.getOwnStockReport(filters);

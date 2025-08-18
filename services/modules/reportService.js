@@ -272,7 +272,7 @@ export class ReportService {
       // 5. Return structured response
       return {
         success: true,
-        data: reportData,
+        data: finilized,
       };
 
     } catch (error) {
@@ -2955,23 +2955,18 @@ export class ReportService {
     });
 
 
-
-
     /* ------------------------------------------
        Step 8: First Group by full reference to take first value per unique voucher
     ------------------------------------------ */
     pipeline.push({
       $group: {
-        _id: {
-          reference: "$reference",
-          metalTransactionId: "$metalTransactionId"
-        },
+        _id: "$reference",
         totalValue: { $first: { $ifNull: ["$value", 0] } },
-        totalGrossWeight: { $sum: { $ifNull: ["$metaltransactions.stockItems.grossWeight", "$grossWeight"] } },
+        totalGrossWeight: { $first: { $ifNull: ["$grossWeight", 0] } },
         totalbidvalue: { $first: { $ifNull: ["$goldBidValue", 0] } },
         totalDebit: { $first: { $ifNull: ["$debit", 0] } },
         totalCredit: { $first: { $ifNull: ["$credit", 0] } },
-        latestTransactionDate: { $max: "$transactionDate" }
+        latestTransactionDate: { $max: "$transactionDate" },
       },
     });
 
