@@ -813,7 +813,7 @@ export class ReportService {
     // Add party name and ID to the document
     pipeline.push({
       $addFields: {
-        partyName: "$partyDetails.name",
+        partyName: "$partyDetails.customerName",
         partyId: "$party",
         docDate: { $dateToString: { format: "%d/%m/%Y", date: "$transactionDate" } },
         docRef: "$reference",
