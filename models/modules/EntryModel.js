@@ -137,6 +137,18 @@ const entrySchema = new mongoose.Schema(
           type: String,
           trim: true,
         },
+        Totalamount: {
+          type: Number,
+          default: 0
+        },
+        vatPercentage: {
+          type: Number,
+          default: 0
+        },
+        vatAmount: {
+          type: Number,
+          default: 0
+        }
       },
     ],
   },

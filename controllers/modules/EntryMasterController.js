@@ -19,6 +19,7 @@ const createEntry = async (req, res) => {
       "cash payment",
       "currency-receipt",
     ];
+
     if (!validTypes.includes(type)) {
       return res.status(400).json({
         success: false,
@@ -233,7 +234,7 @@ const editEntry = async (req, res) => {
 
 
 const handleMetalReceipt = async (entry) => {
- 
+
   for (const stockItem of entry.stockItems) {
     const transactionId = await Registry.generateTransactionId();
     const description =
@@ -295,6 +296,7 @@ const handleMetalReceipt = async (entry) => {
 };
 
 const handleCashReceipt = async (entry) => {
+
   // Validate entry object
   if (!entry?.party || !entry?.cash || !Array.isArray(entry.cash)) {
     throw createAppError("Invalid entry data", 400, "INVALID_ENTRY");
@@ -305,6 +307,7 @@ const handleCashReceipt = async (entry) => {
   if (!account) {
     throw createAppError("Account not found", 404, "ACCOUNT_NOT_FOUND");
   }
+
 
   // Process each cash item
   for (const cashItem of entry.cash) {
@@ -371,13 +374,29 @@ const handleCashReceipt = async (entry) => {
       },
     ];
 
+    // 👉 If VAT exists, add extra registry entry
+    if (cashItem.vatAmount && cashItem.vatAmount > 0) {
+      registryEntries.push({
+        transactionId: await Registry.generateTransactionId(),
+        type: "VAT_AMOUNT",
+        description: `VAT on cash receipt`,
+        value: cashItem.vatAmount,
+        debit: cashItem.vatAmount,
+        reference: entry.voucherCode || "",
+        createdBy: entry.enteredBy,
+        party: null,
+        isBullion: false,
+      });
+    }
+
     // Create account log entry
     const accountLogEntry = {
       accountId: cashItem.cashType,
       transactionType: "deposit",
       amount,
+      reference: entry.voucherCode,
       balanceAfter: cashAccount.openingBalance,
-      note: `Cash receipt of ${amount} ${cashItem.currency} for account ${account._id}`,
+      note: `Cash receipt of ${amount}  for account ${account.customerName}`,
       action: "add",
       transactionId,
       createdBy: entry.enteredBy,
@@ -482,6 +501,22 @@ const handleCashPayment = async (entry) => {
       },
     ];
 
+    // 👉 If VAT exists, add extra registry entry
+    if (cashItem.vatAmount && cashItem.vatAmount > 0) {
+      registryEntries.push({
+        transactionId: await Registry.generateTransactionId(),
+        type: "VAT_AMOUNT",
+        description: `VAT on cash payment`,
+        value: cashItem.vatAmount,
+        credit: cashItem.vatAmount,
+        reference: entry.voucherCode || "",
+        createdBy: entry.enteredBy,
+        party: null,
+        isBullion: false,
+      });
+    }
+
+
     // Create account log entry
     const accountLogEntry = {
       accountId: cashItem.cashType,
@@ -567,6 +602,126 @@ const handleMetalPayment = async (entry) => {
   }
 };
 
+const handleDeleteMetalReceipt = async (entry) => {
+  for (const stockItem of entry.stockItems) {
+    // Reverse inventory update (subtract, like a payment)
+    await InventoryService.updateInventory(
+      {
+        stockItems: [
+          {
+            stockCode: {
+              _id: stockItem.stock,
+              code: stockItem.stock.toString(),
+            },
+            pieces: stockItem.pieces || 0,
+            grossWeight: stockItem.grossWeight,
+            purity: stockItem.purity,
+            voucherNumber: entry.voucherCode,
+            transactionType: "deleteMetalReceipt"
+          },
+        ],
+      },
+      true, // subtract
+      entry.enteredBy,
+    );
+  }
+};
+
+const handleDeleteMetalPayment = async (entry) => {
+  for (const stockItem of entry.stockItems) {
+    // Reverse inventory update (add back, like a receipt)
+    await InventoryService.updateInventory(
+      {
+        stockItems: [
+          {
+            stockCode: {
+              _id: stockItem.stock,
+              code: stockItem.stock.toString(),
+            },
+            pieces: stockItem.pieces || 0,
+            grossWeight: stockItem.grossWeight,
+            purity: stockItem.purity,
+            voucherNumber: entry.voucherCode,
+            transactionType: "deleteMetalPayment"
+          },
+        ],
+      },
+      false, // add
+      entry.enteredBy,
+    );
+  }
+};
+
+const handleDeleteCashReceipt = async (entry) => {
+  // Fetch account
+  const account = await AccountType.findOne({ _id: entry.party });
+  if (!account) {
+    throw createAppError("Account not found", 404, "ACCOUNT_NOT_FOUND");
+  }
+
+  // Process each cash item to reverse balances
+  for (const cashItem of entry.cash) {
+    const cashAccount = await AccountMaster.findOne({ _id: cashItem.cashType });
+    if (!cashAccount) {
+      throw createAppError(
+        `Cash type account not found for ID: ${cashItem.cashType}`,
+        404,
+        "CASH_TYPE_NOT_FOUND"
+      );
+    }
+
+    const amount = Number(cashItem.amount) || 0;
+
+    // Reverse balances (subtract what was added)
+    if (account.balances && account.balances.cashBalance) {
+      account.balances.cashBalance.amount -= amount;
+      account.balances.cashBalance.lastUpdated = new Date();
+    }
+    cashAccount.openingBalance = (cashAccount.openingBalance || 0) - amount;
+
+    // Save changes
+    await Promise.all([
+      account.save(),
+      cashAccount.save(),
+    ]);
+  }
+};
+
+const handleDeleteCashPayment = async (entry) => {
+  // Fetch account
+  const account = await AccountType.findOne({ _id: entry.party });
+  if (!account) {
+    throw createAppError("Account not found", 404, "ACCOUNT_NOT_FOUND");
+  }
+
+  // Process each cash item to reverse balances
+  for (const cashItem of entry.cash) {
+    const cashAccount = await AccountMaster.findOne({ _id: cashItem.cashType });
+    if (!cashAccount) {
+      throw createAppError(
+        `Cash type account not found for ID: ${cashItem.cashType}`,
+        404,
+        "CASH_TYPE_NOT_FOUND"
+      );
+    }
+
+    const amount = Number(cashItem.amount) || 0;
+
+    // Reverse balances (add back what was subtracted)
+    if (account.balances && account.balances.cashBalance) {
+      account.balances.cashBalance.amount += amount;
+      account.balances.cashBalance.lastUpdated = new Date();
+    }
+    cashAccount.openingBalance = (cashAccount.openingBalance || 0) + amount;
+
+    // Save changes
+    await Promise.all([
+      account.save(),
+      cashAccount.save(),
+    ]);
+  }
+};
+
 const getEntriesByType = async (type) => {
   return Entry.find({ type })
     .populate("voucherId")
@@ -623,7 +778,7 @@ const getMetalPayments = async (req, res) => {
 const getMetalReceipts = async (req, res) => {
   try {
     const entries = await getEntriesByType("metal-receipt");
-  
+
     res.json(entries);
   } catch (err) {
     console.error("Error fetching metal receipts:", err);
@@ -660,6 +815,47 @@ const getEntryById = async (req, res) => {
   }
 };
 
+const deleteEntryById = async (req, res) => {
+  try {
+    const entry = await Entry.findById(req.params.id);
+    if (!entry) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Entry not found" });
+    }
+
+    // Delete related registry entries
+    await RegistryService.deleteRegistryByVoucher(entry.voucherCode);
+
+    // Handle reverse operations based on entry type
+    const deleteHandlers = {
+      "metal-receipt": handleDeleteMetalReceipt,
+      "metal-payment": handleDeleteMetalPayment,
+      "cash receipt": handleDeleteCashReceipt,
+      "cash payment": handleDeleteCashPayment,
+    };
+
+    if (deleteHandlers[entry.type]) {
+      await deleteHandlers[entry.type](entry);
+    }
+
+    // Delete related account logs
+    await AccountLog.deleteMany({ reference: entry.voucherCode });
+
+    // Delete the entry itself
+    await entry.deleteOne();
+
+    res.json({ success: true, message: "Entry deleted successfully" });
+  } catch (err) {
+    console.error("Error deleting entry:", err);
+    res.status(500).json({
+      success: false,
+      message: "Failed to delete entry",
+      error: err.message,
+    });
+  }
+};
+
 export default {
   editEntry,
   createEntry,
@@ -668,4 +864,5 @@ export default {
   getMetalPayments,
   getMetalReceipts,
   getEntryById,
+  deleteEntryById
 };
