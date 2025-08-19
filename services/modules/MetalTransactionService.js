@@ -160,6 +160,7 @@ class MetalTransactionService {
   }
 
   static buildRegistryEntries(metalTransaction, party, adminId) {
+
     const {
       transactionType,
       _id,
@@ -268,7 +269,8 @@ class MetalTransactionService {
     baseTransactionId,
     voucherDate,
     voucherNumber,
-    adminId
+    adminId,
+    item
   ) {
     return mode === "fix"
       ? this.buildPurchaseFixEntries(
@@ -278,7 +280,8 @@ class MetalTransactionService {
         baseTransactionId,
         voucherDate,
         voucherNumber,
-        adminId
+        adminId,
+        item
       )
       : this.buildPurchaseUnfixEntries(
         totals,
@@ -287,7 +290,8 @@ class MetalTransactionService {
         baseTransactionId,
         voucherDate,
         voucherNumber,
-        adminId
+        adminId,
+        item
       );
   }
 
@@ -299,7 +303,8 @@ class MetalTransactionService {
     baseTransactionId,
     voucherDate,
     voucherNumber,
-    adminId
+    adminId,
+    item
   ) {
     return mode === "fix"
       ? this.buildSaleFixEntries(
@@ -309,7 +314,8 @@ class MetalTransactionService {
         baseTransactionId,
         voucherDate,
         voucherNumber,
-        adminId
+        adminId,
+        item
       )
       : this.buildSaleUnfixEntries(
         totals,
@@ -318,7 +324,8 @@ class MetalTransactionService {
         baseTransactionId,
         voucherDate,
         voucherNumber,
-        adminId
+        adminId,
+        item
       );
   }
 
@@ -330,7 +337,8 @@ class MetalTransactionService {
     baseTransactionId,
     voucherDate,
     voucherNumber,
-    adminId
+    adminId,
+    item
   ) {
     return mode === "fix"
       ? this.buildPurchaseReturnFixEntries(
@@ -340,7 +348,8 @@ class MetalTransactionService {
         baseTransactionId,
         voucherDate,
         voucherNumber,
-        adminId
+        adminId,
+        item
       )
       : this.buildPurchaseReturnUnfixEntries(
         totals,
@@ -349,7 +358,8 @@ class MetalTransactionService {
         baseTransactionId,
         voucherDate,
         voucherNumber,
-        adminId
+        adminId,
+        item
       );
   }
 
@@ -361,7 +371,8 @@ class MetalTransactionService {
     baseTransactionId,
     voucherDate,
     voucherNumber,
-    adminId
+    adminId,
+    item
   ) {
     return mode === "fix"
       ? this.buildSaleReturnFixEntries(
@@ -371,7 +382,8 @@ class MetalTransactionService {
         baseTransactionId,
         voucherDate,
         voucherNumber,
-        adminId
+        adminId,
+        item
       )
       : this.buildSaleReturnUnfixEntries(
         totals,
@@ -380,7 +392,8 @@ class MetalTransactionService {
         baseTransactionId,
         voucherDate,
         voucherNumber,
-        adminId
+        adminId,
+        item
       );
   }
 
@@ -391,7 +404,8 @@ class MetalTransactionService {
     baseTransactionId,
     voucherDate,
     voucherNumber,
-    adminId
+    adminId,
+    item
   ) {
     const entries = [];
     const partyName = party.customerName || party.accountCode;
@@ -481,7 +495,7 @@ class MetalTransactionService {
           metalTransactionId,
           "008",
           "OTHER_CHARGES",
-          `Party other charges - Purchase from ${partyName}`,
+          `${item.otherCharges.description} charges - Purchase from ${partyName}`,
           party._id,
           false,
           totals.otherChargesAmount,
@@ -641,11 +655,12 @@ class MetalTransactionService {
     baseTransactionId,
     voucherDate,
     voucherNumber,
-    adminId
+    adminId,
+    item
   ) {
     const entries = [];
     const partyName = party.customerName || party.accountCode;
-   
+
     // Party Gold Balance - CREDIT
     if (totals.pureWeight > 0) {
       entries.push(
@@ -695,7 +710,7 @@ class MetalTransactionService {
           metalTransactionId,
           "008",
           "OTHER_CHARGES",
-          `Party other charges - Purchase from ${partyName}`,
+          `${item.otherCharges.description} charges - Purchase from ${partyName}`,
           party._id,
           false,
           totals.otherChargesAmount,
@@ -840,7 +855,8 @@ class MetalTransactionService {
     baseTransactionId,
     voucherDate,
     voucherNumber,
-    adminId
+    adminId,
+    item
   ) {
     const entries = [];
     const partyName = party.customerName || party.accountCode;
@@ -937,7 +953,7 @@ class MetalTransactionService {
           metalTransactionId,
           "008",
           "OTHER_CHARGES",
-          `Party other charges - Purchase from ${partyName}`,
+          `${item.otherCharges.description} charges - Purchase from ${partyName}`,
           party._id,
           false,
           totals.otherChargesAmount,
@@ -1101,11 +1117,12 @@ class MetalTransactionService {
     baseTransactionId,
     voucherDate,
     voucherNumber,
-    adminId
+    adminId,
+    item
   ) {
     const entries = [];
     const partyName = party.customerName || party.accountCode;
-  
+
     if (totals.pureWeight > 0) {
       entries.push(
         this.createRegistryEntry(
@@ -1164,7 +1181,7 @@ class MetalTransactionService {
           metalTransactionId,
           "008",
           "OTHER_CHARGES",
-          `Party other charges - Purchase from ${partyName}`,
+          `${item.otherCharges.description} charges - Purchase from ${partyName}`,
           party._id,
           false,
           totals.otherChargesAmount,
@@ -1302,7 +1319,8 @@ class MetalTransactionService {
     baseTransactionId,
     voucherDate,
     voucherNumber,
-    adminId
+    adminId,
+    item
   ) {
     const entries = [];
     const partyName = party.customerName || party.accountCode;
@@ -1393,7 +1411,7 @@ class MetalTransactionService {
           metalTransactionId,
           "008",
           "OTHER_CHARGES",
-          `Party other charges - Purchase from ${partyName}`,
+          `${item.otherCharges.description} charges - Purchase from ${partyName}`,
           party._id,
           false,
           totals.otherChargesAmount,
@@ -1549,7 +1567,8 @@ class MetalTransactionService {
     baseTransactionId,
     voucherDate,
     voucherNumber,
-    adminId
+    adminId,
+    item
   ) {
     const entries = [];
     const partyName = party.customerName || party.accountCode;
@@ -1609,7 +1628,7 @@ class MetalTransactionService {
           metalTransactionId,
           "008",
           "OTHER_CHARGES",
-          `Party other charges - Purchase from ${partyName}`,
+          `${item.otherCharges.description} charges - Purchase from ${partyName}`,
           party._id,
           false,
           totals.otherChargesAmount,
@@ -1757,7 +1776,8 @@ class MetalTransactionService {
     baseTransactionId,
     voucherDate,
     voucherNumber,
-    adminId
+    adminId,
+    item
   ) {
     const entries = [];
     const partyName = party.customerName || party.accountCode;
@@ -1809,7 +1829,7 @@ class MetalTransactionService {
           metalTransactionId,
           "008",
           "OTHER_CHARGES",
-          `Party other charges - Purchase from ${partyName}`,
+          `${item.otherCharges.description} charges - Purchase from ${partyName}`,
           party._id,
           false,
           totals.otherChargesAmount,
@@ -1948,7 +1968,8 @@ class MetalTransactionService {
     baseTransactionId,
     voucherDate,
     voucherNumber,
-    adminId
+    adminId,
+    item
   ) {
     const entries = [];
     const partyName = party.customerName || party.accountCode;
@@ -2036,7 +2057,7 @@ class MetalTransactionService {
           metalTransactionId,
           "008",
           "OTHER_CHARGES",
-          `Party other charges - Purchase from ${partyName}`,
+          `${item.otherCharges.description} charges - Purchase from ${partyName}`,
           party._id,
           false,
           totals.otherChargesAmount,
@@ -2298,7 +2319,7 @@ class MetalTransactionService {
 
 
     const mode = this.getTransactionMode(fixed, unfix);
-  
+
     const balanceChanges = this.calculateBalanceChanges(
       transactionType,
       mode,
