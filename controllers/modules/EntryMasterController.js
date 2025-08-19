@@ -9,9 +9,7 @@ import AccountLog from "../../models/modules/AccountLog.js";
 const createEntry = async (req, res) => {
   try {
     const { type, stocks, cash } = req.body;
-
     const stockItems = stocks;
-    console.log(stockItems);
 
     // Validate entry type
     const validTypes = [
@@ -120,10 +118,7 @@ const createEntry = async (req, res) => {
 const editEntry = async (req, res) => {
   try {
     const { type, stocks, cash, voucherCode } = req.body;
-    console.log(req.body);
-
     const stockItems = stocks;
-    console.log(stockItems);
 
     // Validate entry type
     const validTypes = [
@@ -178,10 +173,6 @@ const editEntry = async (req, res) => {
         });
       }
     }
-
-    console.log('====================================');
-    console.log("On hre");
-    console.log('====================================');
 
     // First, delete related registry records
     await RegistryService.deleteRegistryByVoucher(voucherCode);
@@ -242,7 +233,7 @@ const editEntry = async (req, res) => {
 
 
 const handleMetalReceipt = async (entry) => {
-  console.log(entry);
+ 
   for (const stockItem of entry.stockItems) {
     const transactionId = await Registry.generateTransactionId();
     const description =
@@ -632,8 +623,7 @@ const getMetalPayments = async (req, res) => {
 const getMetalReceipts = async (req, res) => {
   try {
     const entries = await getEntriesByType("metal-receipt");
-    console.log("first")
-    console.log(entries)
+  
     res.json(entries);
   } catch (err) {
     console.error("Error fetching metal receipts:", err);

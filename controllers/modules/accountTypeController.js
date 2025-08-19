@@ -286,10 +286,6 @@ export const createTradeDebtor = async (req, res, next) => {
       }
     }
 
-    console.log(
-      "Final trade debtor data:",
-      JSON.stringify(tradeDebtorData, null, 2)
-    );
 
     const tradeDebtor = await AccountTypeService.createTradeDebtor(
       tradeDebtorData,

@@ -11,7 +11,7 @@ export const login = async (req, res, next) => {
     const { email, password } = req.body;
     const ipAddress = req.ip || req.connection.remoteAddress;
     const result = await loginAdmin(email, password, ipAddress);
-    console.log(req.body)
+
     res.cookie("refreshToken", result.data.tokens.refreshToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",

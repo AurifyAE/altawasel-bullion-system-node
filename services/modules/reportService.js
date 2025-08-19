@@ -770,7 +770,7 @@ export class ReportService {
   }
 
   buildAccountStatementPipeline(filters) {
-    
+
     const goldTypes = ["PARTY_GOLD_BALANCE"];
     const cashTypes = ["PARTY_CASH_BALANCE", "MAKING_CHARGES", "PREMIUM", "DISCOUNT"];
     const pipeline = [];
@@ -3116,10 +3116,6 @@ export class ReportService {
 
     // Step 2: Date filtering (optional, based on filters)
     if (filters.startDate || filters.endDate) {
-      console.log('====================================');
-      console.log(filters.startDate);
-      console.log(filters.endDate);
-      console.log('====================================');
       matchConditions.transactionDate = {};
       if (filters.startDate) {
         matchConditions.transactionDate.$gte = new Date(filters.startDate);

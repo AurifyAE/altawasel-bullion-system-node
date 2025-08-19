@@ -318,14 +318,12 @@ async function handleCashTransfer(
   const receiverPreviousBalance = receiverAccount.balances.cashBalance.amount;
   console.log(isNegativeTransfer);
   if (isNegativeTransfer) {
-    console.log("fist");
     // Negative transfer: sender gets credited, receiver gets debited
     // Example: value = -2000, sender balance = -1000
     // Result: sender = -1000 + 2000 = 1000, receiver = current - 2000
     senderAccount.balances.cashBalance.amount -= transferAmount;
     receiverAccount.balances.cashBalance.amount += transferAmount;
   } else {
-    console.log("second");
 
     // Positive transfer: sender gets debited, receiver gets credited
     // Example: value = 2000, sender balance = -1000

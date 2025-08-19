@@ -16,8 +16,8 @@ export const createMetalRate = async (req, res, next) => {
       addOnRate,
       isDefault
     } = req.body;
+    
     // Validation
-    console.log(req.body)
     if (
       !metal ||
       !rateType ||

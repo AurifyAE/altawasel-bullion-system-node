@@ -15,6 +15,7 @@ class MetalTransactionService {
 
     try {
       await session.withTransaction(async () => {
+
         this.validateTransactionData(transactionData);
 
         const [party, metalTransaction] = await Promise.all([
@@ -269,7 +270,6 @@ class MetalTransactionService {
     voucherNumber,
     adminId
   ) {
-    console.log("+++++++++++++++++++++++++++++++++++++");
     return mode === "fix"
       ? this.buildPurchaseFixEntries(
         totals,
@@ -396,7 +396,6 @@ class MetalTransactionService {
     const entries = [];
     const partyName = party.customerName || party.accountCode;
 
-    console.log(totals);
 
     // Purchase-fixing entry
     if (totals.pureWeight > 0) {
@@ -646,8 +645,7 @@ class MetalTransactionService {
   ) {
     const entries = [];
     const partyName = party.customerName || party.accountCode;
-    console.log(totals);
-    console.log(totals.purity);
+   
     // Party Gold Balance - CREDIT
     if (totals.pureWeight > 0) {
       entries.push(
@@ -1107,7 +1105,7 @@ class MetalTransactionService {
   ) {
     const entries = [];
     const partyName = party.customerName || party.accountCode;
-    console.log("first")
+  
     if (totals.pureWeight > 0) {
       entries.push(
         this.createRegistryEntry(
@@ -1293,7 +1291,6 @@ class MetalTransactionService {
         )
       );
     }
-    console.log("+++++++++++70270267209")
 
     return entries;
   }
@@ -2298,21 +2295,15 @@ class MetalTransactionService {
   static async updateAccountBalances(party, metalTransaction, session) {
     const { transactionType, fixed, unfix, stockItems, totalAmountSession } = metalTransaction;
     const totals = this.calculateTotals(stockItems, totalAmountSession);
-    console.log(totals);
+
 
     const mode = this.getTransactionMode(fixed, unfix);
-    console.log(mode);
+  
     const balanceChanges = this.calculateBalanceChanges(
       transactionType,
       mode,
       totals
     );
-
-    console.log('====================================');
-    console.log("balacne changes", balanceChanges);
-    console.log('====================================');
-
-
     const updateOps = this.buildUpdateOperations(balanceChanges);
 
     if (Object.keys(updateOps).length > 0) {
@@ -2324,9 +2315,7 @@ class MetalTransactionService {
   }
 
   static buildUpdateOperations(balanceChanges) {
-    console.log('====================================');
-    console.log(balanceChanges);
-    console.log('====================================');
+
     const incObj = {};
     const setObj = {};
 
@@ -2339,7 +2328,7 @@ class MetalTransactionService {
     const netCashChange =
       balanceChanges.cashBalance +
       balanceChanges.premiumBalance +
-      balanceChanges.otherCharges +
+      // balanceChanges.otherCharges +
       balanceChanges.discountBalance;
 
     if (netCashChange !== 0) {
@@ -2375,6 +2364,7 @@ class MetalTransactionService {
           cashBalance: totals.totalAmount,
           premiumBalance: 0,
           discountBalance: 0,
+          otherCharges: 0,
         },
       },
       sale: {
@@ -2392,6 +2382,7 @@ class MetalTransactionService {
           cashBalance: -totals.totalAmount,
           premiumBalance: 0,
           discountBalance: 0,
+          otherCharges: 0
         },
       },
       purchaseReturn: {
@@ -2409,6 +2400,7 @@ class MetalTransactionService {
           cashBalance: -totals.totalAmount,
           premiumBalance: 0,
           discountBalance: 0,
+          otherCharges: 0
         },
       },
       saleReturn: {
@@ -2426,6 +2418,7 @@ class MetalTransactionService {
           cashBalance: totals.totalAmount,
           premiumBalance: 0,
           discountBalance: 0,
+          otherCharges: 0
         },
       },
     };
@@ -2495,7 +2488,7 @@ class MetalTransactionService {
     );
   }
 
-  static validateTransactionData(transactionData) {
+  static validateTransactionData(transactionData, adminId) {
     const required = [
       "partyCode",
       "transactionType",
@@ -2535,6 +2528,65 @@ class MetalTransactionService {
         "INVALID_STOCK_ITEMS"
       );
     }
+
+    // Validate ObjectIds
+    const objectIdFields = [
+      { field: "partyCode", value: transactionData.partyCode },
+      { field: "partyCurrency", value: transactionData.partyCurrency },
+      { field: "itemCurrency", value: transactionData.itemCurrency },
+      { field: "baseCurrency", value: transactionData.baseCurrency },
+      { field: "adminId", value: adminId },
+    ];
+
+    objectIdFields.forEach(({ field, value }) => {
+      if (value && !mongoose.isValidObjectId(value)) {
+        throw createAppError(
+          `Invalid ${field} format`,
+          400,
+          `INVALID_${field.toUpperCase()}`
+        );
+      }
+    });
+
+    // Validate stockItems
+    transactionData.stockItems.forEach((item, index) => {
+      if (!item.stockCode || !mongoose.isValidObjectId(item.stockCode)) {
+        throw createAppError(
+          `Invalid stockCode for stock item at index ${index}`,
+          400,
+          "INVALID_STOCK_CODE"
+        );
+      }
+      if (item.metalRate && !mongoose.isValidObjectId(item.metalRate)) {
+        throw createAppError(
+          `Invalid metalRate for stock item at index ${index}`,
+          400,
+          "INVALID_METAL_RATE"
+        );
+      }
+      // Validate numeric fields
+      if (typeof item.pureWeight !== "number" || item.pureWeight < 0) {
+        throw createAppError(
+          `Invalid pureWeight for stock item at index ${index}`,
+          400,
+          "INVALID_PURE_WEIGHT"
+        );
+      }
+      if (typeof item.grossWeight !== "number" || item.grossWeight < 0) {
+        throw createAppError(
+          `Invalid grossWeight for stock item at index ${index}`,
+          400,
+          "INVALID_GROSS_WEIGHT"
+        );
+      }
+      if (typeof item.purity !== "number" || item.purity <= 0 || item.purity > 1) {
+        throw createAppError(
+          `Invalid purity for stock item at index ${index}`,
+          400,
+          "INVALID_PURITY"
+        );
+      }
+    });
 
     return true;
   }
@@ -3781,9 +3833,7 @@ class MetalTransactionService {
 
     // Making Charges Entry
     if (totalMakingCharges > 0) {
-      console.log('====================================');
-      console.log(voucherNumber);
-      console.log('====================================');
+
       registryEntries.push(
         new Registry({
           transactionId: transactionId,

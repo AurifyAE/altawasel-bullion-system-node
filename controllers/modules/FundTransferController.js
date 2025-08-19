@@ -5,8 +5,6 @@ export const accountToAccountTransfer = async (req, res, next) => {
     const { senderId, receiverId, value, assetType, voucher } = req.body;
     const adminId = req.admin.id;
 
-    console.log("Transfer request:", { senderId, receiverId, value, assetType });
-
     if (!senderId || !receiverId || value === undefined || value === null || !assetType) {
       return res.status(400).json({ message: "Missing required fields" });
     }

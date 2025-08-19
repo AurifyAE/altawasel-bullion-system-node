@@ -96,7 +96,7 @@ export const accountStatements = async (req, res) => {
 export const getStockAnalysis = async (req, res) => {
   try {
     const filters = req.body;
-    console.log(filters)
+
     // Call service to get report data
     const reportData = await reportService.getStockAnalysis(filters);
     // Return success response (even if no data found)

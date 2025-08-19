@@ -23,6 +23,8 @@ export const createMetalTransaction = async (req, res, next) => {
       voucher
     } = req.body;
 
+
+
     // Validation (already handled by middleware, but ensuring critical fields)
     if (
       !transactionType ||
@@ -47,9 +49,11 @@ export const createMetalTransaction = async (req, res, next) => {
       );
     }
 
+
     // Boolean logic for fix and unfix flags - ensure mutual exclusivity
     const isFixTransaction = fix === true || fix === "true";
     const isUnfixTransaction = unfix === true || unfix === "true";
+  
     const transactionData = {
       transactionType,
       fixed: isFixTransaction ? true : false,
@@ -86,7 +90,7 @@ export const createMetalTransaction = async (req, res, next) => {
         },
         vat: {
           percentage: Number(item.vat?.vatPercentage || 0),
-          amount: Number(item.vat?.amount || 0),
+          amount: Number(item.vat?.vatAmount || 0),
         },
         premium: {
           amount: Number(item.premium?.amount || 0),
@@ -217,7 +221,7 @@ export const updateMetalTransaction = async (req, res, next) => {
         400,
         "MISSING_TRANSACTION_ID"
       );
-    console.log(updateData)
+
     const updatedTransaction = await MetalTransactionService.updateMetalTransaction(id, updateData, req.admin.id);
 
     res.status(200).json({

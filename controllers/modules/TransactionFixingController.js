@@ -4,7 +4,6 @@ import { createAppError } from "../../utils/errorHandler.js";
 // Create Transaction
 export const createTransaction = async (req, res, next) => {
   try {
-    console.log(req.body);
 
     const { partyId, salesman, paymentTerms, type, orders, voucherCode, voucherType, prefix, goldBidValue } = req.body;
 
