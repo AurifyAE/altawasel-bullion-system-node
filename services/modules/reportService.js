@@ -770,6 +770,9 @@ export class ReportService {
   }
 
   buildAccountStatementPipeline(filters) {
+    console.log('====================================');
+    console.log(filters);
+    console.log('====================================');
 
     const goldTypes = ["PARTY_GOLD_BALANCE"];
     const cashTypes = ["PARTY_CASH_BALANCE", "MAKING_CHARGES", "PREMIUM", "DISCOUNT"];
@@ -813,12 +816,14 @@ export class ReportService {
       }
     });
     // Voucher prefix filter
+    // Voucher prefix filter
     if (filters.voucher?.length > 0) {
-      const regexFilters = filters.voucher.map((prefix) => ({
-        reference: { $regex: `^${prefix}\\d+$`, $options: "i" },
+      const regexFilters = filters.voucher.map((v) => ({
+        reference: { $regex: `^${v.prefix}\\d+$`, $options: "i" },
       }));
       pipeline.push({ $match: { $or: regexFilters } });
     }
+
 
     if (filters.accountType?.length > 0) {
       pipeline.push({
