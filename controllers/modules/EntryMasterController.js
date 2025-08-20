@@ -10,7 +10,6 @@ const createEntry = async (req, res) => {
   try {
     const { type, stocks, cash } = req.body;
     const stockItems = stocks;
-
     // Validate entry type
     const validTypes = [
       "metal-receipt",
@@ -84,6 +83,9 @@ const createEntry = async (req, res) => {
       ...(type.includes("cash") ? { cash } : {}),
     };
 
+    console.log('====================================');
+    console.log(JSON.stringify(entryData));
+    console.log('====================================');
     const entry = new Entry(entryData);
 
     // Handle specific entry types
