@@ -78,6 +78,9 @@ export const TransactionFixingService = {
       if (!account) {
         throw createAppError("Account not found", 404, "ACCOUNT_NOT_FOUND");
       }
+      console.log('====================================');
+      console.log(transactionData);
+      console.log('====================================');
 
       // ====== CREATE TRANSACTION DOCUMENT ======
       const transaction = new TransactionFixing({
@@ -285,7 +288,7 @@ export const TransactionFixingService = {
     const session = await mongoose.startSession();
     session.startTransaction();
 
-   
+
     try {
       // Validate transaction ID
       if (!mongoose.Types.ObjectId.isValid(id)) {
@@ -312,11 +315,11 @@ export const TransactionFixingService = {
       if (updateData.orders && (!Array.isArray(updateData.orders) || updateData.orders.length === 0)) {
         throw createAppError("At least one order is required", 400, "NO_ORDERS");
       }
-      
+
       if (updateData.orders) {
-    
+
         updateData.orders.forEach((order, index) => {
-          
+
           if (!order.quantityGm || order.quantityGm <= 0) {
             throw createAppError(`Order ${index + 1}: Quantity must be positive`, 400, "INVALID_QUANTITY");
           }
@@ -331,7 +334,7 @@ export const TransactionFixingService = {
           }
         });
       }
-      
+
 
       // Validate voucher date if provided
       if (updateData.voucherDate) {
@@ -341,7 +344,7 @@ export const TransactionFixingService = {
         }
         updateData.voucherDate = voucherDate;
       }
-      
+
 
       // Verify account exists
       const account = await Account.findById(updateData.partyId || transaction.partyId).session(session);
