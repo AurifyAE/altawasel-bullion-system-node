@@ -36,6 +36,33 @@ const validateTransactionData = (data, isUpdate = false) => {
       "INVALID_ORDERS_FORMAT"
     );
   }
+
+  // Validate orders array elements
+  if (data.orders && Array.isArray(data.orders)) {
+    data.orders.forEach((order, index) => {
+      if (order.quantityGm !== undefined && (isNaN(parseFloat(order.quantityGm)) || parseFloat(order.quantityGm) < 0)) {
+        throw createAppError(
+          `Invalid quantity in order ${index + 1}: must be a non-negative number`,
+          400,
+          "INVALID_QUANTITY"
+        );
+      }
+      if (order.price !== undefined && (isNaN(parseFloat(order.price)) || parseFloat(order.price) < 0)) {
+        throw createAppError(
+          `Invalid price in order ${index + 1}: must be a non-negative number`,
+          400,
+          "INVALID_PRICE"
+        );
+      }
+      if (order.goldBidValue !== undefined && (isNaN(parseFloat(order.goldBidValue)) || parseFloat(order.goldBidValue) < 0)) {
+        throw createAppError(
+          `Invalid gold bid value in order ${index + 1}: must be a non-negative number`,
+          400,
+          "INVALID_GOLD_BID_VALUE"
+        );
+      }
+    });
+  }
 };
 
 /**
@@ -45,6 +72,9 @@ const validateTransactionData = (data, isUpdate = false) => {
  * @param {Function} next - Express next middleware function
  */
 export const createTransaction = async (req, res, next) => {
+  console.log('====================================');
+  console.log(req.body);
+  console.log('====================================');
   try {
     const {
       partyId,
@@ -177,44 +207,68 @@ export const getTransactionById = async (req, res, next) => {
  */
 export const updateTransaction = async (req, res, next) => {
   try {
+    console.log('====================================');
+    console.log("On hereeeeee",req.body);
+    console.log('====================================');
     const { id } = req.params;
-    const { partyId, quantityGm, type, metalType, notes, status, value } = req.body;
+    const {
+      partyId,
+      salesman,
+      paymentTerms,
+      type,
+      orders,
+      voucherCode,
+      voucherType,
+      prefix,
+      goldBidValue,
+      status,
+      notes,
+    } = req.body;
 
     if (!id?.trim()) {
       throw createAppError("Transaction ID is required", 400, "MISSING_ID");
     }
 
     const updateData = {};
-    if (partyId) updateData.partyId = partyId.trim();
-    if (value !== undefined) {
-      const parsedValue = parseFloat(value);
-      if (isNaN(parsedValue) || parsedValue <= 0) {
-        throw createAppError(
-          "Value must be a positive number",
-          400,
-          "INVALID_VALUE"
-        );
-      }
-      updateData.value = parsedValue;
-    }
-    if (quantityGm !== undefined) {
-      const parsedQuantity = parseFloat(quantityGm);
-      if (isNaN(parsedQuantity) || parsedQuantity <= 0) {
-        throw createAppError(
-          "Quantity must be a positive number",
-          400,
-          "INVALID_QUANTITY"
-        );
-      }
-      updateData.quantityGm = parsedQuantity;
-    }
-    if (type) updateData.type = type.toUpperCase();
-    if (metalType) updateData.metalType = metalType.trim();
-    if (notes !== undefined) updateData.notes = notes ? notes.trim() : null;
-    if (status) updateData.status = status;
 
+    // Handle all fields similar to createTransaction
+    if (partyId !== undefined) updateData.partyId = partyId?.trim();
+    if (salesman !== undefined) updateData.salesman = salesman?.trim() || DEFAULT_SALESMAN;
+    if (paymentTerms !== undefined) updateData.paymentTerms = paymentTerms?.trim() || DEFAULT_PAYMENT_TERMS;
+    if (type !== undefined) updateData.type = type?.toUpperCase();
+    if (voucherCode !== undefined) updateData.voucherNumber = voucherCode || null;
+    if (voucherType !== undefined) updateData.voucherType = voucherType?.trim();
+    if (prefix !== undefined) updateData.prefix = prefix?.trim() || DEFAULT_PREFIX;
+    if (goldBidValue !== undefined) {
+      const parsedGoldBidValue = parseFloat(goldBidValue);
+      if (goldBidValue !== null && (isNaN(parsedGoldBidValue) || parsedGoldBidValue < 0)) {
+        throw createAppError(
+          "Gold bid value must be a non-negative number",
+          400,
+          "INVALID_GOLD_BID_VALUE"
+        );
+      }
+      updateData.goldBidValue = parsedGoldBidValue || 0;
+    }
+    if (notes !== undefined) updateData.notes = notes?.trim() || null;
+    if (status !== undefined) updateData.status = status?.trim();
+
+    // Handle orders array consistently with createTransaction
+    if (orders !== undefined) {
+      updateData.orders = orders?.map(order => ({
+        quantityGm: parseFloat(order.quantityGm) || 0,
+        notes: order.notes?.trim() || "",
+        price: parseFloat(order.price) || 0,
+        goldBidValue: parseFloat(order.goldBidValue) || 0,
+        metalType: order.metalType?.trim(),
+        paymentTerms: order.paymentTerms?.trim() || DEFAULT_PAYMENT_TERMS,
+      })) || [];
+    }
+
+    // Validate the update data
     validateTransactionData(updateData, true);
 
+    // Ensure at least one field is provided for update
     if (Object.keys(updateData).length === 0) {
       throw createAppError(
         "At least one field is required to update",
@@ -235,6 +289,7 @@ export const updateTransaction = async (req, res, next) => {
       data: transaction,
     });
   } catch (error) {
+    console.error('Update transaction error:', error);
     next(error);
   }
 };
@@ -270,7 +325,6 @@ export const deleteTransaction = async (req, res, next) => {
 
 /**
  * Cancel a transaction
- * @param {Object}books:1-10
  * @param {Object} req - Express request object
  * @param {Object} res - Express response object
  * @param {Function} next - Express next middleware function
