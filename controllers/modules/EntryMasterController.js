@@ -5,6 +5,7 @@ import AccountMaster from "../../models/modules/accountMaster.js";
 import InventoryService from "../../services/modules/inventoryService.js";
 import RegistryService from "../../services/modules/RegistryService.js";
 import AccountLog from "../../models/modules/AccountLog.js";
+import { createAppError } from "../../utils/errorHandler.js";
 
 const createEntry = async (req, res) => {
   try {
