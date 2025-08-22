@@ -342,7 +342,7 @@ const handleCashReceipt = async (entry) => {
       throw createAppError("Amount must be positive", 400, "INVALID_AMOUNT");
     }
     const previousBalance = account.balances.cashBalance.amount || 0;
-    const balanceAfter = previousBalance + amount;
+    const balanceAfter = previousBalance - amount;
 
     // Update balances
     account.balances.cashBalance.amount = balanceAfter;
@@ -460,7 +460,7 @@ const handleCashPayment = async (entry) => {
       throw createAppError("Amount must be positive", 400, "INVALID_AMOUNT");
     }
     const previousBalance = account.balances.cashBalance.amount || 0;
-    const balanceAfter = previousBalance - amount;
+    const balanceAfter = previousBalance + amount;
 
     // Check for sufficient balance
     // if (balanceAfter < 0) {
