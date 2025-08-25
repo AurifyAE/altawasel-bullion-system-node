@@ -380,6 +380,9 @@ export const getTradeDebtorById = async (req, res, next) => {
 
 // Update trade debtor
 export const updateTradeDebtor = async (req, res, next) => {
+  console.log('====================================');
+  console.log(req.body);
+  console.log('====================================');
   console.log("Update request received for trade debtor");
   let uploadedFiles = [];
 
@@ -400,10 +403,7 @@ export const updateTradeDebtor = async (req, res, next) => {
     if (!id) {
       throw createAppError("Trade debtor ID is required", 400, "MISSING_ID");
     }
-
-    console.log("Update request body:", req.body);
-    console.log("Files by field:", req.filesByField);
-    console.log("All files:", req.files);
+  
 
     // Keep track of uploaded files for cleanup on error
     if (req.files && req.files.length > 0) {
