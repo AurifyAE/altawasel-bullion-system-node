@@ -12,7 +12,6 @@ class MetalTransactionService {
   static async createMetalTransaction(transactionData, adminId) {
     const session = await mongoose.startSession();
     let createdTransaction;
-
     try {
       await session.withTransaction(async () => {
 
@@ -860,7 +859,9 @@ class MetalTransactionService {
   ) {
     const entries = [];
     const partyName = party.customerName || party.accountCode;
-
+    console.log('====================================');
+    console.log(totals);
+    console.log('====================================');
     // Purchase-return-fixing entry
     if (totals.pureWeight > 0) {
       entries.push(
@@ -1411,12 +1412,13 @@ class MetalTransactionService {
           metalTransactionId,
           "008",
           "OTHER_CHARGES",
-          `${item.otherCharges.description} charges - Purchase from ${partyName}`,
+          `${item.otherCharges.description} charges - sale to ${partyName}`,
           party._id,
           false,
           totals.otherChargesAmount,
-          totals.otherChargesAmount,
+          0,
           {
+            debit: totals.otherChargesAmount,
             goldDebit: totals.grossWeight,
             cashDebit: totals.goldValue,
             grossWeight: totals.grossWeight,
@@ -1436,7 +1438,7 @@ class MetalTransactionService {
           metalTransactionId,
           "009",
           "VAT_AMOUNT",
-          `Party Vat amount - Purchase from ${partyName}`,
+          `Party Vat amount - sale to ${partyName}`,
           party._id,
           false,
           totals.vatAmount,
@@ -1628,12 +1630,13 @@ class MetalTransactionService {
           metalTransactionId,
           "008",
           "OTHER_CHARGES",
-          `${item.otherCharges.description} charges - Purchase from ${partyName}`,
+          `${item.otherCharges.description} charges - Unfix Sale return from ${partyName}`,
           party._id,
           false,
           totals.otherChargesAmount,
-          totals.otherChargesAmount,
+          0,
           {
+            debit: totals.otherChargesAmount,
             goldDebit: totals.grossWeight,
             cashDebit: totals.goldValue,
             grossWeight: totals.grossWeight,
@@ -1653,7 +1656,7 @@ class MetalTransactionService {
           metalTransactionId,
           "009",
           "VAT_AMOUNT",
-          `Party Vat amount - Purchase from ${partyName}`,
+          `Party Vat amount - Unfix Sale return from ${partyName}`,
           party._id,
           false,
           totals.vatAmount,
@@ -1829,7 +1832,7 @@ class MetalTransactionService {
           metalTransactionId,
           "008",
           "OTHER_CHARGES",
-          `${item.otherCharges.description} charges - Purchase from ${partyName}`,
+          `${item.otherCharges.description} charges - Unfix Sale return from ${partyName}`,
           party._id,
           false,
           totals.otherChargesAmount,
@@ -1854,7 +1857,7 @@ class MetalTransactionService {
           metalTransactionId,
           "009",
           "VAT_AMOUNT",
-          `Party Vat amount - Purchase from ${partyName}`,
+          `Party Vat amount - Unfix Sale return from ${partyName}`,
           party._id,
           false,
           totals.vatAmount,
@@ -2057,7 +2060,7 @@ class MetalTransactionService {
           metalTransactionId,
           "008",
           "OTHER_CHARGES",
-          `${item.otherCharges.description} charges - Purchase from ${partyName}`,
+          `${item.otherCharges.description} charges -  Sale return from ${partyName}`,
           party._id,
           false,
           totals.otherChargesAmount,
@@ -2082,7 +2085,7 @@ class MetalTransactionService {
           metalTransactionId,
           "009",
           "VAT_AMOUNT",
-          `Party Vat amount - Purchase from ${partyName}`,
+          `Party Vat amount -  Sale return from ${partyName}`,
           party._id,
           false,
           totals.vatAmount,
