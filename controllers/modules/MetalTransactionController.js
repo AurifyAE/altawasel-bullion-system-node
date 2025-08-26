@@ -3,9 +3,9 @@ import MetalTransactionService from "../../services/modules/MetalTransactionServ
 import { createAppError } from "../../utils/errorHandler.js";
 
 export const createMetalTransaction = async (req, res, next) => {
-  try {
-    
+  console.log(JSON.stringify(req.body, null, 2));
 
+  try {
     const {
       transactionType,
       voucherType,
@@ -51,7 +51,7 @@ export const createMetalTransaction = async (req, res, next) => {
     // Boolean logic for fix and unfix flags - ensure mutual exclusivity
     const isFixTransaction = fix === true || fix === "true";
     const isUnfixTransaction = unfix === true || unfix === "true";
-  
+
     const transactionData = {
       transactionType,
       fixed: isFixTransaction ? true : false,
