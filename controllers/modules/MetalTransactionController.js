@@ -4,7 +4,6 @@ import { createAppError } from "../../utils/errorHandler.js";
 
 export const createMetalTransaction = async (req, res, next) => {
   console.log(JSON.stringify(req.body, null, 2));
-
   try {
     const {
       transactionType,
@@ -84,7 +83,7 @@ export const createMetalTransaction = async (req, res, next) => {
         otherCharges: {
           amount: Number(item.otherCharges?.amount || 0),
           description: item.otherCharges?.description || "",
-          percentage: Number(item.otherCharges?.Percentage || 0),
+          percentage: Number(item.otherCharges?.percentage || 0),
         },
         vat: {
           percentage: Number(item.vat?.vatPercentage || 0),
