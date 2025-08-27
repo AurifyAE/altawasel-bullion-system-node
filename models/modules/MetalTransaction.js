@@ -110,6 +110,7 @@ const StockItemSchema = new mongoose.Schema(
         default: 0,
         min: [0, "Amount cannot be negative"],
       },
+      // rate is actually the percentage
       rate: {
         type: Number,
         default: 0,
