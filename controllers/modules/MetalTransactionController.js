@@ -83,7 +83,7 @@ export const createMetalTransaction = async (req, res, next) => {
         otherCharges: {
           amount: Number(item.otherCharges?.amount || 0),
           description: item.otherCharges?.description || "",
-          percentage: Number(item.otherCharges?.percentage || 0),
+          rate: Number(item.otherCharges?.percentage || 0),
         },
         vat: {
           percentage: Number(item.vat?.vatPercentage || 0),
