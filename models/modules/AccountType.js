@@ -50,19 +50,26 @@ const AccountSchema = new mongoose.Schema(
         lastUpdated: { type: Date, default: Date.now }
       },
       cashBalance: {
-        currency: { type: mongoose.Schema.Types.ObjectId, ref: "CurrencyMaster", default: null },
-        amount: { type: Number, default: 0 },
-        lastUpdated: { type: Date, default: Date.now }
+        type: [{
+          currency: { type: mongoose.Schema.Types.ObjectId, ref: "CurrencyMaster", required: true },
+          amount: { type: Number, default: 0 },
+          isDefault: { type: Boolean, default: false },
+          lastUpdated: { type: Date, default: Date.now }
+        }],
+        default: []
       },
       totalOutstanding: { type: Number, default: 0 },
       lastBalanceUpdate: { type: Date, default: Date.now }
     },
+
 
     // A/C Definition
     acDefinition: {
       currencies: {
         type: [{
           currency: { type: mongoose.Schema.Types.ObjectId, ref: "CurrencyMaster" },
+          bid: { type: Number, min: 0, default: 0 },  // Spread Bid
+          ask: { type: Number, min: 0, default: 0 },  // Spread Ask
           isDefault: { type: Boolean, default: false }
         }],
         required: [true, "At least one currency is required"],
@@ -81,7 +88,7 @@ const AccountSchema = new mongoose.Schema(
         default: []
       }
     },
-
+    
     // Limits & Margins
     limitsMargins: {
       type: [{
@@ -216,7 +223,7 @@ const AccountSchema = new mongoose.Schema(
       }],
       default: []
     },
-    
+
     isSupplier: { type: Boolean, default: false },
 
     // Status and Activity
@@ -246,12 +253,29 @@ AccountSchema.index({ "balances.cashBalance.amount": 1 });
 
 // Pre-save middleware
 AccountSchema.pre("save", function (next) {
+  // Ensure balances object exists
+  if (!this.balances) this.balances = {};
+  if (!this.balances.goldBalance) {
+    this.balances.goldBalance = {
+      totalGrams: 0,
+      totalValue: 0,
+      lastUpdated: new Date()
+    };
+  }
+  if (!this.balances.cashBalance) {
+    this.balances.cashBalance = {
+      currency: null,
+      amount: 0,
+      lastUpdated: new Date()
+    };
+  }
+
   // Uppercase account code
   if (this.accountCode) {
     this.accountCode = this.accountCode.toUpperCase();
   }
 
-  // Set default currency for cash balance
+  // Set default currency for cash balance if missing
   if (this.acDefinition?.currencies?.length > 0) {
     const defaultCurrency = this.acDefinition.currencies.find(c => c.isDefault);
     if (defaultCurrency && !this.balances.cashBalance.currency) {
@@ -270,14 +294,15 @@ AccountSchema.pre("save", function (next) {
     }
   };
 
-  // Ensure single primary/default items (only if arrays exist and are not null)
-  if (this.addresses) ensureSingle(this.addresses, 'isPrimary');
-  if (this.employees) ensureSingle(this.employees, 'isPrimary');
-  if (this.bankDetails) ensureSingle(this.bankDetails, 'isPrimary');
-  if (this.acDefinition?.currencies) ensureSingle(this.acDefinition.currencies, 'isDefault');
+  // Ensure single primary/default
+  if (this.addresses) ensureSingle(this.addresses, "isPrimary");
+  if (this.employees) ensureSingle(this.employees, "isPrimary");
+  if (this.bankDetails) ensureSingle(this.bankDetails, "isPrimary");
+  if (this.acDefinition?.currencies) ensureSingle(this.acDefinition.currencies, "isDefault");
 
   next();
 });
+
 
 // Static Methods
 AccountSchema.statics.isAccountCodeExists = async function (accountCode, excludeId = null) {

@@ -2317,59 +2317,92 @@ class MetalTransactionService {
   }
 
   static async updateAccountBalances(party, metalTransaction, session) {
-    const { transactionType, fixed, unfix, stockItems, totalAmountSession } = metalTransaction;
-    const totals = this.calculateTotals(stockItems, totalAmountSession);
 
+  const { transactionType, fixed, unfix, stockItems, totalAmountSession } = metalTransaction;
+  const totals = this.calculateTotals(stockItems, totalAmountSession);
+  const mode = this.getTransactionMode(fixed, unfix);
 
-    const mode = this.getTransactionMode(fixed, unfix);
+  const balanceChanges = this.calculateBalanceChanges(
+    transactionType,
+    mode,
+    totals,
+  );
 
-    const balanceChanges = this.calculateBalanceChanges(
-      transactionType,
-      mode,
-      totals
-    );
-    const updateOps = this.buildUpdateOperations(balanceChanges);
+  const currencyID = metalTransaction.partyCurrency;
 
-    if (Object.keys(updateOps).length > 0) {
-      await Account.findByIdAndUpdate(party._id, updateOps, {
+  // Build update operations
+  const updateOps = this.buildUpdateOperations(balanceChanges, currencyID);
+
+  // if (Object.keys(updateOps).length > 0) {
+  //   await Account.findByIdAndUpdate(
+  //     party._id,
+  //     updateOps,
+  //     {
+  //       session,
+  //       new: true,
+  //       arrayFilters: currencyID
+  //         ? [{ "elem.currency": currencyID }]
+  //         : [], // apply array filter only when updating cashBalance
+  //     }
+  //   );
+  // }
+
+  if (Object.keys(updateOps).length > 0) {
+    await Account.findByIdAndUpdate(
+      party._id,
+      updateOps,
+      {
         session,
         new: true,
-      });
-    }
+        arrayFilters: [{ "elem.isDefault": true }] // ✅ always update default currency , change when u need
+      }
+    );
+  }
+}
+
+
+static buildUpdateOperations(balanceChanges, currencyID) {
+  const incObj = {};
+  const setObj = {};
+
+  // 🔹 Handle gold balance updates
+  if (balanceChanges.goldBalance !== 0) {
+    incObj["balances.goldBalance.totalGrams"] = balanceChanges.goldBalance;
+    incObj["balances.goldBalance.totalValue"] = balanceChanges.goldValue;
+    setObj["balances.goldBalance.lastUpdated"] = new Date();
   }
 
-  static buildUpdateOperations(balanceChanges) {
+  // // 🔹 Handle cash balance updates for a specific currency
+  // if (currencyID && balanceChanges.cashBalance !== 0) {
+  //   incObj["balances.cashBalance.$[elem].amount"] = parseFloat(
+  //     balanceChanges.cashBalance.toFixed(2)
+  //   );
+  //   setObj["balances.cashBalance.$[elem].lastUpdated"] = new Date();
+  // }
 
-    const incObj = {};
-    const setObj = {};
+  // // 🔹 Always update the last balance update timestamp
+  // setObj["balances.lastBalanceUpdate"] = new Date();
 
-    if (balanceChanges.goldBalance !== 0) {
-      incObj["balances.goldBalance.totalGrams"] = balanceChanges.goldBalance;
-      incObj["balances.goldBalance.totalValue"] = balanceChanges.goldValue;
-      setObj["balances.goldBalance.lastUpdated"] = new Date();
-    }
-
-    const netCashChange =
-      balanceChanges.cashBalance +
-      balanceChanges.premiumBalance +
-      // balanceChanges.otherCharges +
-      balanceChanges.discountBalance;
-
-    if (netCashChange !== 0) {
-      incObj["balances.cashBalance.amount"] = parseFloat(
-        netCashChange.toFixed(2)
-      );
-      setObj["balances.cashBalance.lastUpdated"] = new Date();
-    }
-
-    setObj["balances.lastBalanceUpdate"] = new Date();
-
-    const updateOps = {};
-    if (Object.keys(incObj).length > 0) updateOps.$inc = incObj;
-    if (Object.keys(setObj).length > 0) updateOps.$set = setObj;
-
-    return updateOps;
+  // 🔹 Handle cash balance updates for DEFAULT currency
+  if (balanceChanges.cashBalance !== 0) {
+    incObj["balances.cashBalance.$[elem].amount"] = parseFloat(
+      balanceChanges.cashBalance.toFixed(2)
+    );
+    setObj["balances.cashBalance.$[elem].lastUpdated"] = new Date();
   }
+
+  // 🔹 Always update the last balance update timestamp
+  setObj["balances.lastBalanceUpdate"] = new Date();
+
+  // 🔹 Build update object
+  const updateOps = {};
+  if (Object.keys(incObj).length > 0) updateOps.$inc = incObj;
+  if (Object.keys(setObj).length > 0) updateOps.$set = setObj;
+
+  return updateOps;
+}
+
+
 
   static calculateBalanceChanges(transactionType, mode, totals) {
     const balanceMatrix = {
@@ -2504,6 +2537,9 @@ class MetalTransactionService {
     if (error.statusCode) {
       throw error;
     }
+    console.log('====================================');
+    console.log(error.message);
+    console.log('====================================');
 
     throw createAppError(
       "Internal server error occurred",

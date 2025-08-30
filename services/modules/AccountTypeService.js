@@ -6,22 +6,65 @@ class AccountTypeService {
   // Create new trade debtor
 static async createTradeDebtor(debtorData, adminId) {
   try {
+    console.log('====================================');
+    console.log(JSON.stringify(debtorData));
+    console.log('====================================');
+
     // Check if account code already exists
-    const isCodeExists = await AccountType.isAccountCodeExists(
-      debtorData.accountCode
-    );
+    const isCodeExists = await AccountType.isAccountCodeExists(debtorData.accountCode);
     if (isCodeExists) {
       throw createAppError(
-        "Account code already exists",
+        'Account code already exists',
         400,
-        "DUPLICATE_ACCOUNT_CODE"
+        'DUPLICATE_ACCOUNT_CODE'
       );
     }
 
-    // Set created by
+    // Set createdBy
     debtorData.createdBy = adminId;
 
-    // FIXED: Clean up empty objects to prevent validation errors
+    // Initialize balances if not provided
+    if (!debtorData.balances) {
+      debtorData.balances = {};
+    }
+
+    // Initialize cashBalances as an array if not provided
+    if (!debtorData.balances.cashBalance || !Array.isArray(debtorData.balances.cashBalance)) {
+      debtorData.balances.cashBalance = [];
+    }
+
+    // Ensure cashBalances has at least one entry with the default currency from acDefinition
+    if (
+      debtorData.acDefinition?.currencies?.length > 0 &&
+      debtorData.balances.cashBalance.length === 0
+    ) {
+      const defaultCurrency = debtorData.acDefinition.currencies.find(c => c.isDefault);
+      if (defaultCurrency) {
+        debtorData.balances.cashBalance.push({
+          currency: defaultCurrency.currency,
+          amount: 0,
+          isDefault: true,
+          lastUpdated: new Date(),
+        });
+      }
+    }
+
+    // Ensure only one default currency in cashBalances
+    if (debtorData.balances.cashBalance.length > 0) {
+      let defaultFound = false;
+      debtorData.balances.cashBalance.forEach((cashBalance, index) => {
+        if (cashBalance.isDefault && !defaultFound) {
+          defaultFound = true;
+        } else if (cashBalance.isDefault && defaultFound) {
+          cashBalance.isDefault = false;
+        } else if (index === 0 && !defaultFound) {
+          cashBalance.isDefault = true;
+          defaultFound = true;
+        }
+      });
+    }
+
+    // Clean up empty objects to prevent validation errors
     if (debtorData.vatGstDetails && Object.keys(debtorData.vatGstDetails).length === 0) {
       delete debtorData.vatGstDetails; // Remove empty object
     }
@@ -33,14 +76,15 @@ static async createTradeDebtor(debtorData, adminId) {
     // Clean up kycDetails array - remove items that have no meaningful data
     if (debtorData.kycDetails && Array.isArray(debtorData.kycDetails)) {
       debtorData.kycDetails = debtorData.kycDetails.filter(kyc => {
-        // Keep KYC record if it has documents or any meaningful data
-        return (kyc.documents && kyc.documents.length > 0) || 
-               kyc.documentType || 
-               kyc.documentNumber || 
-               kyc.issueDate || 
-               kyc.expiryDate;
+        return (
+          (kyc.documents && kyc.documents.length > 0) ||
+          kyc.documentType ||
+          kyc.documentNumber ||
+          kyc.issueDate ||
+          kyc.expiryDate
+        );
       });
-      
+
       // If no valid KYC records remain, remove the field entirely
       if (debtorData.kycDetails.length === 0) {
         delete debtorData.kycDetails;
@@ -93,7 +137,11 @@ static async createTradeDebtor(debtorData, adminId) {
     }
 
     // Ensure only one default currency in acDefinition (required field)
-    if (debtorData.acDefinition && debtorData.acDefinition.currencies && debtorData.acDefinition.currencies.length > 0) {
+    if (
+      debtorData.acDefinition &&
+      debtorData.acDefinition.currencies &&
+      debtorData.acDefinition.currencies.length > 0
+    ) {
       let defaultFound = false;
       debtorData.acDefinition.currencies.forEach((currency, index) => {
         if (currency.isDefault && !defaultFound) {
@@ -108,7 +156,11 @@ static async createTradeDebtor(debtorData, adminId) {
     }
 
     // Ensure only one default branch (if branches provided)
-    if (debtorData.acDefinition && debtorData.acDefinition.branches && debtorData.acDefinition.branches.length > 0) {
+    if (
+      debtorData.acDefinition &&
+      debtorData.acDefinition.branches &&
+      debtorData.acDefinition.branches.length > 0
+    ) {
       let defaultFound = false;
       debtorData.acDefinition.branches.forEach((branch, index) => {
         if (branch.isDefault && !defaultFound) {
@@ -131,62 +183,61 @@ static async createTradeDebtor(debtorData, adminId) {
         if (kyc.isVerified === undefined) {
           kyc.isVerified = false;
         }
-        // Don't set issueDate if it's not provided - let schema handle defaults
       });
     }
 
-    // Create trade debtor - schema will handle defaults
+    // Create trade debtor
     const tradeDebtor = new AccountType(debtorData);
     await tradeDebtor.save();
 
     // Populate references for response
     await tradeDebtor.populate([
       {
-        path: "acDefinition.currencies.currency",
-        select: "currencyCode currencyName symbol description",
+        path: 'acDefinition.currencies.currency',
+        select: 'currencyCode currencyName symbol description',
       },
       {
-        path: "acDefinition.branches.branch",
-        select: "branchCode branchName address",
+        path: 'acDefinition.branches.branch',
+        select: 'branchCode branchName address',
       },
       {
-        path: "balances.cashBalance.currency",
-        select: "currencyCode currencyName symbol",
+        path: 'balances.cashBalance.currency',
+        select: 'currencyCode currencyName symbol',
       },
       {
-        path: "createdBy",
-        select: "name email role",
+        path: 'createdBy',
+        select: 'name email role',
       },
     ]);
-    
+
     return tradeDebtor;
   } catch (error) {
-    if (error.name === "ValidationError") {
-      const messages = Object.values(error.errors).map((err) => err.message);
+    if (error.name === 'ValidationError') {
+      const messages = Object.values(error.errors).map(err => err.message);
       throw createAppError(
-        `Validation failed: ${messages.join(", ")}`,
+        `Validation failed: ${messages.join(', ')}`,
         400,
-        "VALIDATION_ERROR"
+        'VALIDATION_ERROR'
       );
     }
-    
+
     if (error.code === 11000) {
       const field = Object.keys(error.keyPattern)[0];
       throw createAppError(
         `Duplicate value for field: ${field}`,
         400,
-        "DUPLICATE_FIELD_VALUE"
+        'DUPLICATE_FIELD_VALUE'
       );
     }
-    
-    if (error.name === "CastError") {
+
+    if (error.name === 'CastError') {
       throw createAppError(
         `Invalid value for field: ${error.path}`,
         400,
-        "INVALID_FIELD_VALUE"
+        'INVALID_FIELD_VALUE'
       );
     }
-    
+
     throw error;
   }
 }
@@ -245,7 +296,7 @@ static async createTradeDebtor(debtorData, adminId) {
           .sort(sort)
           .skip(skip)
           .limit(parseInt(limit)),
-          AccountType.countDocuments(query),
+        AccountType.countDocuments(query),
       ]);
 
       return {

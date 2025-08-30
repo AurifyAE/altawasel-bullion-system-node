@@ -4,9 +4,7 @@ import { createAppError } from "../../utils/errorHandler.js";
 // Create new trade debtor
 export const createTradeDebtor = async (req, res, next) => {
   try {
-    console.log("Request body:", req.body);
-    console.log("Files info:", req.filesInfo);
-    console.log("Files by field:", req.filesByField);
+
 
     const {
       title,
@@ -403,7 +401,7 @@ export const updateTradeDebtor = async (req, res, next) => {
     if (!id) {
       throw createAppError("Trade debtor ID is required", 400, "MISSING_ID");
     }
-  
+
 
     // Keep track of uploaded files for cleanup on error
     if (req.files && req.files.length > 0) {
