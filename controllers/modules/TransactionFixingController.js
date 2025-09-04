@@ -72,9 +72,7 @@ const validateTransactionData = (data, isUpdate = false) => {
  * @param {Function} next - Express next middleware function
  */
 export const createTransaction = async (req, res, next) => {
-  console.log('====================================');
-  console.log(req.body);
-  console.log('====================================');
+
   try {
     const {
       partyId,
@@ -208,7 +206,7 @@ export const getTransactionById = async (req, res, next) => {
 export const updateTransaction = async (req, res, next) => {
   try {
     console.log('====================================');
-    console.log("On hereeeeee",req.body);
+    console.log("On hereeeeee", req.body);
     console.log('====================================');
     const { id } = req.params;
     const {
@@ -308,7 +306,7 @@ export const deleteTransaction = async (req, res, next) => {
       throw createAppError("Transaction ID is required", 400, "MISSING_ID");
     }
 
-    const transaction = await TransactionFixingService.deleteTransaction(
+    const deletedTransaction = await TransactionFixingService.deleteTransaction(
       id.trim(),
       req.admin.id
     );
@@ -316,7 +314,7 @@ export const deleteTransaction = async (req, res, next) => {
     res.status(200).json({
       success: true,
       message: "Transaction deleted successfully",
-      data: transaction,
+      data: deletedTransaction,
     });
   } catch (error) {
     next(error);

@@ -211,6 +211,23 @@ export const updateMetalTransaction = async (req, res, next) => {
   try {
     const { id } = req.params;
     const updateData = req.body;
+    const {
+      transactionType,
+      voucherType,
+      voucherDate,
+      voucherNumber,
+      partyCode,
+      fix,
+      unfix,
+      partyCurrency,
+      itemCurrency,
+      baseCurrency,
+      stockItems,
+      totalAmountSession,
+      status,
+      notes,
+      voucher
+    } = req.body;
 
     if (!id)
       throw createAppError(
@@ -219,7 +236,76 @@ export const updateMetalTransaction = async (req, res, next) => {
         "MISSING_TRANSACTION_ID"
       );
 
-    const updatedTransaction = await MetalTransactionService.updateMetalTransaction(id, updateData, req.admin.id);
+    const isFixTransaction = fix === true || fix === "true";
+    const isUnfixTransaction = unfix === true || unfix === "true";
+
+    const transactionData = {
+      transactionType,
+      fixed: isFixTransaction ? true : false,
+      unfix: isUnfixTransaction ? true : false,
+      voucherType: voucherType,
+      voucherDate: voucherDate ? new Date(voucherDate) : new Date(),
+      voucherNumber: voucherNumber,
+      partyCode: partyCode.trim(),
+      partyCurrency: partyCurrency.trim(),
+      itemCurrency: itemCurrency?.trim(),
+      baseCurrency: baseCurrency?.trim(),
+      stockItems: stockItems.map((item) => ({
+        stockCode: item.stockCode.trim(),
+        description: item.description?.trim(),
+        pieces: Number(item.pieces || 0),
+        grossWeight: Number(item.grossWeight || 0),
+        purity: Number(item.purity),
+        pureWeight: Number(item.pureWeight || 0),
+        purityWeight: Number(item.purityWeight),
+        weightInOz: Number(item.weightInOz),
+        metalRate: item.metalRate.trim(),
+        metalRateRequirements: {
+          amount: Number(item.metalRateRequirements?.amount || 0),
+          rate: Number(item.metalRateRequirements?.rate || 0),
+        },
+        makingCharges: {
+          amount: Number(item.makingCharges?.amount || 0),
+          rate: Number(item.makingCharges?.rate || 0),
+        },
+        otherCharges: {
+          amount: Number(item.otherCharges?.amount || 0),
+          description: item.otherCharges?.description || "",
+          rate: Number(item.otherCharges?.percentage || 0),
+        },
+        vat: {
+          percentage: Number(item.vat?.vatPercentage || 0),
+          amount: Number(item.vat?.vatAmount || 0),
+        },
+        premium: {
+          amount: Number(item.premium?.amount || 0),
+          rate: Number(item.premium?.rate || 0),
+        },
+        itemTotal: {
+          baseAmount: Number(item.itemTotal?.baseAmount || 0),
+          makingChargesTotal: Number(item.itemTotal?.makingChargesTotal || 0),
+          premiumTotal: Number(item.itemTotal?.premiumTotal || 0),
+          subTotal: Number(item.itemTotal?.subTotal || 0),
+          vatAmount: Number(item.itemTotal?.vatAmount || 0),
+          itemTotalAmount: Number(item.itemTotal?.itemTotalAmount || 0),
+        },
+        itemNotes: item.itemNotes?.trim(),
+        itemStatus: item.itemStatus || "active",
+      })),
+      totalAmountSession: {
+        totalAmountAED: Number(totalAmountSession?.totalAmountAED || 0),
+        netAmountAED: Number(totalAmountSession?.netAmountAED || 0),
+        vatAmount: Number(totalAmountSession?.vatAmount || 0),
+        vatPercentage: Number(totalAmountSession?.vatPercentage || 0),
+      },
+      status: status || "draft",
+      notes: notes?.trim(),
+      voucherType: voucherType,
+      voucherNumber: voucherNumber
+
+    };
+
+    const updatedTransaction = await MetalTransactionService.updateMetalTransaction(id, transactionData, req.admin.id);
 
     res.status(200).json({
       success: true,

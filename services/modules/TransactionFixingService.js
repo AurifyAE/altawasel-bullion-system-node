@@ -654,33 +654,87 @@ export const TransactionFixingService = {
 
   // Delete Transaction (Soft Delete)
   deleteTransaction: async (id, adminId) => {
-    try {
-      const transaction = await TransactionFixing.findById(id);
-      if (!transaction) {
-        throw createAppError("Transaction not found", 404, "NOT_FOUND");
-      }
+  const session = await mongoose.startSession();
+  session.startTransaction();
 
-      const deletedTransaction = await TransactionFixing.findByIdAndUpdate(
-        id,
-        {
-          status: "inactive",
-          isActive: false,
-          updatedBy: adminId,
-        },
-        { new: true }
-      )
-        .populate("partyId", "name code customerName accountCode")
-        .populate("createdBy", "name email")
-        .populate("updatedBy", "name email");
-
-      return deletedTransaction;
-    } catch (error) {
-      if (error.name === "CastError") {
-        throw createAppError("Invalid Transaction ID", 400, "INVALID_ID");
-      }
-      throw error;
+  try {
+    // Find the transaction
+    const transaction = await TransactionFixing.findById(id).session(session);
+    if (!transaction) {
+      throw createAppError("Transaction not found", 404, "NOT_FOUND");
     }
-  },
+
+    // Populate necessary fields if needed (for returning)
+    const populatedTransaction = await TransactionFixing.findById(id)
+      .populate("partyId", "name code customerName accountCode")
+      .populate("createdBy", "name email")
+      .populate("updatedBy", "name email");
+
+    // Find the account
+    const account = await Account.findById(transaction.partyId).session(session);
+    if (!account) {
+      throw createAppError("Account not found", 404, "ACCOUNT_NOT_FOUND");
+    }
+
+    // Initialize reverse balance updates
+    let totalGoldGramsChange = 0;
+    let totalCashBalanceChange = 0;
+
+    // Calculate reverse changes based on orders and type
+    for (const order of transaction.orders) {
+      const totalValue = order.price * order.quantityGm;
+
+      if (transaction.type.toUpperCase() === "PURCHASE") {
+        // Reverse PURCHASE: add back gold to party, subtract cash from party
+        totalGoldGramsChange += order.quantityGm;
+        totalCashBalanceChange -= totalValue;
+      } else if (transaction.type.toUpperCase() === "SELL") {
+        // Reverse SELL: subtract gold from party, add back cash to party
+        totalGoldGramsChange -= order.quantityGm;
+        totalCashBalanceChange += totalValue;
+      }
+    }
+
+    // Update account balances (apply reverse changes)
+    const currentGoldGrams = account.balances.goldBalance.totalGrams || 0;
+    const currentCashBalance = account.balances.cashBalance.amount || 0;
+
+    // Update gold balance
+    account.balances.goldBalance.totalGrams = currentGoldGrams + totalGoldGramsChange;
+    account.balances.goldBalance.totalValue = 0; // Assuming this is reset or handled similarly
+    account.balances.goldBalance.lastUpdated = new Date();
+
+    // Update cash balance
+    account.balances.cashBalance.amount = currentCashBalance + totalCashBalanceChange;
+    account.balances.cashBalance.lastUpdated = new Date();
+
+    // Update overall balance tracking
+    account.balances.lastBalanceUpdate = new Date();
+
+    // Save the updated account
+    await account.save({ session });
+
+    // Delete all related registry entries
+    await Registry.deleteMany({ fixingTransactionId: transaction._id }).session(session);
+
+    // Delete the transaction
+    await TransactionFixing.deleteOne({ _id: transaction._id }).session(session);
+
+    // Commit the transaction
+    await session.commitTransaction();
+
+    // Return the populated transaction (before deletion)
+    return populatedTransaction;
+  } catch (error) {
+    await session.abortTransaction();
+    if (error.name === "CastError") {
+      throw createAppError("Invalid Transaction ID", 400, "INVALID_ID");
+    }
+    throw error;
+  } finally {
+    session.endSession();
+  }
+},
 
   // Cancel Transaction
   cancelTransaction: async (id, adminId) => {
