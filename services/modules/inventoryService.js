@@ -96,6 +96,56 @@ class InventoryService {
     }
   }
 
+  static async reverseInventory(transaction, session) {
+    try {
+      for (const item of transaction.stockItems || []) {
+        const metalId = item.stockCode?._id;
+        if (!metalId) continue;
+
+        const [inventory, metal] = await Promise.all([
+          Inventory.findOne({ metal: new mongoose.Types.ObjectId(metalId) }).session(session),
+          MetalStock.findById(metalId).session(session),
+        ]);
+
+        if (!inventory) {
+          throw createAppError(
+            `Inventory not found for metal: ${item.stockCode.code}`,
+            404,
+            "INVENTORY_NOT_FOUND"
+          );
+        }
+
+        const isSale = transaction.transactionType === "sale" || transaction.transactionType === "metalPayment";
+        const factor = isSale ? 1 : -1; // Reverse the factor
+        const pcsDelta = factor * (item.pieces || 0);
+        const weightDelta = factor * (item.grossWeight || 0);
+        inventory.pcsCount += pcsDelta;
+        inventory.grossWeight += weightDelta;
+        inventory.pureWeight = (inventory.grossWeight * inventory.purity) / 100;
+        await inventory.save({ session });
+        // Inventory Log
+        await InventoryLog.create([{
+          code: metal.code,
+          stockCode: metal._id,
+          voucherCode: transaction.voucherNumber || item.voucherNumber || '',
+          voucherDate: transaction.voucherDate || item.voucherDate || '',
+          transactionType: transaction.transactionType,
+          pcs: item.pieces || 0,
+          grossWeight: item.grossWeight || 0,
+          pureWeight: (item.grossWeight * item.purity) / 100,
+          action: isSale ? "remove" : "add",
+          createdAt: new Date(),
+        }], { session });
+      }
+    } catch (error) {
+      if (error.name === "AppError") throw error;
+      throw createAppError(
+        error.message || "Failed to reverse inventory",
+        500,
+        "INVENTORY_REVERSE_FAILED"
+      );
+    }
+  }
   static async fetchInvLogs() {
     try {
       const logs = await InventoryLog.find().sort({ createdAt: -1 });
@@ -344,7 +394,7 @@ class InventoryService {
       } else {
         pureWeight = value * savedInventory.purity;
       }
-      
+
 
       const invLog = await InventoryLog.create({
         code: metal.code,
@@ -482,7 +532,7 @@ class InventoryService {
         type,
         goldBidValue,
         description,
-        goldDebit:value,
+        goldDebit: value,
         value,
         debit: value,
         credit: 0,

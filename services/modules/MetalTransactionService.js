@@ -3356,21 +3356,14 @@ class MetalTransactionService {
           "TRANSACTION_NOT_FOUND"
         );
       }
-
-      transaction.isActive = false;
-      transaction.status = "cancelled";
-      transaction.updatedBy = adminId;
-      await transaction.save({ session });
+      await this.deleteRegistryEntry(transaction);
+      
+      // update the stocks
 
       const party = await Account.findById(transaction.partyCode).session(
         session
       );
-      await this.createReversalRegistryEntries(
-        transaction,
-        party,
-        adminId,
-        session
-      );
+
       await this.updateTradeDebtorsBalances(
         party._id,
         transaction,
@@ -3379,6 +3372,9 @@ class MetalTransactionService {
         true
       );
 
+      // hard delete metalTransaction
+      await MetalTransaction.deleteOne({ _id: transactionId }).session(session);
+      
       await session.commitTransaction();
       return { message: "Metal transaction deleted successfully" };
     } catch (error) {
