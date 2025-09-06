@@ -6,6 +6,7 @@ import InventoryService from "../../services/modules/inventoryService.js";
 import RegistryService from "../../services/modules/RegistryService.js";
 import AccountLog from "../../models/modules/AccountLog.js";
 import { createAppError } from "../../utils/errorHandler.js";
+import CurrencyMaster from "../../models/modules/CurrencyMaster.js";
 
 const createEntry = async (req, res) => {
   try {
@@ -390,16 +391,29 @@ const handleCashReceipt = async (entry) => {
         party: null,
         isBullion: false,
       });
+    } 
+    console.log('====================================');
+    console.log(cashItem);
+    console.log('====================================');
+    // get the currency 
+    const currency = await Currency.findOne({ _id: cashItem.currency });
+    if (!currency) {
+      throw createAppError(
+        `Currency not found for ID: ${cashItem.currency}`,
+        404,
+        "CURRENCY_NOT_FOUND"
+      );
     }
-
+   
     // Create account log entry
     const accountLogEntry = {
+
       accountId: cashItem.cashType,
       transactionType: "deposit",
       amount,
       reference: entry.voucherCode,
       balanceAfter: cashAccount.openingBalance,
-      note: `Cash receipt of ${amount}  for account ${account.customerName}`,
+      note: `Cash receipt of ${currency.currencyCode}  for account ${account.customerName}`,
       action: "add",
       transactionId,
       createdBy: entry.enteredBy,
@@ -519,6 +533,16 @@ const handleCashPayment = async (entry) => {
       });
     }
 
+    // get the currency
+    const currency = await CurrencyMaster.findOne({ _id: cashItem.currency });
+    if (!currency) {
+      throw createAppError(
+        `Currency not found for ID: ${cashItem.currency}`,
+        404,
+        "CURRENCY_NOT_FOUND"
+      );
+    }
+
 
     // Create account log entry
     const accountLogEntry = {
@@ -526,7 +550,7 @@ const handleCashPayment = async (entry) => {
       transactionType: "withdrawal",
       amount,
       balanceAfter: cashAccount.openingBalance,
-      note: `Cash payment of ${amount} ${cashItem.currency} for account ${account._id}`,
+      note: `Cash payment of ${amount} ${currency.currencyCode} for account ${account.customerName}`,
       action: "subtract",
       transactionId,
       createdBy: entry.enteredBy,
