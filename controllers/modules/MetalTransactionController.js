@@ -207,59 +207,96 @@ export const getMetalTransactionById = async (req, res, next) => {
   }
 };
 
-export const updateMetalTransaction = async (req, res, next) => {
-  try {
-    const { id } = req.params;
-    const updateData = req.body;
-    const {
-      transactionType,
-      voucherType,
-      voucherDate,
-      voucherNumber,
-      partyCode,
-      fix,
-      unfix,
-      partyCurrency,
-      itemCurrency,
-      baseCurrency,
-      stockItems,
-      totalAmountSession,
-      status,
-      notes,
-      voucher
-    } = req.body;
 
-    if (!id)
+export const updateMetalTransaction = async (req, res, next) => {
+  let id; // Declare id outside the try block to ensure it’s in scope for catch
+  try {
+    id = req.params?.id; // Safely extract id with fallback
+    const updateData = req.body || {}; // Fallback to empty object if req.body is undefined
+
+    // Validate basic inputs
+    if (!id) {
       throw createAppError(
         "Transaction ID is required",
         400,
         "MISSING_TRANSACTION_ID"
       );
+    }
+    if (!req.admin?.id) {
+      throw createAppError(
+        "Admin ID is required",
+        401,
+        "MISSING_ADMIN_ID"
+      );
+    }
+    if (!updateData || typeof updateData !== "object") {
+      throw createAppError(
+        "Invalid update data provided",
+        400,
+        "INVALID_UPDATE_DATA"
+      );
+    }
 
-    const isFixTransaction = fix === true || fix === "true";
-    const isUnfixTransaction = unfix === true || unfix === "true";
+    // Destructure fields with fallbacks
+    const {
+      transactionType = null,
+      voucherType = null,
+      voucherDate = null,
+      voucherNumber = null,
+      partyCode = null,
+      fix = false,
+      unfix = false,
+      partyCurrency = null,
+      itemCurrency = null,
+      baseCurrency = null,
+      stockItems = [],
+      totalAmountSession = {},
+      status = "draft",
+      notes = null,
+    } = updateData;
 
+    // Validate required fields
+    const requiredFields = ["transactionType", "partyCode", "stockItems"];
+    const missingFields = requiredFields.filter((field) => !updateData[field]);
+    if (missingFields.length > 0) {
+      throw createAppError(
+        `Missing required fields: ${missingFields.join(", ")}`,
+        400,
+        "MISSING_REQUIRED_FIELDS"
+      );
+    }
+
+    // Validate stockItems
+    if (!Array.isArray(stockItems) || stockItems.length === 0) {
+      throw createAppError(
+        "Stock items must be a non-empty array",
+        400,
+        "INVALID_STOCK_ITEMS"
+      );
+    }
+
+    // Construct transactionData
     const transactionData = {
       transactionType,
-      fixed: isFixTransaction ? true : false,
-      unfix: isUnfixTransaction ? true : false,
-      voucherType: voucherType,
+      fixed: fix === true || fix === "true",
+      unfix: unfix === true || unfix === "true",
+      voucherType,
       voucherDate: voucherDate ? new Date(voucherDate) : new Date(),
-      voucherNumber: voucherNumber,
-      partyCode: partyCode.trim(),
-      partyCurrency: partyCurrency.trim(),
-      itemCurrency: itemCurrency?.trim(),
-      baseCurrency: baseCurrency?.trim(),
+      voucherNumber,
+      partyCode: partyCode?.trim?.() || partyCode,
+      partyCurrency: partyCurrency?.trim?.() || partyCurrency,
+      itemCurrency: itemCurrency?.trim?.() || itemCurrency,
+      baseCurrency: baseCurrency?.trim?.() || baseCurrency,
       stockItems: stockItems.map((item) => ({
-        stockCode: item.stockCode.trim(),
-        description: item.description?.trim(),
+        stockCode: item.stockCode?.trim?.() || item.stockCode,
+        description: item.description?.trim?.() || item.description,
         pieces: Number(item.pieces || 0),
         grossWeight: Number(item.grossWeight || 0),
-        purity: Number(item.purity),
+        purity: Number(item.purity || 0),
         pureWeight: Number(item.pureWeight || 0),
-        purityWeight: Number(item.purityWeight),
-        weightInOz: Number(item.weightInOz),
-        metalRate: item.metalRate.trim(),
+        purityWeight: Number(item.purityWeight || 0),
+        weightInOz: Number(item.weightInOz || 0),
+        metalRate: item.metalRate?.trim?.() || item.metalRate,
         metalRateRequirements: {
           amount: Number(item.metalRateRequirements?.amount || 0),
           rate: Number(item.metalRateRequirements?.rate || 0),
@@ -289,7 +326,7 @@ export const updateMetalTransaction = async (req, res, next) => {
           vatAmount: Number(item.itemTotal?.vatAmount || 0),
           itemTotalAmount: Number(item.itemTotal?.itemTotalAmount || 0),
         },
-        itemNotes: item.itemNotes?.trim(),
+        itemNotes: item.itemNotes?.trim?.() || item.itemNotes,
         itemStatus: item.itemStatus || "active",
       })),
       totalAmountSession: {
@@ -298,22 +335,38 @@ export const updateMetalTransaction = async (req, res, next) => {
         vatAmount: Number(totalAmountSession?.vatAmount || 0),
         vatPercentage: Number(totalAmountSession?.vatPercentage || 0),
       },
-      status: status || "draft",
-      notes: notes?.trim(),
-      voucherType: voucherType,
-      voucherNumber: voucherNumber
-
+      status,
+      notes: notes?.trim?.() || notes,
     };
 
-    const updatedTransaction = await MetalTransactionService.updateMetalTransaction(id, transactionData, req.admin.id);
+    // Log the constructed transactionData for debugging
+    console.log(`[UPDATE_TRANSACTION_CONTROLLER] Constructed transactionData for ID ${id}:`, {
+      transactionId: id,
+      adminId: req.admin.id,
+      transactionData: JSON.stringify(transactionData, null, 2),
+    });
 
+    // Call the service method
+    const updatedTransaction = await MetalTransactionService.updateMetalTransaction(
+      id,
+      transactionData,
+      req.admin.id
+    );
+
+    // Send success response
     res.status(200).json({
       success: true,
       message: "Metal transaction updated successfully",
       data: updatedTransaction,
     });
-
   } catch (error) {
+    console.error(`[UPDATE_TRANSACTION_CONTROLLER_ERROR] Failed to update transaction ${id || "unknown"}:`, {
+      message: error.message,
+      code: error.code,
+      stack: error.stack,
+      transactionId: id || "unknown",
+      adminId: req.admin?.id || "unknown",
+    });
     next(error);
   }
 };

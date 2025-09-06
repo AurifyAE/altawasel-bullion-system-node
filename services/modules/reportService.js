@@ -235,6 +235,7 @@ export class ReportService {
 
       // Construct MongoDB aggregation pipeline
       const pipeline = this.buildTransactionSummaryPipeline(validatedFilters);
+      
 
       // Execute aggregation query
       const reportData = await Registry.aggregate(pipeline);
@@ -2340,6 +2341,7 @@ export class ReportService {
   }
 
   buildTransactionSummaryPipeline(filters) {
+
     const pipeline = [];
 
     // Step 1: Base match condition
@@ -2357,12 +2359,6 @@ export class ReportService {
       }
     }
 
-    if (filters.voucher && filters.voucher.length > 0) {
-      matchConditions.reference = {
-        $regex: `^(${filters.voucher.join("|")})`, // Starts with any value in the array
-        $options: "i", // case-insensitive (optional)
-      };
-    }
 
     // Step 3: Include documents where at least one type of transaction exists
     matchConditions.$or = [
@@ -2373,6 +2369,18 @@ export class ReportService {
 
     // Step 4: Apply the match
     pipeline.push({ $match: matchConditions });
+
+    if (filters.voucher?.length > 0) {
+      const regexFilters = filters.voucher.map((v) => {
+        const prefix = v.prefix || v; // if object use v.prefix, else string
+        return {
+          reference: { $regex: `^${prefix}\\d+$`, $options: "i" },
+        };
+      });
+
+      pipeline.push({ $match: { $or: regexFilters } });
+    }
+
     // Step 5: Lookup related collections
 
     // 5a: Lookup metalTransaction data
