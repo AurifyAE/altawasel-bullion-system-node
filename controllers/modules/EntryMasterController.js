@@ -85,9 +85,7 @@ const createEntry = async (req, res) => {
       ...(type.includes("cash") ? { cash } : {}),
     };
 
-    console.log('====================================');
-    console.log(JSON.stringify(entryData));
-    console.log('====================================');
+
     const entry = new Entry(entryData);
 
     // Handle specific entry types
@@ -344,7 +342,7 @@ const handleCashReceipt = async (entry) => {
       throw createAppError("Amount must be positive", 400, "INVALID_AMOUNT");
     }
     const previousBalance = account.balances.cashBalance.amount || 0;
-    const balanceAfter = previousBalance - amount;
+    const balanceAfter = previousBalance + amount;
 
     // Update balances
     account.balances.cashBalance.amount = balanceAfter;
@@ -396,7 +394,7 @@ const handleCashReceipt = async (entry) => {
     console.log(cashItem);
     console.log('====================================');
     // get the currency 
-    const currency = await Currency.findOne({ _id: cashItem.currency });
+    const currency = await CurrencyMaster.findOne({ _id: cashItem.currency });
     if (!currency) {
       throw createAppError(
         `Currency not found for ID: ${cashItem.currency}`,
@@ -475,7 +473,7 @@ const handleCashPayment = async (entry) => {
       throw createAppError("Amount must be positive", 400, "INVALID_AMOUNT");
     }
     const previousBalance = account.balances.cashBalance.amount || 0;
-    const balanceAfter = previousBalance + amount;
+    const balanceAfter = previousBalance - amount;
 
     // Check for sufficient balance
     // if (balanceAfter < 0) {
