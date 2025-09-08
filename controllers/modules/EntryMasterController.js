@@ -182,6 +182,8 @@ const editEntry = async (req, res) => {
 
     // Find the existing entry
     const entry = await Entry.findOne({ voucherCode });
+    let oldentry = await Entry.findOne({ voucherCode });
+
     if (!entry) {
       return res.status(404).json({
         success: false,
@@ -203,6 +205,23 @@ const editEntry = async (req, res) => {
       entry.cash = cash;
       entry.stockItems = [];
     }
+
+    // minus the old balance of account and account master if any
+    const originalData = entry.toObject();
+    const oldParty = originalData.party;
+    const newParty = req.body.party;
+    const isPartyChanged = oldParty !== newParty;
+
+    // minus the old balances from party account
+    let party = null;
+    if (isPartyChanged) {
+      party = oldParty;
+    } else {
+      party = newParty;
+    }
+
+    await reverseAccountBalances(party, oldentry,entry);
+
 
     // Handle specific entry types
     const handlers = {
@@ -232,6 +251,63 @@ const editEntry = async (req, res) => {
       error: err.message,
     });
   }
+};
+
+const reverseAccountBalances = async (partyId, originalData,entry) => {
+  console.log('====================================');
+  console.log("Reversing balances for party:", partyId);
+  console.log("Entry:", entry);
+  console.log('====================================');
+  // Fetch account
+  const account = await AccountType.findOne({ _id: partyId });
+  
+  if (!account) {
+    throw createAppError("Account not found", 404, "ACCOUNT_NOT_FOUND");
+  }
+
+  console.log('====================================');
+  console.log("originalData",originalData);
+  console.log('====================================');
+  
+
+  for (const cashItem of originalData.cash) {
+    // Validate cash item
+    if (!cashItem?.cashType || !cashItem?.amount || !cashItem?.currency) {
+      throw createAppError("Invalid cash item data", 400, "INVALID_CASH_ITEM");
+    }
+
+    const transactionId = await Registry.generateTransactionId();
+    const cashAccount = await AccountMaster.findOne({ _id: cashItem.cashType });
+    if (!cashAccount) {
+      throw createAppError(
+        `Cash type account not found for ID: ${cashItem.cashType}`,
+        404,
+        "CASH_TYPE_NOT_FOUND"
+      );
+    }
+
+    account.balances.cashBalance = account.balances.cashBalance || {
+      currency: cashItem.currency,
+      amount: 0,
+      lastUpdated: new Date(),
+    };
+
+    // Calculate new balances
+    const amount = Number(cashItem.amount) || 0;
+    if (amount <= 0) {
+      throw createAppError("Amount must be positive", 400, "INVALID_AMOUNT");
+    }
+    const previousBalance = account.balances.cashBalance.amount || 0;
+    const balanceAfter = previousBalance - amount;
+
+    // Update balances
+    account.balances.cashBalance.amount = balanceAfter;
+    account.balances.cashBalance.lastUpdated = new Date();
+    cashAccount.openingBalance = (cashAccount.openingBalance || 0) + amount;
+  }
+  await account.save();
+
+  return account;
 };
 
 
@@ -389,7 +465,7 @@ const handleCashReceipt = async (entry) => {
         party: null,
         isBullion: false,
       });
-    } 
+    }
     console.log('====================================');
     console.log(cashItem);
     console.log('====================================');
@@ -402,7 +478,7 @@ const handleCashReceipt = async (entry) => {
         "CURRENCY_NOT_FOUND"
       );
     }
-   
+
     // Create account log entry
     const accountLogEntry = {
 
