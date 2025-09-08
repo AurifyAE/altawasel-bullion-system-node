@@ -219,8 +219,11 @@ const editEntry = async (req, res) => {
     } else {
       party = newParty;
     }
-
-    await reverseAccountBalances(party, oldentry,entry);
+    // if (type.includes("cash")) {
+      await reverseAccountBalances(party, originalData, entry);
+    // } else if (type.includes("metal")) {
+      // await reverseAccountBalances(party, originalData, entry);
+    // }
 
 
     // Handle specific entry types
@@ -253,22 +256,14 @@ const editEntry = async (req, res) => {
   }
 };
 
-const reverseAccountBalances = async (partyId, originalData,entry) => {
-  console.log('====================================');
-  console.log("Reversing balances for party:", partyId);
-  console.log("Entry:", entry);
-  console.log('====================================');
+const reverseAccountBalances = async (partyId, originalData, entry) => {
   // Fetch account
   const account = await AccountType.findOne({ _id: partyId });
-  
+
   if (!account) {
     throw createAppError("Account not found", 404, "ACCOUNT_NOT_FOUND");
   }
 
-  console.log('====================================');
-  console.log("originalData",originalData);
-  console.log('====================================');
-  
 
   for (const cashItem of originalData.cash) {
     // Validate cash item
@@ -303,7 +298,7 @@ const reverseAccountBalances = async (partyId, originalData,entry) => {
     // Update balances
     account.balances.cashBalance.amount = balanceAfter;
     account.balances.cashBalance.lastUpdated = new Date();
-    cashAccount.openingBalance = (cashAccount.openingBalance || 0) + amount;
+    cashAccount.openingBalance = (cashAccount.openingBalance || 0) - amount;
   }
   await account.save();
 
