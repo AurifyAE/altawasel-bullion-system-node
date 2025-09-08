@@ -219,11 +219,15 @@ const editEntry = async (req, res) => {
     } else {
       party = newParty;
     }
-    // if (type.includes("cash")) {
-      await reverseAccountBalances(party, originalData, entry);
-    // } else if (type.includes("metal")) {
-      // await reverseAccountBalances(party, originalData, entry);
-    // }
+
+    if (["cash receipt", "cash payment"].includes(type)) {
+      await AccountLog.deleteMany({ reference: voucherCode });
+      await reverseAccountBalances(party, oldentry, entry);
+    } else {
+      console.log("hyy");
+
+    }
+
 
 
     // Handle specific entry types
@@ -264,7 +268,6 @@ const reverseAccountBalances = async (partyId, originalData, entry) => {
     throw createAppError("Account not found", 404, "ACCOUNT_NOT_FOUND");
   }
 
-
   for (const cashItem of originalData.cash) {
     // Validate cash item
     if (!cashItem?.cashType || !cashItem?.amount || !cashItem?.currency) {
@@ -273,6 +276,8 @@ const reverseAccountBalances = async (partyId, originalData, entry) => {
 
     const transactionId = await Registry.generateTransactionId();
     const cashAccount = await AccountMaster.findOne({ _id: cashItem.cashType });
+
+
     if (!cashAccount) {
       throw createAppError(
         `Cash type account not found for ID: ${cashItem.cashType}`,
@@ -299,9 +304,10 @@ const reverseAccountBalances = async (partyId, originalData, entry) => {
     account.balances.cashBalance.amount = balanceAfter;
     account.balances.cashBalance.lastUpdated = new Date();
     cashAccount.openingBalance = (cashAccount.openingBalance || 0) - amount;
+    await cashAccount.save();
   }
-  await account.save();
 
+  await account.save();
   return account;
 };
 
@@ -461,9 +467,6 @@ const handleCashReceipt = async (entry) => {
         isBullion: false,
       });
     }
-    console.log('====================================');
-    console.log(cashItem);
-    console.log('====================================');
     // get the currency 
     const currency = await CurrencyMaster.findOne({ _id: cashItem.currency });
     if (!currency) {
@@ -476,7 +479,6 @@ const handleCashReceipt = async (entry) => {
 
     // Create account log entry
     const accountLogEntry = {
-
       accountId: cashItem.cashType,
       transactionType: "deposit",
       amount,
@@ -491,8 +493,8 @@ const handleCashReceipt = async (entry) => {
 
     // Save all changes in a single transaction
     await Promise.all([
-      account.save(),
       cashAccount.save(),
+      account.save(),
       AccountLog.create(accountLogEntry),
       Registry.create(registryEntries),
     ]);
