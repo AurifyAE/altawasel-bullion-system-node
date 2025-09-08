@@ -470,7 +470,8 @@ class InventoryService {
 
         inventory.pcsCount += pcsDelta;
         inventory.grossWeight += weightDelta;
-        inventory.pureWeight = (inventory.grossWeight * inventory.purity) / 100;
+        // inventory.pureWeight = (inventory.grossWeight * inventory.purity) / 100;
+        inventory.pureWeight = (inventory.grossWeight * inventory.purity) 
 
         await inventory.save();
         updated.push(inventory);

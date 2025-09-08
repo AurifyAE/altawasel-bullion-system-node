@@ -2337,10 +2337,7 @@ class MetalTransactionService {
   static async updateAccountBalances(party, metalTransaction, session) {
     const { transactionType, fixed, unfix, stockItems, totalAmountSession } = metalTransaction;
     const totals = this.calculateTotals(stockItems, totalAmountSession);
-
-
     const mode = this.getTransactionMode(fixed, unfix);
-
     const balanceChanges = this.calculateBalanceChanges(
       transactionType,
       mode,
@@ -3107,137 +3104,135 @@ class MetalTransactionService {
   }
 
   // Update metal transaction
-static async updateMetalTransaction(transactionId, updateData, adminId) {
-  const session = await mongoose.startSession();
-  let transaction;
+  static async updateMetalTransaction(transactionId, updateData, adminId) {
+    const session = await mongoose.startSession();
+    let transaction;
 
-  try {
-    // Start transaction
-    await session.startTransaction();
-    console.log(`[UPDATE_TRANSACTION] Starting update for transaction ${transactionId}`);
+    try {
+      // Start transaction
+      await session.startTransaction();
+      console.log(`[UPDATE_TRANSACTION] Starting update for transaction ${transactionId}`);
 
-    // Validate inputs
-    this.validateUpdateInputs(transactionId, updateData, adminId);
+      // Validate inputs
+      this.validateUpdateInputs(transactionId, updateData, adminId);
 
-    // Fetch the existing transaction
-    transaction = await MetalTransaction.findById(transactionId).session(session);
-    if (!transaction || !transaction.isActive) {
-      throw createAppError(
-        "Metal transaction not found or inactive",
-        404,
-        "TRANSACTION_NOT_FOUND"
+      // Fetch the existing transaction
+      transaction = await MetalTransaction.findById(transactionId).session(session);
+      if (!transaction || !transaction.isActive) {
+        throw createAppError(
+          "Metal transaction not found or inactive",
+          404,
+          "TRANSACTION_NOT_FOUND"
+        );
+      }
+
+      // Store original transaction data for reversal
+      const originalData = {
+        ...transaction.toObject(),
+        partyCode: transaction.partyCode.toString(),
+      };
+
+      // Check if party is changing
+      const isPartyChanged =
+        updateData?.partyCode &&
+        transaction.partyCode.toString() !== updateData.partyCode.toString();
+
+      // Fetch parties
+      const [oldParty, newParty] = await this.fetchParties(
+        originalData.partyCode,
+        updateData?.partyCode,
+        isPartyChanged,
+        session
       );
+
+      // Apply updates to transaction
+      this.applyTransactionUpdates(transaction, updateData);
+
+      // Recalculate session totals if necessary
+      if (updateData?.stockItems || updateData?.totalAmountSession) {
+        console.log(`[UPDATE_TRANSACTION] Recalculating session totals for transaction ${transactionId}`);
+        transaction.calculateSessionTotals();
+      }
+
+      // Save updated transaction
+      transaction.updatedBy = adminId;
+      await transaction.save({ session });
+      console.log(`[UPDATE_TRANSACTION] Transaction ${transactionId} updated`);
+
+      // Handle registry and balance updates
+      await this.handleRegistryAndBalances(
+        transaction,
+        originalData,
+        oldParty,
+        newParty,
+        adminId,
+        session,
+        isPartyChanged,
+        updateData
+      );
+      // Commit transaction
+      console.log(`[UPDATE_TRANSACTION] Committing transaction for ${transactionId}`);
+      await session.commitTransaction();
+
+      // Fetch and return final transaction
+      const finalTransaction = await this.getMetalTransactionById(transactionId);
+      console.log(`[UPDATE_TRANSACTION] Update completed successfully for transaction ${transactionId}`);
+      return finalTransaction;
+    } catch (error) {
+      console.error(`[UPDATE_TRANSACTION_ERROR] Error updating transaction ${transactionId}:`, {
+        message: error.message,
+        code: error.code,
+        stack: error.stack,
+        transactionId,
+        adminId,
+        updateData: updateData ? JSON.stringify(updateData, null, 2) : 'undefined',
+      });
+
+      await session.abortTransaction();
+      throw this.handleError(
+        createAppError(
+          error.message || "Failed to update metal transaction",
+          error.statusCode || 500,
+          error.code || "UPDATE_TRANSACTION_FAILED",
+          {
+            transactionId,
+            adminId,
+            updateData: updateData || null, // Safely handle undefined updateData
+          }
+        )
+      );
+    } finally {
+      console.log(`[UPDATE_TRANSACTION] Ending session for transaction ${transactionId}`);
+      await session.endSession();
     }
-
-    // Store original transaction data for reversal
-    const originalData = {
-      partyCode: transaction.partyCode,
-      stockItems: [...transaction.stockItems],
-      totalAmountSession: { ...transaction.totalAmountSession },
-    };
-
-    // Check if party is changing
-    const isPartyChanged =
-      updateData?.partyCode &&
-      transaction.partyCode.toString() !== updateData.partyCode.toString();
-
-    // Fetch parties
-    const [oldParty, newParty] = await this.fetchParties(
-      originalData.partyCode,
-      updateData?.partyCode,
-      isPartyChanged,
-      session
-    );
-
-    // Apply updates to transaction
-    this.applyTransactionUpdates(transaction, updateData);
-
-    // Recalculate session totals if necessary
-    if (updateData?.stockItems || updateData?.totalAmountSession) {
-      console.log(`[UPDATE_TRANSACTION] Recalculating session totals for transaction ${transactionId}`);
-      transaction.calculateSessionTotals();
-    }
-
-    // Save updated transaction
-    transaction.updatedBy = adminId;
-    await transaction.save({ session });
-    console.log(`[UPDATE_TRANSACTION] Transaction ${transactionId} updated`);
-
-    // Handle registry and balance updates
-    await this.handleRegistryAndBalances(
-      transaction,
-      originalData,
-      oldParty,
-      newParty,
-      adminId,
-      session,
-      isPartyChanged,
-      updateData
-    );
-
-    // Commit transaction
-    console.log(`[UPDATE_TRANSACTION] Committing transaction for ${transactionId}`);
-    await session.commitTransaction();
-
-    // Fetch and return final transaction
-    const finalTransaction = await this.getMetalTransactionById(transactionId);
-    console.log(`[UPDATE_TRANSACTION] Update completed successfully for transaction ${transactionId}`);
-    return finalTransaction;
-  } catch (error) {
-    console.error(`[UPDATE_TRANSACTION_ERROR] Error updating transaction ${transactionId}:`, {
-      message: error.message,
-      code: error.code,
-      stack: error.stack,
+  }
+  // Helper methods for updateMetalTransaction
+  static validateUpdateInputs(transactionId, updateData, adminId) {
+    console.log(`[VALIDATE_INPUTS] Validating inputs for transaction ${transactionId}`, {
       transactionId,
       adminId,
       updateData: updateData ? JSON.stringify(updateData, null, 2) : 'undefined',
     });
 
-    await session.abortTransaction();
-    throw this.handleError(
-      createAppError(
-        error.message || "Failed to update metal transaction",
-        error.statusCode || 500,
-        error.code || "UPDATE_TRANSACTION_FAILED",
-        {
-          transactionId,
-          adminId,
-          updateData: updateData || null, // Safely handle undefined updateData
-        }
-      )
-    );
-  } finally {
-    console.log(`[UPDATE_TRANSACTION] Ending session for transaction ${transactionId}`);
-    await session.endSession();
+    if (!mongoose.isValidObjectId(transactionId)) {
+      throw createAppError("Invalid transaction ID", 400, "INVALID_TRANSACTION_ID");
+    }
+    if (!mongoose.isValidObjectId(adminId)) {
+      throw createAppError("Invalid admin ID", 400, "INVALID_ADMIN_ID");
+    }
+    if (!updateData || typeof updateData !== 'object') {
+      throw createAppError("Update data must be a valid object", 400, "INVALID_UPDATE_DATA");
+    }
+    if (Object.keys(updateData).length === 0) {
+      throw createAppError("No update data provided", 400, "NO_UPDATE_DATA");
+    }
+    if (updateData.partyCode && !mongoose.isValidObjectId(updateData.partyCode)) {
+      throw createAppError("Invalid party code", 400, "INVALID_PARTY_CODE");
+    }
+    if (updateData.stockItems && (!Array.isArray(updateData.stockItems) || updateData.stockItems.length === 0)) {
+      throw createAppError("Stock items must be a non-empty array", 400, "INVALID_STOCK_ITEMS");
+    }
   }
-}
-  // Helper methods for updateMetalTransaction
-static validateUpdateInputs(transactionId, updateData, adminId) {
-  console.log(`[VALIDATE_INPUTS] Validating inputs for transaction ${transactionId}`, {
-    transactionId,
-    adminId,
-    updateData: updateData ? JSON.stringify(updateData, null, 2) : 'undefined',
-  });
-
-  if (!mongoose.isValidObjectId(transactionId)) {
-    throw createAppError("Invalid transaction ID", 400, "INVALID_TRANSACTION_ID");
-  }
-  if (!mongoose.isValidObjectId(adminId)) {
-    throw createAppError("Invalid admin ID", 400, "INVALID_ADMIN_ID");
-  }
-  if (!updateData || typeof updateData !== 'object') {
-    throw createAppError("Update data must be a valid object", 400, "INVALID_UPDATE_DATA");
-  }
-  if (Object.keys(updateData).length === 0) {
-    throw createAppError("No update data provided", 400, "NO_UPDATE_DATA");
-  }
-  if (updateData.partyCode && !mongoose.isValidObjectId(updateData.partyCode)) {
-    throw createAppError("Invalid party code", 400, "INVALID_PARTY_CODE");
-  }
-  if (updateData.stockItems && (!Array.isArray(updateData.stockItems) || updateData.stockItems.length === 0)) {
-    throw createAppError("Stock items must be a non-empty array", 400, "INVALID_STOCK_ITEMS");
-  }
-}
 
   static async fetchParties(oldPartyId, newPartyId, isPartyChanged, session) {
     const oldParty = await Account.findById(oldPartyId).session(session);
@@ -3313,9 +3308,22 @@ static validateUpdateInputs(transactionId, updateData, adminId) {
       this.deleteStocks(transaction.voucherNumber, session),
     ]);
 
+
+    // minus the old blancees fist , take it from the metaltransaction itself
+   this.updateTradeDebtorsBalances(oldParty._id, originalData, session, false, true);
+
     // Create new registry entries
     console.log(`[UPDATE_TRANSACTION] Creating new registry entries for transaction ${transaction._id}`);
     const newRegistryEntries = this.buildRegistryEntries(transaction, newParty, adminId);
+    let party = newParty;
+    if (isPartyChanged) {
+      party = newParty;
+    } else {
+      party = oldParty;
+    }
+
+    // minus the old balances
+    this.updateAccountBalances(party, transaction, session);
     if (newRegistryEntries.length > 0) {
       await Registry.insertMany(newRegistryEntries, { session, ordered: false });
       console.log(`[UPDATE_TRANSACTION] Inserted ${newRegistryEntries.length} new registry entries`);
@@ -3338,23 +3346,55 @@ static validateUpdateInputs(transactionId, updateData, adminId) {
     // Reverse old party balances if necessary
     if (isPartyChanged || updateData.stockItems || updateData.totalAmountSession) {
       console.log(`[UPDATE_TRANSACTION] Reversing balances for old party ${oldParty._id}`);
-      await this.validatePartyBalances(oldParty, {
-        ...transaction.toObject(),
-        ...originalData,
-      }, true);
-      await this.updateTradeDebtorsBalances(
-        oldParty._id,
-        { ...transaction.toObject(), ...originalData },
-        session,
-        false,
-        true
-      );
+      // await this.validatePartyBalances(oldParty, {
+      //   ...transaction.toObject(),
+      //   ...originalData,
+      // }, true);
+      // await this.updateTradeDebtorsBalances(
+      //   oldParty._id,
+      //   { ...transaction.toObject(), ...originalData },
+      //   session,
+      //   false,
+      //   true
+      // );
 
       // Apply new party balances
       console.log(`[UPDATE_TRANSACTION] Applying balances for new party ${newParty._id}`);
-      await this.updateTradeDebtorsBalances(newParty._id, transaction, session, true);
+      // await this.updateTradeDebtorsBalances(newParty._id, transaction, session, true);
     } else {
       console.log(`[UPDATE_TRANSACTION] No balance-affecting fields updated for transaction ${transaction._id}`);
+    }
+  }
+  static async updateReverseAccountBalances(party, originalData, session) {
+    try {
+      // MINUS THE OLD BALANCES
+      const { transactionType, fixed, unfix, stockItems, totalAmountSession } = originalData;
+      const totals = this.calculateTotals(stockItems, totalAmountSession);
+      const mode = this.getTransactionMode(fixed, unfix);
+      const balanceChanges = this.calculateBalanceChanges(
+        transactionType,
+        mode,
+        totals
+      );
+      console.log(`[BALANCE_UPDATE] Reversing balances for party: ${party._id}`, { balanceChanges });
+
+      party.balances.goldBalance.totalGrams -= balanceChanges.goldBalance;
+      party.balances.goldBalance.totalValue -= balanceChanges.goldValue;
+      party.balances.cashBalance.amount -=
+        balanceChanges.cashBalance +
+        balanceChanges.premiumBalance +
+        balanceChanges.discountBalance;
+      party.balances.cashBalance.lastUpdated = new Date();
+
+      await party.save({ session });
+
+    } catch (error) {
+      console.error(`[BALANCE_UPDATE_ERROR] Failed to reverse balances for party: ${party._id}`, error);
+      throw createAppError(
+        `Failed to reverse balances: ${error.message}`,
+        500,
+        "REVERSE_BALANCES_FAILED"
+      );
     }
   }
 
