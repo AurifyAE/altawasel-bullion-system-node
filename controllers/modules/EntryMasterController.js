@@ -221,7 +221,8 @@ const editEntry = async (req, res) => {
     }
 
     if (["cash receipt", "cash payment"].includes(type)) {
-      await AccountLog.deleteMany({ reference: voucherCode });
+      const result = await AccountLog.deleteMany({ reference: voucherCode });
+      console.log(`Deleted ${result.deletedCount} account log entries for voucherCode ${voucherCode}`);
       await reverseAccountBalances(party, oldentry, entry);
     } else {
       console.log("hyy");
@@ -297,13 +298,29 @@ const reverseAccountBalances = async (partyId, originalData, entry) => {
     if (amount <= 0) {
       throw createAppError("Amount must be positive", 400, "INVALID_AMOUNT");
     }
+
+    let balanceAfter;
     const previousBalance = account.balances.cashBalance.amount || 0;
-    const balanceAfter = previousBalance - amount;
+
+    if (previousBalance < 0) {
+      // if balance is already negative → move towards zero
+      balanceAfter = previousBalance + amount;
+    } else {
+      // normal subtraction when balance is positive
+      balanceAfter = previousBalance - amount;
+    }
 
     // Update balances
     account.balances.cashBalance.amount = balanceAfter;
     account.balances.cashBalance.lastUpdated = new Date();
-    cashAccount.openingBalance = (cashAccount.openingBalance || 0) - amount;
+
+  
+    if (cashAccount.openingBalance < 0) {
+      cashAccount.openingBalance = cashAccount.openingBalance + amount;
+    } else {
+      cashAccount.openingBalance = (cashAccount.openingBalance || 0) - amount;
+    }
+
     await cashAccount.save();
   }
 
@@ -624,6 +641,7 @@ const handleCashPayment = async (entry) => {
       note: `Cash payment of ${amount} ${currency.currencyCode} for account ${account.customerName}`,
       action: "subtract",
       transactionId,
+      reference: entry.voucherCode,
       createdBy: entry.enteredBy,
       createdAt: new Date(),
     };
