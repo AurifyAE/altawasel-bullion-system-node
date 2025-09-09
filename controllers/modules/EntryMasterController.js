@@ -233,7 +233,6 @@ const editEntry = async (req, res) => {
       const InventoryLogResult = await InventoryLog.deleteMany({ voucherCode: voucherCode });
       // edit the user account and invertory
       console.log(`Deleted ${InventoryLogResult.deletedCount} inventory log entries for voucherCode ${voucherCode}`);
-
       await reverseAccountGoldBalances(party, oldentry, entry);
     }
 
@@ -339,6 +338,8 @@ const reverseAccountBalances = async (partyId, originalData, entry) => {
 const reverseAccountGoldBalances = async (partyId, originalData) => {
   // Fetch account
   const account = await AccountType.findOne({ _id: originalData.party });
+  
+
 
   if (!account) {
     throw createAppError("Account not found", 404, "ACCOUNT_NOT_FOUND");
@@ -364,9 +365,18 @@ const reverseAccountGoldBalances = async (partyId, originalData) => {
     return sum + (stock.purityWeight || 0); // or stock.grossWeight if needed
   }, 0);
 
+
+
   // Reduce from account
-  account.balances.goldBalance.totalGrams = previousBalance - totalReduction;
+  // Reduce from account (handle negatives correctly)
+  if (previousBalance < 0) {
+    account.balances.goldBalance.totalGrams = previousBalance + totalReduction;
+  } else {
+    account.balances.goldBalance.totalGrams = previousBalance - totalReduction;
+  }
+
   account.balances.goldBalance.lastUpdated = new Date();
+
 
   await account.save();
   return account;
@@ -727,7 +737,29 @@ const handleCashPayment = async (entry) => {
 };
 
 const handleMetalPayment = async (entry) => {
+  // update the users account balances
+  const account = await AccountType.findOne({ _id: entry.party });
+  if (!account) {
+    throw createAppError("Account not found", 404, "ACCOUNT_NOT_FOUND");
+  }
+
   for (const stockItem of entry.stockItems) {
+
+    // Initialize account balances
+    account.balances = account.balances || {}
+    // UPDATE BALANCES
+    account.balances.goldBalance = account.balances.goldBalance || {
+      totalGrams: 0,
+      lastUpdated: new Date(),
+    };
+
+    const previousBalance = account.balances.goldBalance.totalGrams || 0;
+
+    account.balances.goldBalance.totalGrams = previousBalance - stockItem.purityWeight;
+
+    account.balances.goldBalance.lastUpdated = new Date();
+
+
     const transactionId = await Registry.generateTransactionId();
     const description =
       stockItem.remarks?.trim() || "Metal payment transaction";
@@ -784,6 +816,7 @@ const handleMetalPayment = async (entry) => {
       entry.enteredBy,
     );
   }
+  await account.save();
 };
 
 const handleDeleteMetalReceipt = async (entry) => {
@@ -827,7 +860,7 @@ const handleDeleteMetalReceipt = async (entry) => {
     stock.pureWeight = (stock.pureWeight || 0) - (stockItem.purityWeight || 0);
 
     if (stockItem.pcs) {
-      stock.pcsCount = (stock.pcsCount || 0) - (stockItem.grossWeight /stock.pcsValue);
+      stock.pcsCount = (stock.pcsCount || 0) - (stockItem.grossWeight / stock.pcsValue);
     }
     await stock.save();
   }
@@ -839,28 +872,51 @@ const handleDeleteMetalReceipt = async (entry) => {
 
 
 const handleDeleteMetalPayment = async (entry) => {
-  for (const stockItem of entry.stockItems) {
-    // Reverse inventory update (add back, like a receipt)
-    await InventoryService.updateInventory(
-      {
-        stockItems: [
-          {
-            stockCode: {
-              _id: stockItem.stock,
-              code: stockItem.stock.toString(),
-            },
-            pieces: stockItem.pieces || 0,
-            grossWeight: stockItem.grossWeight,
-            purity: stockItem.purity,
-            voucherNumber: entry.voucherCode,
-            transactionType: "deleteMetalPayment"
-          },
-        ],
-      },
-      false, // add
-      entry.enteredBy,
-    );
+  console.log("Handling delete metal receipt for entry:", entry);
+
+  // Fetch account
+  const account = await AccountType.findOne({ _id: entry.party });
+  if (!account) {
+    throw createAppError("Account not found", 404, "ACCOUNT_NOT_FOUND");
   }
+
+  // Ensure balance object exists
+  account.balances.goldBalance = account.balances.goldBalance || {
+    totalGrams: 0,
+    lastUpdated: new Date(),
+  };
+
+  const previousBalance = account.balances.goldBalance.totalGrams || 0;
+
+  // ✅ Calculate total reduction from all stock items
+  const totalReduction = entry.stockItems.reduce((sum, stock) => {
+    return sum + (stock.purityWeight || 0);
+  }, 0);
+
+  // Reduce from account balance
+  account.balances.goldBalance.totalGrams = previousBalance + totalReduction;
+  account.balances.goldBalance.lastUpdated = new Date();
+  await account.save();
+
+  for (const stockItem of entry.stockItems) {
+    // Fetch stock record
+    const stock = await Inventory.findOne({ _id: stockItem.stock });
+    if (!stock) {
+      console.warn(`Stock not found for stockId: ${stockItem.stock}`);
+      continue;
+    }
+
+    // add pcs and/or weight
+    stock.grossWeight = (stock.grossWeight || 0) + (stockItem.grossWeight || 0);
+    stock.pureWeight = (stock.pureWeight || 0) + (stockItem.purityWeight || 0);
+
+    if (stockItem.pcs) {
+      stock.pcsCount = (stock.pcsCount || 0) + (stockItem.grossWeight / stock.pcsValue);
+    }
+    await stock.save();
+  }
+  const result = await InventoryLog.deleteMany({ voucherCode: entry.voucherCode });
+  console.log(`Deleted ${result.deletedCount} inventory log entries for voucherCode ${entry.voucherCode}`);
 };
 
 const handleDeleteCashReceipt = async (entry) => {
