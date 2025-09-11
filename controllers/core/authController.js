@@ -1,3 +1,4 @@
+import Account from "../../models/modules/AccountType.js";
 import {
   loginAdmin,
   refreshAccessToken,
@@ -78,11 +79,11 @@ export const logout = async (req, res, next) => {
 
 export const viewPassword = async (req, res) => {
   try {
-    // const { accountId } = req.params;
+    const { accountId } = req.params;
 
     // // Normally: check if req.user.role === "ADMIN" before proceeding
-    // const account = await Account.findById(accountId);
-    // if (!account) return res.status(404).json({ error: "Account not found" });
+    const account = await Account.findById(accountId);
+    if (!account) return res.status(404).json({ error: "Account not found" });
 
     const plainPassword = decryptPassword(account.passwordEncrypted, account.passwordIV);
     res.status(200).json({ password: plainPassword });
