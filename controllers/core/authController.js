@@ -5,12 +5,16 @@ import {
   getAdminProfile,
 } from "../../services/core/authService.js";
 import { createAppError } from "../../utils/errorHandler.js";
+import { decryptPassword, verifyPassword } from "../../utils/passwordUtils.js";
 
 export const login = async (req, res, next) => {
   try {
     const { email, password } = req.body;
     const ipAddress = req.ip || req.connection.remoteAddress;
     const result = await loginAdmin(email, password, ipAddress);
+
+    // for login
+      // const isValid = await verifyPassword(password, account.passwordHash);
 
     res.cookie("refreshToken", result.data.tokens.refreshToken, {
       httpOnly: true,
@@ -69,5 +73,20 @@ export const logout = async (req, res, next) => {
     res.status(200).json(result);
   } catch (error) {
     next(error);
+  }
+};
+
+export const viewPassword = async (req, res) => {
+  try {
+    // const { accountId } = req.params;
+
+    // // Normally: check if req.user.role === "ADMIN" before proceeding
+    // const account = await Account.findById(accountId);
+    // if (!account) return res.status(404).json({ error: "Account not found" });
+
+    const plainPassword = decryptPassword(account.passwordEncrypted, account.passwordIV);
+    res.status(200).json({ password: plainPassword });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 };

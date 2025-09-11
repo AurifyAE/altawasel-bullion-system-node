@@ -41,7 +41,16 @@ const AccountSchema = new mongoose.Schema(
       maxlength: [500, "Remarks cannot exceed 500 characters"],
       default: null
     },
-
+    // password
+    password: {
+      type: String,
+      trim: true,
+      minlength: [6, "Password must be at least 6 characters"],
+      default: null
+    },
+    passwordHash: { type: String, required: true },
+    passwordEncrypted: { type: String, required: true },
+    passwordIV: { type: String, required: true },
     // Balance Information
     balances: {
       goldBalance: {
@@ -216,7 +225,7 @@ const AccountSchema = new mongoose.Schema(
       }],
       default: []
     },
-    
+
     isSupplier: { type: Boolean, default: false },
 
     // Status and Activity

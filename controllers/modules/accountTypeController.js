@@ -24,12 +24,22 @@ export const createTradeDebtor = async (req, res, next) => {
     } = req.body;
     let accountType = "DEBTOR"
 
+
     // Basic validation - only required fields
     if (!accountCode || !customerName || !title || !accountType) {
       throw createAppError(
         "Required fields missing: accountType, title, accountCode, customerName",
         400,
         "REQUIRED_FIELDS_MISSING"
+      );
+    }
+
+    // check the password and confirm password match
+    if (req.body.password !== req.body.confirmPassword) {
+      throw createAppError(
+        "Password and Confirm Password do not match",
+        400,
+        "PASSWORD_MISMATCH"
       );
     }
 
@@ -286,6 +296,11 @@ export const createTradeDebtor = async (req, res, next) => {
       }
     }
 
+    if( req.body.password && req.body.password.trim() !== "" ) {
+      tradeDebtorData.password = req.body.password.trim();
+    }
+    
+
 
     const tradeDebtor = await AccountTypeService.createTradeDebtor(
       tradeDebtorData,
@@ -403,7 +418,7 @@ export const updateTradeDebtor = async (req, res, next) => {
     if (!id) {
       throw createAppError("Trade debtor ID is required", 400, "MISSING_ID");
     }
-  
+
 
     // Keep track of uploaded files for cleanup on error
     if (req.files && req.files.length > 0) {
