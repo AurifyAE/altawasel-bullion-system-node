@@ -79,10 +79,10 @@ export const logout = async (req, res, next) => {
 
 export const viewPassword = async (req, res) => {
   try {
-    const { accountId } = req.params;
-
+    const { accountId } = req.query;
     // // Normally: check if req.user.role === "ADMIN" before proceeding
     const account = await Account.findById(accountId);
+
     if (!account) return res.status(404).json({ error: "Account not found" });
 
     const plainPassword = decryptPassword(account.passwordEncrypted, account.passwordIV);
